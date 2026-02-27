@@ -36,6 +36,12 @@ class FixedDistanceSubSplitMode(SubSplitMode):
 
 @dataclass
 class CustomSubSplitMode(SubSplitMode):
+    """
+    A SubSplitMode that allows for custom-defined sub-split distances.
+    NOTE: The sum of sub_split_distances should equal to or greater than the total distance of the split.
+    If that is not the case, the remaining distance will be treated as a final sub-split.
+    If the sum exceeds the total distance, the extra distances will yield invalid calculations.
+    """
     sub_split_distances: list[float]
 
     def sub_splits(self, distance) -> list[float]:

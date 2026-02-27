@@ -1,12 +1,15 @@
-import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+
+from colorama import Fore
+from colorama import Style
 
 import logging
 
-from Cycling.pace_calculator.CourseDetail import CourseDetail
+from Cycling.pace_calculator.CourseDetail import CourseDetail, PrinterDetailLine
+from Cycling.pace_calculator.HeadingKeys import *
 from Cycling.pace_calculator.PrinterField import PrinterField
-from Cycling.pace_calculator.SplitDetail import SplitDetail
+from Cycling.pace_calculator.SegmentDetail import SegmentDetail
+from Cycling.pace_calculator.SplitDetail import SplitDetail, SubSplitDetail
 from Cycling.pace_calculator.Utils import hours_to_pretty, span_to_pretty
 
 logging.basicConfig(level=logging.DEBUG)
@@ -14,112 +17,132 @@ logging.basicConfig(level=logging.DEBUG)
 
 @dataclass
 class CourseDetailPrinter:
-    course_details: CourseDetail
-    keys_to_exclude: set[str] = None
-    keys_to_rename: dict[str: str] = None
-    SPACER = ' │ '
+    course_details: CourseDetail  # a CourseDetail object representing the course strategy
+    keys_to_exclude: set[str] = None  # set of keys to exclude from printing
+    keys_to_rename: dict[str: str] = None  # key: original key, value: new name to rename for printing
+    zebra_split_color: bool = False  # whether to color splits in alternating colors for better readability
+
+    # the fields below can be customized for color and style on initialization
+
+    GRID_SPACER_CLR: str = Fore.YELLOW + Style.BRIGHT  # this is the grid lines
+    GRID_SPACER: str = f' │ '  # spacer between columns
+
+    HEADER_SPACER: str = GRID_SPACER  # spacer for header line, should match the size of GRID_SPACER
+    SEGMENT_HEADER_CLR: str = Fore.LIGHTBLUE_EX + Style.BRIGHT  # the text color for header keys
+
+    SPLIT_DETAIL_CLR_EVEN: str = Fore.CYAN + Style.BRIGHT  # the text color for even split detail lines
+    SPLIT_DETAIL_CLR_ODD = Fore.GREEN + Style.BRIGHT  # color for odd split detail lines, only if zebra_split_color=True
+
+    SUB_SPLIT_DETAIL_STYLE: str = Fore.WHITE + Style.NORMAL  # the text color for sub-split detail lines
+
+    SEGMENT_FOOTER_CLR: str = Fore.BLUE + Style.BRIGHT  # the text color for segment footer lines
+
+    SEGMENT_SUMMARY_CLR: str = Fore.MAGENTA + Style.BRIGHT  # the text color for segment summary lines
+
+    SEGMENT_COUNT_CLR: str = Fore.LIGHTYELLOW_EX + Style.BRIGHT  # the text color for segment count lines
+
+    COURSE_SUMMARY_CLR: str = Fore.LIGHTRED_EX + Style.BRIGHT  # the text color for course summary lines
+
+    DATE_FORMAT = '%m/%d %I:%M:%S %p'
 
     FIELD_PROPS = {
-        'distance': PrinterField(
+        DISTANCE: PrinterField(
             name="Distance",
             header_format=">8s",
             value_format='8.2f',
-            width=8
+            width=8,
         ),
-        'span': PrinterField(
+        START_END: PrinterField(
             name=f"{'Start':>7s}, {'End':>7s}",
             header_format=">16s",
             value_format='16s',
             value_transformer=span_to_pretty,
             width=16
         ),
-        'moving_speed': PrinterField(
+        MOVING_SPEED: PrinterField(
             name="Moving Speed",
             header_format=">12s",
             value_format='12.2f',
             width=12
         ),
-        'moving_time': PrinterField(
+        MOVING_TIME: PrinterField(
             name="Moving Time",
             header_format=">19s",
             value_format='19s',
             value_transformer=hours_to_pretty,
             width=19
         ),
-        'down_time': PrinterField(
+        DOWN_TIME: PrinterField(
             name="Down Time",
             header_format=">19s",
             value_format='19s',
             value_transformer=hours_to_pretty,
             width=19
         ),
-        'pace': PrinterField(
+        PACE: PrinterField(
             name="Pace",
             header_format=">6s",
             value_format='6.2f',
             width=6
         ),
-        'start_time': PrinterField(
-            name="Start Time",
-            header_format=">17s",
-            value_format='%m/%d %I:%M:%S %p',
-            width=17
-        ),
-        'split_time': PrinterField(
+        SPLIT_TIME: PrinterField(
             name="Split Time",
             header_format=">19s",
             value_format='19s',
             value_transformer=hours_to_pretty,
             width=19
         ),
-        'adjustment_time': PrinterField(
+        ADJUSTMENT_TIME: PrinterField(
             name="Adjustment Time",
             header_format=">19s",
             value_format='19s',
             value_transformer=hours_to_pretty,
             width=19
         ),
-        'adjustment_start': PrinterField(
+        ADJUSTMENT_START: PrinterField(
             name="Adjustment Start",
             header_format=">17s",
-            value_format='%m/%d %I:%M:%S %p',
+            value_format=DATE_FORMAT,
             width=17
         ),
-        'total_time': PrinterField(
+        TOTAL_TIME: PrinterField(
             name="Total Time",
             header_format=">19s",
             value_format='19s',
             value_transformer=hours_to_pretty,
             width=19
         ),
-        'end_time': PrinterField(
-            name="End Time",
+        START_TIME: PrinterField(
+            name="Start Time",
             header_format=">17s",
-            value_format='%m/%d %I:%M:%S %p',
+            value_format=DATE_FORMAT,
             width=17
         ),
-    }
-
-    REST_STOP_HEADERS = {
-        'name': PrinterField(
+        END_TIME: PrinterField(
+            name="End Time",
+            header_format=">17s",
+            value_format=DATE_FORMAT,
+            width=17
+        ),
+        REST_STOP_NAME: PrinterField(
             name="Rest Stop Name",
             header_format="<20s",
             value_format='<20s',
             width=20
         ),
-        'hours': PrinterField(
+        REST_STOP_HOURS: PrinterField(
             name="Rest Stop Hours",
-            header_format="<15s",
-            value_format='>15s',
-            width=15
+            header_format="<17s",
+            value_format='>17s',
+            width=17
         ),
-        'address': PrinterField(
+        REST_STOP_ADDRESS: PrinterField(
             name="Rest Stop Address",
             header_format=">40s",
             value_format='>40s',
             width=40
         ),
-        'alt': PrinterField(
+        REST_STOP_ALT_URL: PrinterField(
             name="Alternate URL",
             header_format="<50s",
             value_format='<50s',
@@ -127,114 +150,267 @@ class CourseDetailPrinter:
         )
     }
 
-    def print(self, include_sub_splits: bool = False, include_stops: bool = True):
-        segment_details = self.course_details.segment_details
+    def __reordered_keys(self, reordered_keys: list[str] | None = None) -> list[str]:
+        if reordered_keys is None:
+            return list(self.__exposed_fields)
 
-        field_keys_showing = self.__exposed_fields(include_stops)
-        dash_count = self.__compute_dash_count(field_keys_showing, include_stops)
+        exposed_fields = self.__exposed_fields
+        ordered_keys: list[str] = []
 
-        for segment_detail in segment_details:
-            self.__print_header(field_keys_showing)
-            print('─' * dash_count)
+        for key in reordered_keys:
+            if key in exposed_fields:
+                ordered_keys.append(key)
 
-            for split in segment_detail.split_details:
-                self.__print_detail(split, field_keys_showing, include_sub_splits)
+        for key in exposed_fields:
+            if key not in ordered_keys:
+                ordered_keys.append(key)
 
-            print('─' * dash_count)
+        return ordered_keys
 
-        # print('─' * dash_count)
-        # self.__print_footer(summary,
-        #                     field_keys_showing)
-        #
-        # print(f"{'Total Distance':14}: {summary['distance']:>8.3f}")
-        # print(f"{'Time Span':14}: {summary['start_time']:%m/%d %I:%M %p} - {summary['end_time']:%m/%d %I:%M %p}")
-        # print(f"{'Moving Time':14}: {hours_to_pretty(summary['moving_time']).strip():14} "
-        #       f"[{summary['moving_time'].total_seconds() / 3600:7.3f} hours]")
-        # print(f"{'Down Time':14}: {hours_to_pretty(summary['down_time']).strip():14} "
-        #       f"[{summary['down_time'].total_seconds() / 3600:7.3f} hours]")
-        # print(f"{'Adj. Time':14}: {hours_to_pretty(summary['adjustment_time']).strip():14} "
-        #       f"[{summary['adjustment_time'].total_seconds() / 3600:7.3f} hours]")
-        # # print(f"{'Moving + Down':14}: {hrs_prty(summary['moving_time'] + summary['down_time']).strip():14} "
-        # #       f"[{(summary['moving_time'] + summary['down_time']).total_seconds() / 3600:7.3f} hours]")
-        # print(f"{'Elapsed Time':14}: {hours_to_pretty(summary['total_time']).strip():14} "
-        #       f"[{summary['total_time'].total_seconds() / 3600:7.3f} hours]")
-        # print(f"{'Pace':14}: {summary['distance'] / (summary['total_time'].total_seconds() / 3600):>8.3f}")
-        # print(
-        #     f"{'Distance/Day':14}: {summary['distance'] / (summary['total_time'].total_seconds() / (3600 * 24)):>8.3f}")
-        # print(f"{'Moving/Elapsed':14}: {(summary['moving_time'] / summary['total_time']):>8.3%}")
-        # print(f"{'Down/Elapsed':14}: {summary['down_time'] / summary['total_time']:>8.3%}")
-        # print(f"{'Adj./Elapsed':14}: {summary['adjustment_time'] / summary['total_time']:>8.3%}")
-        # print(f"{'Down/Moving':14}: {summary['down_time'] / summary['moving_time']:>8.3%}")
-        # print(f"{'Adj./Moving':14}: {summary['adjustment_time'] / summary['moving_time']:>8.3%}")
+    def print(self, include_sub_splits: bool = False, reordered_keys: list[str] = None) -> None:
+        """
+        This prints a grid containing a visual representation of the computed split details.
+        This includes segment headers, split details, segment footers, and segment summaries.
+        The segment summaries include a per-segment breakdown of key ratios AND a rolling segment summary.
+        This can include sub-split details as well.
 
-    def __exposed_fields(self, include_stop_info):
+        :param include_sub_splits: indicates whether sub-split details should be printed
+        :param reordered_keys: the order in which to print the keys. This can be a full or partial list of keys.
+        When the list is partial, the keys will be listed first in the order specified, followed by the remaining keys
+        """
+        keys_showing_ordered = self.__reordered_keys(reordered_keys)
+        dash_count = self.__compute_dash_count(keys_showing_ordered)
+
+        header = self.__get_header_line(keys_showing_ordered)
+        for i, segment_detail in enumerate(self.course_details.segment_details):
+            print(f'{self.SEGMENT_COUNT_CLR}Segment #{i + 1}')
+            print(header)
+            print(f'{self.GRID_SPACER_CLR}{"─" * dash_count}{Style.RESET_ALL}')
+
+            for j, split in enumerate(segment_detail.split_details):
+                if include_sub_splits:
+                    if j != 0:
+                        print(f'{self.SUB_SPLIT_DETAIL_STYLE}{"─" * dash_count}{Style.RESET_ALL}')
+                    for sub_split in split.sub_splits:
+                        sub_split_detail_line = self.__get_split_detail_line(sub_split,
+                                                                             keys_showing_ordered,
+                                                                             self.SUB_SPLIT_DETAIL_STYLE)
+                        print(sub_split_detail_line)
+
+                    print(f'{self.SUB_SPLIT_DETAIL_STYLE}{"─" * dash_count}{Style.RESET_ALL}')
+
+                text_color = self.SPLIT_DETAIL_CLR_ODD
+                if self.zebra_split_color:
+                    text_color = self.SPLIT_DETAIL_CLR_ODD if j % 2 else self.SPLIT_DETAIL_CLR_EVEN
+                split_detail_line = self.__get_split_detail_line(split, keys_showing_ordered, text_color)
+                print(split_detail_line)
+
+            print(f'{self.GRID_SPACER_CLR}{"─" * dash_count}{Style.RESET_ALL}')
+
+            segment_footer = self.__get_segment_footer_line(segment_detail, keys_showing_ordered)
+            print(segment_footer)
+            print()
+
+            segment_summary_line = self.__get_segment_rolling_summary(i)
+            print(segment_summary_line)
+            print()
+
+        course_summary_line = self.__get_course_summary_line()
+        print(course_summary_line)
+
+    @property
+    def __exposed_fields(self) -> list[str]:
         if self.keys_to_rename is None:
             self.keys_to_rename = {}
 
         if self.keys_to_exclude is None:
             self.keys_to_exclude = set()
 
-        field_keys_showing = set(self.FIELD_PROPS.keys())
-        if include_stop_info:
-            field_keys_showing |= set(self.REST_STOP_HEADERS.keys())
-
-        field_keys_showing -= self.keys_to_exclude
+        field_keys_showing = [key for key in self.FIELD_PROPS.keys() if key not in self.keys_to_exclude]
 
         return field_keys_showing
 
-    def __print_header(self, field_keys_showing: set[str]):
+    def __get_header_line(self, keys_showing_ordered: list[str]) -> str:
         res = []
-        for _k in self.FIELD_PROPS:
-            if _k in field_keys_showing:
-                header_override = self.keys_to_rename.get(_k, None)
-                res.append(self.FIELD_PROPS[_k].formatted_header(header_override))
+        for _k in keys_showing_ordered:
+            header_override = self.keys_to_rename.get(_k, None)
+            res.append(self.FIELD_PROPS[_k].formatted_header(header_override))
 
-        for _k in self.REST_STOP_HEADERS:
-            if _k in field_keys_showing:
-                header_override = self.keys_to_rename.get(_k, None)
-                res.append(self.REST_STOP_HEADERS[_k].formatted_header(header_override))
+        return f'{self.SEGMENT_HEADER_CLR}{self.join_columns(res, self.SEGMENT_HEADER_CLR, spacer=self.HEADER_SPACER)}'
 
-        print(self.SPACER.join(res))
-
-    def __print_detail(self, split: SplitDetail, field_keys_showing: set[str], is_sub_split: bool = False):
-        res = []
-        for _k in self.FIELD_PROPS:
-            if _k in field_keys_showing:
+    def __get_split_detail_line(self,
+                                split: SplitDetail | SubSplitDetail,
+                                keys_showing_ordered: list[str],
+                                text_color: str) -> str:
+        res: list[str] = []
+        for _k in keys_showing_ordered:
+            if hasattr(split, _k):
                 _v = self.FIELD_PROPS[_k].formatted_value(split.__getattribute__(_k))
-                res.append(_v)
+            # rest stop fields are within an object that is only part of SplitDetail
+            elif isinstance(split, SplitDetail) and split.rest_stop is not None and hasattr(split.rest_stop, _k):
+                _v = self.FIELD_PROPS[_k].formatted_value(split.rest_stop.__getattribute__(_k))
+            else:
+                _v = self.FIELD_PROPS[_k].formatted_value()
+            res.append(_v)
 
-        for _k in self.REST_STOP_HEADERS:
-            if _k in field_keys_showing:
-                if split.rest_stop is None:
-                    _v = self.REST_STOP_HEADERS[_k].formatted_value()
-                else:
-                    _v = self.REST_STOP_HEADERS[_k].formatted_value(split.rest_stop.__getattribute__(_k))
-                res.append(_v)
-        print(f'{self.SPACER.join(res)}' if is_sub_split else self.SPACER.join(res))
+        return self.join_columns(res, text_color)
 
-    def __print_footer(self, summary: dict[str: [str | float | datetime]], keys_to_include: set[str]):
-        ...
-        # res = []
-        # for key in self.FIELD_PROPS:
-        #     if key not in summary:
-        #         logging.error(f"The key: '{key}' does not exist in split summary.")
-        #
-        #     if key in keys_to_include and key in summary:
-        #         val = summary[key]
-        #         is_filler = type(val) == str and set(val) == {'-'}
-        #         if 'transformer' in self.FIELD_PROPS[key] and not is_filler:
-        #             res.append(self.FIELD_PROPS[key]['transformer'](summary[key]))
-        #         elif is_filler:
-        #             res.append(format_field(val=val, formatting=self.FIELD_PROPS[key]['header_formatting']))
-        #         elif val is None:
-        #             res.append(f'{"":{self.FIELD_PROPS[key]["width"]}}')
-        #         else:
-        #             res.append(format_field(val=val, formatting=self.FIELD_PROPS[key]['value_formatting']))
-        #
-        # print(self.SPACER.join(res))
+    def join_columns(self, columns: list[str], text_style: str = Fore.WHITE, spacer: str | None = None) -> str:
+        if spacer is None:
+            spacer = self.GRID_SPACER
+        res = [f'{text_style}{s}{Style.RESET_ALL}' for s in columns]
+        return f"{self.GRID_SPACER_CLR}{spacer}{Style.RESET_ALL}".join(res)
 
-    def __compute_dash_count(self, field_keys_showing: set[str], include_stop_info: bool):
-        spacers_spacing = len(self.SPACER) * (len(field_keys_showing) - 1)
+    def __compute_dash_count(self, field_keys_showing: list[str]) -> int:
+        spacers_spacing = len(self.GRID_SPACER) * (len(field_keys_showing) - 1)
         base_headers = sum(self.FIELD_PROPS[_k].width for _k in self.FIELD_PROPS if _k in field_keys_showing)
-        stops_width = sum(self.REST_STOP_HEADERS[_k].width for _k in self.REST_STOP_HEADERS if _k in field_keys_showing)
-        return base_headers + spacers_spacing + (stops_width if include_stop_info else 0)
+        return base_headers + spacers_spacing
+
+    def __get_segment_footer_line(self, segment_detail: SegmentDetail, keys_showing_ordered: list[str]) -> str:
+        res: list[str] = []
+        for _k in keys_showing_ordered:
+            if hasattr(segment_detail, _k):
+                _v = self.FIELD_PROPS[_k].formatted_value(segment_detail.__getattribute__(_k))
+            else:
+                _v = self.FIELD_PROPS[_k].formatted_value()
+            res.append(_v)
+
+        return self.join_columns(res, self.SEGMENT_FOOTER_CLR)
+
+    def __get_segment_rolling_summary(self, segment_index: int) -> str:
+        def get_rolling_summary_line() -> str:
+            key_width = '<14s'
+            ratio_width = '13s'
+            val_decimal_format = '>8.2%'
+            raw_ratio_format = '>5.2f'
+
+            def __compute_rolling_summary_tuple(_key: str, numerator: float, denominator: float) -> tuple[str, str, str]:
+                val = f'{numerator / denominator:{val_decimal_format}}'
+                raw = f'{numerator:{raw_ratio_format}} / {denominator:{raw_ratio_format}}'
+                return _key, val, raw
+
+            segment_details = self.course_details.segment_details[segment_index]
+            segment_rolling_details = self.course_details.get_rolling_segment_details(segment_index)
+
+            details: list[tuple[str, str, str]] = [
+                ('Segment Time', '', f'{segment_details.elapsed_time_hours:{raw_ratio_format}} hours'),
+                ('Active Time', '', f'{segment_details.active_time_hours:{raw_ratio_format}} hours'),
+                ('Start - End', '', f'{segment_details.start_time:{self.DATE_FORMAT}} - {segment_details.end_time:{self.DATE_FORMAT}}'),
+                ('', '', f'{segment_rolling_details.start_time:{self.DATE_FORMAT}} - {segment_rolling_details.end_time:{self.DATE_FORMAT}}'),
+                ('Distance', '', f'{segment_details.distance:{raw_ratio_format}} ({segment_details.distance / (segment_details.elapsed_time_hours / 24):.2f}/day)'),
+                ('', '', f'{segment_rolling_details.distance:{raw_ratio_format}} ({segment_rolling_details.distance / (segment_rolling_details.elapsed_time_hours / 24):.2f}/day)'),
+                ('Adj. Time', '', f'{segment_details.adjustment_time_hours:{raw_ratio_format}} hours'),
+                ('', '', f'{segment_rolling_details.adjustment_time_hours:{raw_ratio_format}} hours'),
+                ('Sleep Time', '', f'{segment_details.sleep_time_hours:{raw_ratio_format}} hours'),
+                ('', '', f'{segment_rolling_details.sleep_time_hours:{raw_ratio_format}} hours'),
+                ('Elapsed Time', '', f'{segment_details.elapsed_time_hours:{raw_ratio_format}} hours'),
+                ('', '', f'{segment_rolling_details.elapsed_time_hours:{raw_ratio_format}} hours'),
+                # extended ratio section
+                ('Adj.', '', ''),
+                __compute_rolling_summary_tuple('   /Active',
+                                                segment_details.adjustment_time_hours,
+                                                segment_details.active_time_hours),
+                __compute_rolling_summary_tuple('   /Segment',
+                                                segment_details.adjustment_time_hours,
+                                                segment_details.elapsed_time_hours),
+                __compute_rolling_summary_tuple('',
+                                                segment_rolling_details.adjustment_time_hours,
+                                                segment_rolling_details.elapsed_time_hours),
+                ('Down', '', ''),
+                __compute_rolling_summary_tuple('   /Active',
+                                                segment_details.down_time_hours,
+                                                segment_details.active_time_hours),
+                __compute_rolling_summary_tuple('   /Segment',
+                                                segment_details.down_time_hours,
+                                                segment_details.elapsed_time_hours),
+                __compute_rolling_summary_tuple('',
+                                                segment_rolling_details.down_time_hours,
+                                                segment_rolling_details.elapsed_time_hours),
+                ('Moving', '', ''),
+                __compute_rolling_summary_tuple('   /Active',
+                                                segment_details.moving_time_hours,
+                                                segment_details.active_time_hours),
+                __compute_rolling_summary_tuple('   /Segment',
+                                                segment_details.moving_time_hours,
+                                                segment_details.elapsed_time_hours),
+                __compute_rolling_summary_tuple('',
+                                                segment_rolling_details.moving_time_hours,
+                                                segment_rolling_details.elapsed_time_hours),
+                ('Sleep', '', ''),
+                __compute_rolling_summary_tuple('   /Active',
+                                                segment_details.sleep_time_hours,
+                                                segment_details.active_time_hours),
+                __compute_rolling_summary_tuple('   /Segment',
+                                                segment_details.sleep_time_hours,
+                                                segment_details.elapsed_time_hours),
+                __compute_rolling_summary_tuple('',
+                                                segment_rolling_details.sleep_time_hours,
+                                                segment_rolling_details.elapsed_time_hours),
+                __compute_rolling_summary_tuple('Down/Moving',
+                                                segment_details.down_time_hours,
+                                                segment_details.moving_time_hours),
+                __compute_rolling_summary_tuple('',
+                                                segment_rolling_details.down_time_hours,
+                                                segment_rolling_details.moving_time_hours),
+                __compute_rolling_summary_tuple('Move Ratio',
+                                                segment_details.moving_time_hours,
+                                                segment_details.elapsed_time_hours),
+                __compute_rolling_summary_tuple('',
+                                                segment_rolling_details.moving_time_hours,
+                                                segment_rolling_details.elapsed_time_hours),
+            ]
+
+            _res: list[str] = []
+            for (key, percent, ratio) in details:
+                _res.append(f"{key:{key_width}}: {ratio:{ratio_width}} {f'({percent:>10s})' if percent else ''}")
+            return '\n'.join(_res)
+
+        return f'{self.SEGMENT_SUMMARY_CLR}{get_rolling_summary_line()}{Style.RESET_ALL}'
+
+    def __get_course_summary_line(self) -> str:
+        def get_summary_line(detail: PrinterDetailLine) -> str:
+            key_width = '<14s'
+            ratio_width = '13s'
+            val_decimal_format = '>8.2%'
+            raw_ratio_format = '>5.2f'
+
+            def __compute_summary_tuple(_key: str, numerator: float, denominator: float) -> tuple[str, str, str]:
+                val = f'{numerator / denominator:{val_decimal_format}}'
+                raw = f'{numerator:{raw_ratio_format}} / {denominator:{raw_ratio_format}}'
+                return _key, val, raw
+
+            details: list[tuple[str, str, str]] = [
+                ('Start - End', '', f'{detail.start_time:{self.DATE_FORMAT}} - {detail.end_time:{self.DATE_FORMAT}}'),
+                ('Distance', '', f'{detail.distance:{raw_ratio_format}} ({detail.distance / (detail.elapsed_time_hours / 24):.2f}/day)'),
+                ('Adj. Time', '', f'{detail.adjustment_time_hours:{raw_ratio_format}} hours'),
+                ('Sleep Time', '', f'{detail.sleep_time_hours:{raw_ratio_format}} hours'),
+                ('Elapsed Time', '', f'{detail.elapsed_time_hours:{raw_ratio_format}} hours'),
+                __compute_summary_tuple('Adj./Elapsed',
+                                        detail.adjustment_time_hours,
+                                        detail.elapsed_time_hours),
+                __compute_summary_tuple('Down/Elapsed',
+                                        detail.down_time_hours,
+                                        detail.elapsed_time_hours),
+                __compute_summary_tuple('Moving/Elapsed',
+                                        detail.moving_time_hours,
+                                        detail.elapsed_time_hours),
+                __compute_summary_tuple('Sleep/Elapsed',
+                                        detail.sleep_time_hours,
+                                        detail.elapsed_time_hours),
+                __compute_summary_tuple('Down/Moving',
+                                        detail.down_time_hours,
+                                        detail.moving_time_hours),
+                __compute_summary_tuple('Move Ratio',
+                                        detail.moving_time_hours,
+                                        detail.elapsed_time_hours),
+            ]
+
+            _res: list[str] = []
+            for (key, percent, ratio) in details:
+                _res.append(f"{key:{key_width}}: {ratio:{ratio_width}} {f'({percent:>10s})' if percent else ''}")
+
+            return '\n'.join(_res)
+
+        res = get_summary_line(self.course_details.to_printer_detail_line())
+
+        return f'{self.COURSE_SUMMARY_CLR}{res}{Style.RESET_ALL}'

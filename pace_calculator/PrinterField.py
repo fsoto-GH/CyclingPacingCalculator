@@ -7,8 +7,10 @@ class PrinterField:
     name: str
     header_format: str
     value_format: str
+    footer_format: str | None = None
     width: int = 0
     empty_char: str = '-'
+    footer_transformer: Callable[[Any], str] | None = None
     value_transformer: Callable[[Any], str] | None = None
 
     @property

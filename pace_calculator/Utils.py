@@ -30,9 +30,14 @@ def hours_to_pretty(hours_timedelta: timedelta | float):
     minutes = (decimal_hours - int(decimal_hours)) * 60
     seconds = (minutes - int(minutes)) * 60
 
-    return f"{'-' if is_neg else ' '}{math.floor(days):2d}d {math.floor(hours):2d}h {math.floor(minutes):2d}m {seconds:5.2f}s"
+    return f"{'-' if is_neg else ' '}{math.floor(days):2d}d {math.floor(hours):2d}h {math.floor(minutes):2d}m " \
+           f"{seconds:5.2f}s"
 
 
 def span_to_pretty(span: tuple[float, float]):
-    start_distance, distance = span
-    return f"{start_distance:7.2f}, {start_distance + distance:7.2f}"
+    start_distance, end_distance = span
+    return f"{start_distance:7.2f}, {end_distance:7.2f}"
+
+
+def to_hours(total_seconds: float):
+    return total_seconds / 3600

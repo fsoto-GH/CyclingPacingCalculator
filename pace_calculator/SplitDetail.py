@@ -19,7 +19,7 @@ class SubSplitDetail:
 
     @property
     def span(self) -> tuple[float, float]:
-        return self.start_distance, self.distance
+        return self.start_distance, self.start_distance + self.distance
 
 
 @dataclass
