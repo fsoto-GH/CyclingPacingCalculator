@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
 
-from Cycling.pace_calculator import HeadingKeys
-from Cycling.pace_calculator.Course import Course, TARGET_DISTANCE
-from Cycling.pace_calculator.CourseDetailPrinter import CourseDetailPrinter
-from Cycling.pace_calculator.RestStop import RestStop, FixedOpenHours, WeeklyOpenHours
-from Cycling.pace_calculator.Segment import Segment
-from Cycling.pace_calculator.Split import Split
+from Cycling.pacing.printer import HeadingKeys
+from Cycling.pace_calculator.calculator.models.Course import Course, TARGET_DISTANCE
+from Cycling.pacing.printer.CourseDetailPrinter import CourseDetailPrinter
+from Cycling.pace_calculator.calculator.models.Segment import Segment
+from Cycling.pace_calculator.calculator.models.Split import Split
 
 
 def main():

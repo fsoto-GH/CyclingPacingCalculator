@@ -1,7 +1,6 @@
 from dataclasses import dataclass
-from datetime import datetime
 
-(MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY) = range(7)
+from Cycling.pacing.shared.CONSTANTS import MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
 
 
 @dataclass
@@ -55,21 +54,3 @@ class FixedOpenHours(OpenHours):
             SATURDAY: self.hours,
             SUNDAY: self.hours,
         }
-
-
-@dataclass
-class RestStop:
-    name: str
-    open_hours: OpenHours
-    address: str
-    alt: str | None = None
-    arrival_date: datetime | None = None
-
-    @property
-    def hours(self):
-        if self.arrival_date is None:
-            raise ValueError("Arrival date is not set for this rest stop.")
-        return self.open_hours.open_hours.get(self.arrival_date.weekday(), "CLOSED")
-
-# TODO: Method to convert this to a RestDetailLine or RestOptionalDetailLine
-

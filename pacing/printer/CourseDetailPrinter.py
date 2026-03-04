@@ -3,16 +3,15 @@ from dataclasses import dataclass
 from colorama import Fore
 from colorama import Style
 
-import logging
-
-from Cycling.pace_calculator.CourseDetail import CourseDetail, PrinterDetailLine
-from Cycling.pace_calculator.HeadingKeys import *
-from Cycling.pace_calculator.PrinterField import PrinterField
-from Cycling.pace_calculator.SegmentDetail import SegmentDetail
-from Cycling.pace_calculator.SplitDetail import SplitDetail, SubSplitDetail
-from Cycling.pace_calculator.Utils import hours_to_pretty, span_to_pretty
-
-logging.basicConfig(level=logging.DEBUG)
+from Cycling.pacing.printer.HeadingKeys import *
+from Cycling.pacing.printer.PrinterDetailLine import PrinterDetailLine
+from Cycling.pacing.printer.PrinterField import PrinterField
+from Cycling.pacing.printer.ToPrinterDetails import get_rolling_segment_details, to_printer_detail_line
+from Cycling.pacing.calculator.models.details.course_detail import CourseDetail
+from Cycling.pacing.calculator.models.details.segment_detail import SegmentDetail
+from Cycling.pacing.calculator.models.details.split_detail import SplitDetail
+from Cycling.pacing.calculator.models.details.sub_split_detail import SubSplitDetail
+from Cycling.pacing.shared.utils import hours_to_pretty, span_to_pretty
 
 
 @dataclass
@@ -20,6 +19,7 @@ class CourseDetailPrinter:
     course_details: CourseDetail  # a CourseDetail object representing the course strategy
     keys_to_exclude: set[str] = None  # set of keys to exclude from printing
     keys_to_rename: dict[str: str] = None  # key: original key, value: new name to rename for printing
+    reordered_keys: list[str] = None  # specifies which keys to print out first; you can reorder
     zebra_split_color: bool = False  # whether to color splits in alternating colors for better readability
 
     # the fields below can be customized for color and style on initialization
@@ -150,14 +150,15 @@ class CourseDetailPrinter:
         )
     }
 
-    def __reordered_keys(self, reordered_keys: list[str] | None = None) -> list[str]:
-        if reordered_keys is None:
+    @property
+    def __reordered_keys(self) -> list[str]:
+        if self.reordered_keys is None:
             return list(self.__exposed_fields)
 
         exposed_fields = self.__exposed_fields
         ordered_keys: list[str] = []
 
-        for key in reordered_keys:
+        for key in self.reordered_keys:
             if key in exposed_fields:
                 ordered_keys.append(key)
 
@@ -167,7 +168,7 @@ class CourseDetailPrinter:
 
         return ordered_keys
 
-    def print(self, include_sub_splits: bool = False, reordered_keys: list[str] = None) -> None:
+    def print(self, include_sub_splits: bool = False) -> None:
         """
         This prints a grid containing a visual representation of the computed split details.
         This includes segment headers, split details, segment footers, and segment summaries.
@@ -178,7 +179,7 @@ class CourseDetailPrinter:
         :param reordered_keys: the order in which to print the keys. This can be a full or partial list of keys.
         When the list is partial, the keys will be listed first in the order specified, followed by the remaining keys
         """
-        keys_showing_ordered = self.__reordered_keys(reordered_keys)
+        keys_showing_ordered = self.__reordered_keys
         dash_count = self.__compute_dash_count(keys_showing_ordered)
 
         header = self.__get_header_line(keys_showing_ordered)
@@ -290,7 +291,7 @@ class CourseDetailPrinter:
                 return _key, val, raw
 
             segment_details = self.course_details.segment_details[segment_index]
-            segment_rolling_details = self.course_details.get_rolling_segment_details(segment_index)
+            segment_rolling_details = get_rolling_segment_details(self.course_details, segment_index)
 
             details: list[tuple[str, str, str]] = [
                 ('Segment Time', '', f'{segment_details.elapsed_time_hours:{raw_ratio_format}} hours'),
@@ -411,6 +412,6 @@ class CourseDetailPrinter:
 
             return '\n'.join(_res)
 
-        res = get_summary_line(self.course_details.to_printer_detail_line())
+        res = get_summary_line(to_printer_detail_line(self.course_details))
 
         return f'{self.COURSE_SUMMARY_CLR}{res}{Style.RESET_ALL}'

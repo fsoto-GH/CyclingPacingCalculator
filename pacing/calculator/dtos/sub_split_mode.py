@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class SubSplitMode:
     def sub_splits(self, distance: float) -> list[float]:
-        pass
+        raise NotImplementedError('sub_splits method must be implemented by subclasses')
 
 
 @dataclass

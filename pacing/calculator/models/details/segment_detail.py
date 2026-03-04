@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from Cycling.pace_calculator.PrinterDetailLine import PrinterDetailLine
-from Cycling.pace_calculator.SplitDetail import SplitDetail
-from Cycling.pace_calculator.Utils import to_hours
+from Cycling.pacing.calculator.models.details.split_detail import SplitDetail
+from Cycling.pacing.shared.utils import to_hours
 
 
 @dataclass
@@ -77,15 +76,3 @@ class SegmentDetail:
     @property
     def sleep_time_hours(self) -> float:
         return to_hours(self.sleep_time.total_seconds())
-
-    def to_printer_detail_line(self) -> PrinterDetailLine:
-        return PrinterDetailLine(
-            start_time=self.start_time,
-            end_time=self.end_time,
-            distance=self.distance,
-            adjustment_time_hours=self.adjustment_time_hours,
-            down_time_hours=self.down_time_hours,
-            moving_time_hours=self.moving_time_hours,
-            elapsed_time_hours=self.elapsed_time_hours,
-            sleep_time_hours=self.sleep_time_hours,
-        )
