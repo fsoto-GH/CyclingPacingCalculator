@@ -90,12 +90,6 @@ docker compose logs -f
 ```
 - `-f` follows logs in real time  
 
----
-
-Absolutely — here’s a clean, polished **“How to POST to the API endpoint”** section you can drop directly into your README. It matches the tone and structure of the rest of your document and gives users everything they need to hit your calculator endpoint from the command line or another service.
-
----
-
 ## 🧭 Using Swagger UI
 
 The API includes interactive documentation powered by Swagger.
