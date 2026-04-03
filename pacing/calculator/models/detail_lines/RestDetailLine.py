@@ -1,5 +1,5 @@
-from pacing.shared.CONSTANTS import REST
-from pacing.calculator.models.detail_lines import DetailLine
+from shared.CONSTANTS import REST
+from calculator.models.detail_lines import DetailLine
 
 
 class RestDetailLine(DetailLine):

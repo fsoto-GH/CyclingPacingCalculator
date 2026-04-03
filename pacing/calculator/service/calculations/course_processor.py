@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 
-from pacing.calculator.dtos.course import Course
-from pacing.calculator.models.details.course_detail import CourseDetail
-from pacing.calculator.models.details.segment_detail import SegmentDetail
-from pacing.calculator.service.calculations.segment_processor import __compute_segment_detail
-from pacing.shared.CONSTANTS import DISTANCE, TARGET_DISTANCE
+from calculator.dtos.course import Course
+from calculator.models.details.course_detail import CourseDetail
+from calculator.models.details.segment_detail import SegmentDetail
+from calculator.service.calculations.segment_processor import __compute_segment_detail
+from shared.CONSTANTS import DISTANCE, TARGET_DISTANCE
 
 
 def process_course(course: Course, start_distance: float = 0) -> CourseDetail:

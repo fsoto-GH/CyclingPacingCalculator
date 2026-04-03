@@ -1,7 +1,7 @@
 from datetime import timedelta
 
-from pacing.shared.CONSTANTS import KOM
-from pacing.calculator.models.detail_lines import DetailLine
+from shared.CONSTANTS import KOM
+from calculator.models.detail_lines import DetailLine
 
 
 class KOMDetailLine(DetailLine):

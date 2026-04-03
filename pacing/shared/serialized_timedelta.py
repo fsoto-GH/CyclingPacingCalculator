@@ -3,7 +3,7 @@ from typing import Annotated
 
 from pydantic import PlainSerializer
 
-from pacing.shared.utils import hours_to_pretty
+from shared.utils import hours_to_pretty
 
 
 def serialize_timedelta(delta: timedelta):

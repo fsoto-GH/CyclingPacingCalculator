@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  pacing-api:
+    build: .
+    container_name: pacing-api
+    ports:
+      - "8000:8000"
+    # links pacing directory to the container, so that changes to the code will be reflected in the container without needing to rebuild it
+    volumes:
+      - .:/pacing
+    restart: always
+    # command here overrides the CMD in the Dockerfile, so it will run the API when the container starts
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - PYTHONPATH=/pacing

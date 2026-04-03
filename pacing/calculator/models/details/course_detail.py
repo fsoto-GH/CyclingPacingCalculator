@@ -3,8 +3,8 @@ from datetime import datetime
 
 from pydantic import computed_field
 
-from pacing.calculator.models.details.segment_detail import SegmentDetail
-from pacing.shared.serialized_timedelta import serialized_timedelta
+from calculator.models.details.segment_detail import SegmentDetail
+from shared.serialized_timedelta import serialized_timedelta
 
 
 @dataclass

@@ -1,4 +1,4 @@
-from pacing.shared.CONSTANTS import LEGEND
+from shared.CONSTANTS import LEGEND
 
 
 class DetailLine:

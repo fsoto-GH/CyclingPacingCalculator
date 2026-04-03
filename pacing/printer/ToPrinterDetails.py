@@ -1,8 +1,8 @@
 from datetime import timedelta
 
-from pacing.printer.PrinterDetailLine import PrinterDetailLine
-from pacing.calculator.models.details.course_detail import CourseDetail
-from pacing.shared.utils import to_hours
+from printer.PrinterDetailLine import PrinterDetailLine
+from calculator.models.details.course_detail import CourseDetail
+from shared.utils import to_hours
 
 
 def get_rolling_segment_details(course_detail: CourseDetail, segment_index: int) -> PrinterDetailLine:

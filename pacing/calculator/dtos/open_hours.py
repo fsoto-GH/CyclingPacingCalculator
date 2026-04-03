@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from pacing.shared.CONSTANTS import MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
+from shared.CONSTANTS import MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
 
 
 @dataclass

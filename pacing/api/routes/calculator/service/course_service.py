@@ -1,13 +1,13 @@
 from datetime import timedelta
 
-from pacing.api.routes.calculator.dto.course import Course
-from pacing.api.routes.calculator.dto.split import Split
-from pacing.calculator.dtos.course import Course as CourseDto
-from pacing.calculator.dtos.segment import Segment as SegmentDto
-from pacing.calculator.dtos.rest_stop import RestStop as RestStopDto
-from pacing.calculator.dtos.open_hours import OpenHours, FixedOpenHours, WeeklyOpenHours
-from pacing.calculator.dtos.split import Split as SplitDto
-from pacing.calculator.dtos.sub_split_mode import *
+from api.routes.calculator.dto.course import Course
+from api.routes.calculator.dto.split import Split
+from calculator.dtos.course import Course as CourseDto
+from calculator.dtos.segment import Segment as SegmentDto
+from calculator.dtos.rest_stop import RestStop as RestStopDto
+from calculator.dtos.open_hours import OpenHours, FixedOpenHours, WeeklyOpenHours
+from calculator.dtos.split import Split as SplitDto
+from calculator.dtos.sub_split_mode import *
 
 
 def validate_course(course: Course) -> list[str]:

@@ -1,9 +1,0 @@
-FROM python:3.10-slim
-
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH="/app"
-
-WORKDIR /app
-COPY . .
-
-ENTRYPOINT ["ls"]

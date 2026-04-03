@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 
-from pacing.calculator.dtos.segment import Segment
-from pacing.calculator.dtos.split import Split
-from pacing.calculator.models.details.segment_detail import SegmentDetail
-from pacing.calculator.models.details.split_detail import SplitDetail
-from pacing.calculator.models.details.sub_split_detail import SubSplitDetail
+from calculator.dtos.segment import Segment
+from calculator.dtos.split import Split
+from calculator.models.details.segment_detail import SegmentDetail
+from calculator.models.details.split_detail import SplitDetail
+from calculator.models.details.sub_split_detail import SubSplitDetail
 
 
 def process_segment(segment: Segment,

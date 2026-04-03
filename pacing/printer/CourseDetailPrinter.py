@@ -3,15 +3,15 @@ from dataclasses import dataclass
 from colorama import Fore
 from colorama import Style
 
-from pacing.printer.HeadingKeys import *
-from pacing.printer.PrinterDetailLine import PrinterDetailLine
-from pacing.printer.PrinterField import PrinterField
-from pacing.printer.ToPrinterDetails import get_rolling_segment_details, to_printer_detail_line
-from pacing.calculator.models.details.course_detail import CourseDetail
-from pacing.calculator.models.details.segment_detail import SegmentDetail
-from pacing.calculator.models.details.split_detail import SplitDetail
-from pacing.calculator.models.details.sub_split_detail import SubSplitDetail
-from pacing.shared.utils import hours_to_pretty, span_to_pretty
+from printer.HeadingKeys import *
+from printer.PrinterDetailLine import PrinterDetailLine
+from printer.PrinterField import PrinterField
+from printer.ToPrinterDetails import get_rolling_segment_details, to_printer_detail_line
+from calculator.models.details.course_detail import CourseDetail
+from calculator.models.details.segment_detail import SegmentDetail
+from calculator.models.details.split_detail import SplitDetail
+from calculator.models.details.sub_split_detail import SubSplitDetail
+from shared.utils import hours_to_pretty, span_to_pretty
 
 
 @dataclass
