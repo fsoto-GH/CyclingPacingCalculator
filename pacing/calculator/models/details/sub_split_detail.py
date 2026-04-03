@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import computed_field
 
-from shared.serialized_timedelta import serialized_timedelta
+from pacing.shared.serialized_timedelta import serialized_timedelta
 
 
 @dataclass

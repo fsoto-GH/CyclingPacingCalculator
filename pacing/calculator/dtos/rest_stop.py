@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from calculator.dtos.open_hours import OpenHours
+from pacing.calculator.dtos.open_hours import OpenHours
 
 
 @dataclass

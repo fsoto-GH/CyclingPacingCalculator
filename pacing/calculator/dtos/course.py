@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from calculator.dtos.segment import Segment
+from pacing.calculator.dtos.segment import Segment
 
 
 @dataclass

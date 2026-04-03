@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 
-from calculator.dtos.split import Split
+from pacing.calculator.dtos.split import Split
 
 
 @dataclass

@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from datetime import timedelta
 
-from calculator.dtos.rest_stop import RestStop
-from calculator.dtos.sub_split_mode import SubSplitMode
+from pacing.calculator.dtos.rest_stop import RestStop
+from pacing.calculator.dtos.sub_split_mode import SubSplitMode
 
 
 @dataclass

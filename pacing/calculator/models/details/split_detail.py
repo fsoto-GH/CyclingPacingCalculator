@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from calculator.dtos.rest_stop import RestStop
-from calculator.models.details.sub_split_detail import SubSplitDetail
-from shared.serialized_timedelta import serialized_timedelta
+from pacing.calculator.dtos.rest_stop import RestStop
+from pacing.calculator.models.details.sub_split_detail import SubSplitDetail
+from pacing.shared.serialized_timedelta import serialized_timedelta
 
 
 @dataclass

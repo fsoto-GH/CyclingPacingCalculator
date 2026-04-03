@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from api.routes.calculator.dto.segment import Segment
+from pacing.api.routes.calculator.dto.segment import Segment
 
 
 @dataclass

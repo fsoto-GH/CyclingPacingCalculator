@@ -2,7 +2,9 @@ version: "3.9"
 
 services:
   pacing-api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: pacing-api
     ports:
       - "8000:8000"
@@ -11,6 +13,6 @@ services:
       - .:/pacing
     restart: always
     # command here overrides the CMD in the Dockerfile, so it will run the API when the container starts
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn pacing.api.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - PYTHONPATH=/pacing

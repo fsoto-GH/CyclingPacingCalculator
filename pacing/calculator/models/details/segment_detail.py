@@ -3,9 +3,9 @@ from datetime import datetime
 
 from pydantic import computed_field
 
-from calculator.models.details.split_detail import SplitDetail
-from shared.serialized_timedelta import serialized_timedelta
-from shared.utils import to_hours
+from pacing.calculator.models.details.split_detail import SplitDetail
+from pacing.shared.serialized_timedelta import serialized_timedelta
+from pacing.shared.utils import to_hours
 
 
 @dataclass
