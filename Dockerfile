@@ -5,6 +5,7 @@ ENV PYTHONPATH="/pacing"
 
 WORKDIR /pacing
 COPY pacing/ /pacing
+COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
