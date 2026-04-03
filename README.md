@@ -1,7 +1,13 @@
 # 🚴‍♂️ CyclingPacingCalculator
+## 🧠 Why I Built This
+ 
+Multi-day ultra-endurance cycling events don't have a simple finish time. Your speed decays as fatigue accumulates. Sleep windows eat into your clock. Rest stops, aid stations, and segments with different terrain all compound into a final elapsed time that is nearly impossible to estimate in your head.
 
-This repository contains my implementation of a cycling pacing calculator. It allows cyclists to experiment with different pacing strategies for a given route and see how those choices affect overall time. The project includes:
+Before Mishigami 2025—a 1,121-mile race across Michigan—I needed a way to model different pacing strategies and understand the tradeoffs. How fast could I afford to start? How much would a 3-hour sleep window cost me versus a 1-hour nap? What happens if my average speed drops by 1 mph in the final 200 miles?
 
+I built this calculator to answer those questions. It powered my race plan for Mishigami, where I finished 2nd place—the first Chicagoan ever to complete the race in under 4 days.
+
+This repository contains my implementation of a cycling pacing calculator.
 - **A Dockerized API** that can be deployed and consumed by other applications.
 - **A standalone Python package** that exposes the core pacing logic without requiring the API.
 
