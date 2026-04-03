@@ -1,8 +1,33 @@
+# 🚴‍♂️ CyclingPacingCalculator
 
+This repository contains my implementation of a cycling pacing calculator. It allows cyclists to experiment with different pacing strategies for a given route and see how those choices affect overall time. The project includes:
+
+- **A Dockerized API** that can be deployed and consumed by other applications.
+- **A standalone Python package** that exposes the core pacing logic without requiring the API.
+
+---
+
+## 📦 Using the Calculator as a Python Package
+
+You don’t need to run the API to use the pacing logic. The core functionality lives in the [`calculator` package](./pacing/calculator), which contains all pacing‑related computations. It works alongside the [`printer` package](./pacing/printer), which formats results into clean, human‑readable output.
+
+To see how to use these packages directly, check out the [`examples/` directory](./pacing/examples). It includes runnable scripts demonstrating:
+
+- How to compute pacing strategies  
+- How to print results using the printer utilities  
+- A rough draft of my Mishigami Challenge pacing plan  
+
+If you want to run the examples locally, install dependencies from the project root:
+
+```
+pip install -r requirements.txt
+```
+
+---
 
 # 🚀 Running the Pacing API with Docker
 
-This guide explains how to build, run, and manage the Pacing API using Docker and Docker Compose.
+This section explains how to build, run, and manage the Pacing API using Docker and Docker Compose.
 
 ---
 
@@ -12,7 +37,7 @@ This guide explains how to build, run, and manage the Pacing API using Docker an
 ```bash
 docker build -t cycling/pacing-api:latest .
 ```
-- `-t cycling/pacing-api:latest` tags the image with a name (`cycling/pacing-api`) and version (`latest`).
+- Tags the image as `cycling/pacing-api:latest`.
 
 ### **Build without cache**
 ```bash
@@ -28,10 +53,10 @@ docker build --no-cache -t cycling/pacing-api:latest .
 ```bash
 docker run -d -p 8000:8000 --name pacing-api cycling/pacing-api:latest
 ```
-- `-d` runs the container in detached mode.  
-- `-p 8000:8000` maps container port 8000 → host port 8000.  
-- `--name pacing-api` assigns a readable name.  
-- `cycling/pacing-api:latest` specifies the image to run.
+- `-d` runs in detached mode  
+- `-p 8000:8000` maps container → host port  
+- `--name pacing-api` assigns a readable name  
+- `cycling/pacing-api:latest` selects the image  
 
 ### **Stop the container**
 ```bash
@@ -51,8 +76,8 @@ docker start pacing-api
 ```bash
 docker compose up -d --build
 ```
-- `-d` runs in detached mode.  
-- `--build` rebuilds images before starting.
+- `-d` runs in detached mode  
+- `--build` rebuilds images before starting  
 
 ### **Stop and remove containers**
 ```bash
@@ -63,4 +88,179 @@ docker compose down
 ```bash
 docker compose logs -f
 ```
-- `-f` follows logs in real time.
+- `-f` follows logs in real time  
+
+---
+
+Absolutely — here’s a clean, polished **“How to POST to the API endpoint”** section you can drop directly into your README. It matches the tone and structure of the rest of your document and gives users everything they need to hit your calculator endpoint from the command line or another service.
+
+---
+
+## 🧭 Using Swagger UI
+
+The API includes interactive documentation powered by Swagger.
+
+Once the container is running, open:
+
+```
+http://localhost:8000/docs
+```
+
+From there, you can:
+
+- Explore all endpoints  
+- View request/response models  
+- Execute POST requests directly in the browser  
+
+
+## 📬 Posting to the Calculator Endpoint
+
+Once the API is running (via Docker or Docker Compose), you can send requests to the calculator endpoint to compute pacing strategies programmatically.
+
+### **Base URL**
+```
+http://localhost:8000
+```
+
+### **Calculator Endpoint**
+```bash 
+http://localhost:8000/v1/cycling/calculator
+```
+
+---
+
+## 🧮 POST to the Calculator
+
+The main calculator endpoint accepts a JSON payload describing the calculation mode and the required inputs. 
+
+### **Example JSON Body**
+```json
+{
+	"segments": [
+        {
+            "splits": [
+                {
+                    "distance": 40,
+                    "sub_split_mode": "fixed",
+                    "sub_split_distance": 20
+                }
+            ],
+            "sleep_time": 3600
+        }
+    ],
+    "mode": "distance",
+    "init_moving_speed": 20,
+    "min_moving_speed": 16.0,
+    "down_time_ratio": 0.05,
+    "split_decay": 0.25,
+    "start_time": "2026-03-04T08:10:00"
+}
+```
+
+### **Example Response**
+```json
+{
+    "segment_details": [
+        {
+            "split_details": [
+                {
+                    "distance": 40.0,
+                    "start_time": "2026-03-04T08:10:00",
+                    "end_time": "2026-03-04T10:10:00",
+                    "moving_speed": 20.0,
+                    "moving_time": "0d  2h  0m  0.00s",
+                    "down_time": "0d  0h  0m  0.00s",
+                    "split_time": "0d  2h  0m  0.00s",
+                    "active_time": "0d  2h  0m  0.00s",
+                    "pace": 20.0,
+                    "start_distance": 0.0,
+                    "sub_splits": [
+                        {
+                            "distance": 20.0,
+                            "start_time": "2026-03-04T08:10:00",
+                            "end_time": "2026-03-04T09:10:00",
+                            "moving_speed": 20.0,
+                            "moving_time": "0d  1h  0m  0.00s",
+                            "down_time": "0d  0h  0m  0.00s",
+                            "split_time": "0d  1h  0m  0.00s",
+                            "active_time": "0d  1h  0m  0.00s",
+                            "pace": 20.0,
+                            "start_distance": 0.0,
+                            "span": [
+                                0.0,
+                                20.0
+                            ]
+                        },
+                        {
+                            "distance": 20.0,
+                            "start_time": "2026-03-04T09:10:00",
+                            "end_time": "2026-03-04T10:10:00",
+                            "moving_speed": 20.0,
+                            "moving_time": "0d  1h  0m  0.00s",
+                            "down_time": "0d  0h  0m  0.00s",
+                            "split_time": "0d  1h  0m  0.00s",
+                            "active_time": "0d  1h  0m  0.00s",
+                            "pace": 20.0,
+                            "start_distance": 20.0,
+                            "span": [
+                                20.0,
+                                40.0
+                            ]
+                        }
+                    ],
+                    "adjustment_start": "2026-03-04T10:10:00",
+                    "adjustment_time": "0d  0h  0m  0.00s",
+                    "rest_stop": null,
+                    "span": [
+                        0.0,
+                        40.0
+                    ]
+                }
+            ],
+            "start_time": "2026-03-04T08:10:00",
+            "end_time": "2026-03-04T10:10:00",
+            "end_moving_speed": 19.75,
+            "distance": 40.0,
+            "start_distance": 0.0,
+            "moving_time": "0d  2h  0m  0.00s",
+            "down_time": "0d  0h  0m  0.00s",
+            "sleep_time": "0d  1h  0m  0.00s",
+            "adjustment_time": "0d  0h  0m  0.00s",
+            "moving_speed": null,
+            "adjustment_start": null,
+            "name": null,
+            "elapsed_time": "0d  3h  0m  0.00s",
+            "active_time": "0d  2h  0m  0.00s",
+            "span": [
+                0.0,
+                40.0
+            ],
+            "pace": 20.0,
+            "moving_time_hours": 2.0,
+            "down_time_hours": 0.0,
+            "adjustment_time_hours": 0.0,
+            "elapsed_time_hours": 3.0,
+            "active_time_hours": 2.0,
+            "sleep_time_hours": 1.0
+        }
+    ],
+    "start_time": "2026-03-04T08:10:00",
+    "end_time": "2026-03-04T11:10:00",
+    "elapsed_time": "0d  3h  0m  0.00s",
+    "moving_time": "0d  2h  0m  0.00s",
+    "down_time": "0d  0h  0m  0.00s",
+    "sleep_time": "0d  1h  0m  0.00s",
+    "adjustment_time": "0d  0h  0m  0.00s",
+    "start_distance": 0.0,
+    "distance": 40.0,
+    "adjustment_time_hours": 0.0,
+    "elapsed_time_hours": 3.0,
+    "down_time_hours": 0.0,
+    "moving_time_hours": 2.0,
+    "sleep_time_hours": 1.0
+}
+```
+
+(Your actual response fields will depend on your calculator logic.)
+
+---
