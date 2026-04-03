@@ -12,13 +12,13 @@ FINISH = "FINISH"
 HAZARD = "HAZARD"
 
 LEGEND = {
-    KOM: "♚",
-    KOM_TRY: "♞",
-    REST: "★",
-    REST_OPT: "☆",
-    START: "🏁",
-    FINISH: "🏁",
-    HAZARD: "☢"
+    KOM: '\u265a',
+    KOM_TRY: "\u265e",
+    REST: "\u2605",
+    REST_OPT: "\u2606",
+    START: "\U0001f3c1",
+    FINISH: "\U0001f3c1",
+    HAZARD: "\u2622"
 }
 
 LEGEND_DESCRIPTION = {
