@@ -1,8 +1,8 @@
 from datetime import timedelta
 
-from Cycling.pacing.printer.PrinterDetailLine import PrinterDetailLine
-from Cycling.pacing.calculator.models.details.course_detail import CourseDetail
-from Cycling.pacing.shared.utils import to_hours
+from pacing.printer.PrinterDetailLine import PrinterDetailLine
+from pacing.calculator.models.details.course_detail import CourseDetail
+from pacing.shared.utils import to_hours
 
 
 def get_rolling_segment_details(course_detail: CourseDetail, segment_index: int) -> PrinterDetailLine:
@@ -46,10 +46,12 @@ def get_rolling_segment_details(course_detail: CourseDetail, segment_index: int)
 
 
 def to_printer_detail_line(obj: CourseDetail) -> PrinterDetailLine:
+    adjustment_time_hours = obj.adjustment_time_hours
+
     return PrinterDetailLine(
         start_time=obj.start_time,
         end_time=obj.end_time,
-        adjustment_time_hours=obj.adjustment_time_hours,
+        adjustment_time_hours=adjustment_time_hours,
         elapsed_time_hours=obj.elapsed_time_hours,
         down_time_hours=obj.down_time_hours,
         moving_time_hours=obj.moving_time_hours,

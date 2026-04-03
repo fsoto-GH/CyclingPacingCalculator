@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
-from Cycling.pacing.api.routes.calculator.dto.course import Course
-from Cycling.pacing.api.routes.calculator.service.course_service import validate_course, course_to_dto
-from Cycling.pacing.calculator.models.details.course_detail import CourseDetail
-from Cycling.pacing.calculator.service.calculations.course_processor import process_course
-from Cycling.pacing.shared import CONSTANTS
+from pacing.api.routes.calculator.dto.course import Course
+from pacing.api.routes.calculator.service.course_service import validate_course, course_to_dto
+from pacing.calculator.models.details.course_detail import CourseDetail
+from pacing.calculator.service.calculations.course_processor import process_course
+from pacing.shared import CONSTANTS
 
 router = APIRouter(prefix="/v1/cycling", tags=["cycling"])
 

@@ -1,5 +1,5 @@
-from Cycling.pacing.shared.CONSTANTS import REST_OPT
-from Cycling.pacing.calculator.models.detail_lines import RestDetailLine
+from pacing.shared.CONSTANTS import REST_OPT
+from pacing.calculator.models.detail_lines import RestDetailLine
 
 
 class RestOptionalDetailLine(RestDetailLine):

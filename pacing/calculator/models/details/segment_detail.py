@@ -1,8 +1,11 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from Cycling.pacing.calculator.models.details.split_detail import SplitDetail
-from Cycling.pacing.shared.utils import to_hours
+from pydantic import computed_field
+
+from pacing.calculator.models.details.split_detail import SplitDetail
+from pacing.shared.serialized_timedelta import serialized_timedelta
+from pacing.shared.utils import to_hours
 
 
 @dataclass
@@ -16,27 +19,33 @@ class SegmentDetail:
     end_moving_speed: float
     # computed totals
     distance: float
-    moving_time: timedelta
-    down_time: timedelta
-    sleep_time: timedelta
-    adjustment_time: timedelta | None
+    start_distance: float
+
+    moving_time: serialized_timedelta
+    down_time: serialized_timedelta
+    sleep_time: serialized_timedelta
+    adjustment_time: serialized_timedelta | None
 
     # these fields cannot be summarized, so they are set to None
     moving_speed: None = None
     adjustment_start: None = None
+    name: str | None = None
 
+    @computed_field
     @property
-    def elapsed_time(self) -> timedelta:
+    def elapsed_time(self) -> serialized_timedelta:
         """
         Total time is the sum of moving_time, down_time, and sleep_time.
         It also corresponds to the elapsed time between start and end time"""
         return self.end_time - self.start_time + self.sleep_time
 
+    @computed_field
     @property
-    def active_time(self) -> timedelta:
+    def active_time(self) -> serialized_timedelta:
         """Active time is the elapsed time between start and end time, so it does not include sleep time"""
         return self.end_time - self.start_time
 
+    @computed_field
     @property
     def span(self) -> tuple[float, float]:
         if len(self.split_details) == 1:
@@ -47,32 +56,39 @@ class SegmentDetail:
             end_distance = self.split_details[-1].span[1]
         return start_distance, end_distance
 
+    @computed_field
     @property
     def pace(self) -> float:
         return self.distance / self.active_time_hours
 
+    @computed_field
     @property
     def moving_time_hours(self) -> float:
         return to_hours(self.moving_time.total_seconds())
 
+    @computed_field
     @property
     def down_time_hours(self) -> float:
         return to_hours(self.down_time.total_seconds())
 
+    @computed_field
     @property
     def adjustment_time_hours(self) -> float | None:
         if self.adjustment_time is None:
             return 0
         return to_hours(self.adjustment_time.total_seconds())
 
+    @computed_field
     @property
     def elapsed_time_hours(self) -> float:
         return to_hours(self.elapsed_time.total_seconds())
 
+    @computed_field
     @property
     def active_time_hours(self) -> float:
         return to_hours(self.active_time.total_seconds())
 
+    @computed_field
     @property
     def sleep_time_hours(self) -> float:
         return to_hours(self.sleep_time.total_seconds())

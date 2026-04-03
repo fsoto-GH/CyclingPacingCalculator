@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 
-from Cycling.pacing.calculator.dtos.course import Course
-from Cycling.pacing.calculator.models.details.course_detail import CourseDetail
-from Cycling.pacing.calculator.models.details.segment_detail import SegmentDetail
-from Cycling.pacing.calculator.service.calculations.segment_processor import __compute_segment_detail
-from Cycling.pacing.shared.CONSTANTS import DISTANCE, TARGET_DISTANCE
+from pacing.calculator.dtos.course import Course
+from pacing.calculator.models.details.course_detail import CourseDetail
+from pacing.calculator.models.details.segment_detail import SegmentDetail
+from pacing.calculator.service.calculations.segment_processor import __compute_segment_detail
+from pacing.shared.CONSTANTS import DISTANCE, TARGET_DISTANCE
 
 
 def process_course(course: Course, start_distance: float = 0) -> CourseDetail:
@@ -32,6 +32,9 @@ def __validate_course(course: Course) -> bool:
         # must be non-decreasing
         lass_distance_marker: float = 0
         for segment in course.segments:
+            if len(segment.splits) == 0:
+                raise ValueError("Each segment must have at least one split.")
+
             for split in segment.splits:
                 if split.distance <= lass_distance_marker:
                     raise ValueError("In DISTANCE mode, split distances must be non-decreasing.")
@@ -81,6 +84,7 @@ def __normalize_course(course: Course) -> Course:
 
 
 def __compute_course_detail(course: Course, curr_distance: float = 0) -> CourseDetail:
+    initial_start_distance = curr_distance
     curr_start_time: datetime = course.start_time
     curr_moving_speed: float = course.init_moving_speed
     curr_distance: float = curr_distance
@@ -145,4 +149,5 @@ def __compute_course_detail(course: Course, curr_distance: float = 0) -> CourseD
         down_time=total_down_time,
         sleep_time=total_sleep_time,
         adjustment_time=total_adjustment_time,
+        start_distance=initial_start_distance
     )

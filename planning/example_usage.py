@@ -1,26 +1,33 @@
+# This script demos how to use the CourseDetailPrinter
+# Key details:
+# 1) Define a Course object
+# 2) Use the course_processor to `process_course`
+# 3) Utilize the CourseDetailPrinter to display the details in a neat format
+
 from datetime import timedelta, datetime
 
 from colorama import Fore
 
-from Cycling.pacing.printer import HeadingKeys
-from Cycling.pacing.printer.CourseDetailPrinter import CourseDetailPrinter
-from Cycling.pacing.calculator.dtos.course import Course
-from Cycling.pacing.calculator.dtos.rest_stop import RestStop
-from Cycling.pacing.calculator.dtos.open_hours import WeeklyOpenHours, FixedOpenHours
-from Cycling.pacing.calculator.dtos.segment import Segment
-from Cycling.pacing.calculator.dtos.split import Split
-from Cycling.pacing.calculator.dtos.sub_split_mode import FixedDistanceSubSplitMode, CustomSubSplitMode, \
-    EvenSubSplitMode
-from Cycling.pacing.calculator.service.calculations.course_processor import process_course
-from Cycling.pacing.shared.CONSTANTS import DISTANCE
+from pacing.printer import HeadingKeys
+from pacing.printer.CourseDetailPrinter import CourseDetailPrinter
+from pacing.calculator.dtos.course import Course
+from pacing.calculator.dtos.rest_stop import RestStop
+from pacing.calculator.dtos.open_hours import WeeklyOpenHours, FixedOpenHours
+from pacing.calculator.dtos.segment import Segment
+from pacing.calculator.dtos.split import Split
+from pacing.calculator.dtos.sub_split_mode import FixedDistanceSubSplitMode, CustomSubSplitMode, EvenSubSplitMode
+from pacing.calculator.service.calculations.course_processor import process_course
+from pacing.shared.CONSTANTS import DISTANCE
 
 
 def main():
+    # 1) Define a Course object
     course = Course(
         # either DISTANCE or TARGET_DISTANCE (distance-value-based or distance-marker-based)
         mode=DISTANCE,
         segments=[
             Segment(
+                name="Chicago to St Ignace",  # you can also give it names for better readability in the output
                 splits=[
                     Split(
                         distance=100,
@@ -107,6 +114,7 @@ def main():
                                 hours="24hrs",
                             ),
                             address="7832 S Western Ave, Chicago, IL 60620",
+                            # link with more details or alternative rest stop option if this one is closed
                             alt="https://share.google/JGoFaIMStVTrwLUBB",
                         ),
                     ),
@@ -139,9 +147,10 @@ def main():
         split_decay=0.1
     )
 
+    # 2) Use the course_processor to `process_course`
     course_details = process_course(course)
-    print(course_details)
 
+    # 3) Utilize the CourseDetailPrinter to display the details in a neat format
     printer = CourseDetailPrinter(
         # Single Responsibility Principle: CourseDetailPrinter is solely responsible for formatting & printing details,
         # so it takes a CourseDetails object and has no knowledge of how the course details are calculated/structured
@@ -162,7 +171,8 @@ def main():
         SEGMENT_COUNT_CLR=f"{Fore.LIGHTWHITE_EX}"
     )
 
-    printer.print(include_sub_splits=True)
+    # define what details you want to see in the output by setting the booleans in the print function
+    printer.print(include_sub_splits=True, include_rolling_summary=False)
 
 
 if __name__ == '__main__':

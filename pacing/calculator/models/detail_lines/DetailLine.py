@@ -1,4 +1,4 @@
-from Cycling.pacing.shared.CONSTANTS import LEGEND
+from pacing.shared.CONSTANTS import LEGEND
 
 
 class DetailLine:

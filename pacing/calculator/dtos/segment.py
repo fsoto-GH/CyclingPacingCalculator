@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 
-from Cycling.pacing.calculator.dtos.split import Split
+from pacing.calculator.dtos.split import Split
 
 
 @dataclass
@@ -13,3 +13,4 @@ class Segment:
     min_moving_speed: float | None = None
     sleep_time: timedelta = timedelta(hours=0)
     no_end_down_time: bool = True  # if True, no down_time is added after the last split of the segment
+    name: str | None = None

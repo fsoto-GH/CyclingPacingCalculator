@@ -10,7 +10,7 @@ START_TIME = 'start_time'
 SPLIT_TIME = 'split_time'
 ADJUSTMENT_TIME = 'adjustment_time'
 ADJUSTMENT_START = 'adjustment_start'
-TOTAL_TIME = 'total_time'
+ACTIVE_TIME = 'active_time'
 END_TIME = 'end_time'
 
 # for rest stop

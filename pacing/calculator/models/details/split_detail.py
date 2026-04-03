@@ -1,15 +1,16 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from Cycling.pacing.calculator.dtos.rest_stop import RestStop
-from Cycling.pacing.calculator.models.details.sub_split_detail import SubSplitDetail
+from pacing.calculator.dtos.rest_stop import RestStop
+from pacing.calculator.models.details.sub_split_detail import SubSplitDetail
+from pacing.shared.serialized_timedelta import serialized_timedelta
 
 
 @dataclass
 class SplitDetail(SubSplitDetail):
     sub_splits: list[SubSplitDetail]
     adjustment_start: datetime  # represents when adjustment time starts
-    adjustment_time: timedelta
+    adjustment_time: serialized_timedelta
     rest_stop: RestStop | None = None
 
     def __post_init__(self):

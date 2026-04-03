@@ -1,11 +1,11 @@
 from datetime import datetime
 
-from Cycling.pacing.calculator.dtos.course import Course
-from Cycling.pacing.calculator.dtos.segment import Segment
-from Cycling.pacing.calculator.dtos.split import Split
-from Cycling.pacing.calculator.dtos.sub_split_mode import EvenSubSplitMode, FixedDistanceSubSplitMode
-from Cycling.pacing.calculator.service.calculations.course_processor import process_course
-from Cycling.pacing.printer.CourseDetailPrinter import CourseDetailPrinter
+from pacing.calculator.dtos.course import Course
+from pacing.calculator.dtos.segment import Segment
+from pacing.calculator.dtos.split import Split
+from pacing.calculator.dtos.sub_split_mode import EvenSubSplitMode, FixedDistanceSubSplitMode
+from pacing.calculator.service.calculations.course_processor import process_course
+from pacing.printer.CourseDetailPrinter import CourseDetailPrinter
 
 if __name__ == "__main__":
     c = Course(

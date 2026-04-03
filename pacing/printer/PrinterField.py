@@ -24,7 +24,12 @@ class PrinterField:
         if self.value_transformer is not None:
             value = self.value_transformer(value)
 
-        return f'{value:{self.value_format}}'
+        value = f'{value:{self.value_format}}'
+
+        if len(_val := str(value)) > self.width:
+            value = _val[:self.width - 3] + '...'
+
+        return value
 
     def formatted_header(self, override: str | None = None):
         return f'{self.name if override is None else override:{self.header_format}}'

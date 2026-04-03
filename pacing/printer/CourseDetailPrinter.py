@@ -3,15 +3,15 @@ from dataclasses import dataclass
 from colorama import Fore
 from colorama import Style
 
-from Cycling.pacing.printer.HeadingKeys import *
-from Cycling.pacing.printer.PrinterDetailLine import PrinterDetailLine
-from Cycling.pacing.printer.PrinterField import PrinterField
-from Cycling.pacing.printer.ToPrinterDetails import get_rolling_segment_details, to_printer_detail_line
-from Cycling.pacing.calculator.models.details.course_detail import CourseDetail
-from Cycling.pacing.calculator.models.details.segment_detail import SegmentDetail
-from Cycling.pacing.calculator.models.details.split_detail import SplitDetail
-from Cycling.pacing.calculator.models.details.sub_split_detail import SubSplitDetail
-from Cycling.pacing.shared.utils import hours_to_pretty, span_to_pretty
+from pacing.printer.HeadingKeys import *
+from pacing.printer.PrinterDetailLine import PrinterDetailLine
+from pacing.printer.PrinterField import PrinterField
+from pacing.printer.ToPrinterDetails import get_rolling_segment_details, to_printer_detail_line
+from pacing.calculator.models.details.course_detail import CourseDetail
+from pacing.calculator.models.details.segment_detail import SegmentDetail
+from pacing.calculator.models.details.split_detail import SplitDetail
+from pacing.calculator.models.details.sub_split_detail import SubSplitDetail
+from pacing.shared.utils import hours_to_pretty, span_to_pretty
 
 
 @dataclass
@@ -105,8 +105,8 @@ class CourseDetailPrinter:
             value_format=DATE_FORMAT,
             width=17
         ),
-        TOTAL_TIME: PrinterField(
-            name="Total Time",
+        ACTIVE_TIME: PrinterField(
+            name="Active Time",
             header_format=">19s",
             value_format='19s',
             value_transformer=hours_to_pretty,
@@ -168,7 +168,7 @@ class CourseDetailPrinter:
 
         return ordered_keys
 
-    def print(self, include_sub_splits: bool = False) -> None:
+    def print(self, include_sub_splits: bool = False, include_rolling_summary: bool = False) -> None:
         """
         This prints a grid containing a visual representation of the computed split details.
         This includes segment headers, split details, segment footers, and segment summaries.
@@ -176,7 +176,7 @@ class CourseDetailPrinter:
         This can include sub-split details as well.
 
         :param include_sub_splits: indicates whether sub-split details should be printed
-        :param reordered_keys: the order in which to print the keys. This can be a full or partial list of keys.
+        :param include_rolling_summary: whether to include rolling summary per segment
         When the list is partial, the keys will be listed first in the order specified, followed by the remaining keys
         """
         keys_showing_ordered = self.__reordered_keys
@@ -184,7 +184,8 @@ class CourseDetailPrinter:
 
         header = self.__get_header_line(keys_showing_ordered)
         for i, segment_detail in enumerate(self.course_details.segment_details):
-            print(f'{self.SEGMENT_COUNT_CLR}Segment #{i + 1}')
+            print(f'{self.SEGMENT_COUNT_CLR}Segment #{i + 1}'
+                  f'{f" ({segment_detail.name})" if segment_detail.name else ""}')
             print(header)
             print(f'{self.GRID_SPACER_CLR}{"─" * dash_count}{Style.RESET_ALL}')
 
@@ -208,12 +209,14 @@ class CourseDetailPrinter:
 
             print(f'{self.GRID_SPACER_CLR}{"─" * dash_count}{Style.RESET_ALL}')
 
+
             segment_footer = self.__get_segment_footer_line(segment_detail, keys_showing_ordered)
             print(segment_footer)
             print()
 
-            segment_summary_line = self.__get_segment_rolling_summary(i)
-            print(segment_summary_line)
+            if include_rolling_summary:
+                segment_summary_line = self.__get_segment_rolling_summary(i)
+                print(segment_summary_line)
             print()
 
         course_summary_line = self.__get_course_summary_line()
@@ -248,8 +251,12 @@ class CourseDetailPrinter:
             if hasattr(split, _k):
                 _v = self.FIELD_PROPS[_k].formatted_value(split.__getattribute__(_k))
             # rest stop fields are within an object that is only part of SplitDetail
-            elif isinstance(split, SplitDetail) and split.rest_stop is not None and hasattr(split.rest_stop, _k):
-                _v = self.FIELD_PROPS[_k].formatted_value(split.rest_stop.__getattribute__(_k))
+            elif isinstance(split, SplitDetail) and split.rest_stop is not None:
+                if _k == REST_STOP_HOURS:
+                    value = split.rest_stop.open_hours.open_hours[split.end_time.weekday()]
+                else:
+                    value = split.rest_stop.__getattribute__(_k)
+                _v = self.FIELD_PROPS[_k].formatted_value(value)
             else:
                 _v = self.FIELD_PROPS[_k].formatted_value()
             res.append(_v)

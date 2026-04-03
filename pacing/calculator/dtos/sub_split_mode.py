@@ -22,6 +22,9 @@ class FixedDistanceSubSplitMode(SubSplitMode):
 
     def sub_splits(self, distance) -> list[float]:
         full_sub_split_count = int(distance // self.sub_split_distance)
+        if full_sub_split_count == 0:
+            return [distance]
+
         splits = [self.sub_split_distance for _ in range(full_sub_split_count)]
 
         residual_distance = distance % self.sub_split_distance

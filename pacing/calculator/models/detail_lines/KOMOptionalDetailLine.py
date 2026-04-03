@@ -1,7 +1,7 @@
 from datetime import timedelta
 
-from Cycling.cue_sheet.DetailLines import KOM_TRY
-from Cycling.pacing.calculator.models.detail_lines import KOMDetailLine
+from cue_sheet.DetailLines import KOM_TRY
+from pacing.calculator.models.detail_lines import KOMDetailLine
 
 
 class KOMOptionalDetailLine(KOMDetailLine):

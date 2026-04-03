@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 
-from Cycling.pacing.calculator.dtos.segment import Segment
-from Cycling.pacing.calculator.dtos.split import Split
-from Cycling.pacing.calculator.models.details.segment_detail import SegmentDetail
-from Cycling.pacing.calculator.models.details.split_detail import SplitDetail
-from Cycling.pacing.calculator.models.details.sub_split_detail import SubSplitDetail
+from pacing.calculator.dtos.segment import Segment
+from pacing.calculator.dtos.split import Split
+from pacing.calculator.models.details.segment_detail import SegmentDetail
+from pacing.calculator.models.details.split_detail import SplitDetail
+from pacing.calculator.models.details.sub_split_detail import SubSplitDetail
 
 
 def process_segment(segment: Segment,
@@ -65,6 +65,7 @@ def __compute_segment_detail(segment: Segment,
     curr_start_time: datetime = start_time
     curr_moving_speed: float = moving_speed
     curr_distance: float = distance
+    initial_start_distance: float = distance
 
     # at the start of a new segment the following are applied by the course-level settings:
     #   - min_moving_speed
@@ -107,20 +108,20 @@ def __compute_segment_detail(segment: Segment,
             down_time = timedelta(hours=0)
 
         split_time = moving_time + down_time
-        total_time = split_time + split.adjustment_time
+        active_time = split_time + split.adjustment_time
 
         split_detail = SplitDetail(
             distance=split.distance,
             start_time=curr_start_time,
-            end_time=curr_start_time + total_time,
+            end_time=curr_start_time + active_time,
             adjustment_start=curr_start_time + split_time,
             moving_speed=curr_moving_speed,
             moving_time=moving_time,
             down_time=down_time,
             adjustment_time=split.adjustment_time,
             split_time=split_time,
-            total_time=total_time,
-            pace=split.distance / (total_time.total_seconds() / 3600),
+            active_time=active_time,
+            pace=split.distance / (active_time.total_seconds() / 3600),
             start_distance=curr_distance,
             rest_stop=split.rest_stop,
             sub_splits=__compute_sub_split_detail(
@@ -141,7 +142,7 @@ def __compute_segment_detail(segment: Segment,
 
         curr_moving_speed = max(next_decayed_moving_speed, min_moving_speed)
         curr_distance += split.distance
-        curr_start_time += total_time
+        curr_start_time += active_time
 
         split_details.append(split_detail)
 
@@ -158,7 +159,9 @@ def __compute_segment_detail(segment: Segment,
         moving_time=total_segment_moving_time,
         down_time=total_segment_down_time,
         adjustment_time=total_adjustment_time,
-        sleep_time=segment.sleep_time
+        sleep_time=segment.sleep_time,
+        start_distance=initial_start_distance,
+        name=segment.name
     )
 
 
@@ -193,18 +196,18 @@ def __compute_sub_split_detail(split: Split,
             sub_split_down_time = timedelta(hours=0)
 
         sub_split_moving_time = timedelta(hours=sub_split_distance / moving_speed)
-        sub_split_total_time = sub_split_moving_time + sub_split_down_time
+        sub_split_active_time = sub_split_moving_time + sub_split_down_time
 
         sub_split_detail = SubSplitDetail(
             distance=sub_split_distance,
             start_time=start_time,
-            end_time=start_time + sub_split_total_time,
+            end_time=start_time + sub_split_active_time,
             moving_speed=moving_speed,
             moving_time=sub_split_moving_time,
             down_time=sub_split_down_time,
-            split_time=sub_split_total_time,
-            total_time=sub_split_total_time,  # equal to split time because sub-splits do not consider adjusted time
-            pace=sub_split_distance / (sub_split_total_time.total_seconds() / 3600),
+            split_time=sub_split_active_time,
+            active_time=sub_split_active_time,  # equal to split time because sub-splits do not consider adjusted time
+            pace=sub_split_distance / (sub_split_active_time.total_seconds() / 3600),
             start_distance=start_distance
         )
 
