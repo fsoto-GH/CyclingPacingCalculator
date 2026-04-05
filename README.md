@@ -7,6 +7,12 @@ Before Mishigami 2025—a 1,121-mile race across Michigan—I needed a way to mo
 
 I built this calculator to answer those questions. It powered my race plan for Mishigami, where I finished 2nd place—the first Chicagoan ever to complete the race in under 4 days.
 
+While the race is over, I plan to continue enhancing this project. I'd live to ultimately have:
+-  A nice front-end to quickly modify inputs
+-  GPX route support to split and visualize the route
+-  Allow for GPX route analysis (insights into elevation gain&mdash;hilly segments or splits) to aid in planning
+-  A way to, on-the-fly, find and select rest stops to ultimately export
+
 This repository contains my implementation of a cycling pacing calculator.
 - **A Dockerized API** that can be deployed and consumed by other applications.
 - **A standalone Python package** that exposes the core pacing logic without requiring the API.
