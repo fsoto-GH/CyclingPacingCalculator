@@ -442,7 +442,10 @@ export default function CourseForm() {
     <FieldErrorContext.Provider value={visibleErrors}>
       <div className="course-form" onBlur={handleBlur}>
         <div className="title-row">
-          <h1>Cycling Pacing Calculator</h1>
+          <h1>
+            Cycling Pacing Calculator{" "}
+            <span className="app-version">v{__APP_VERSION__}</span>
+          </h1>
           <div className="title-nav-buttons">
             <button
               type="button"
