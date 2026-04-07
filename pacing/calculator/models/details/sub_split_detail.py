@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import computed_field
 
 from pacing.shared.serialized_timedelta import serialized_timedelta
+from pacing.shared.utils import to_hours
 
 
 @dataclass
@@ -23,3 +24,18 @@ class SubSplitDetail:
     @property
     def span(self) -> tuple[float, float]:
         return self.start_distance, self.start_distance + self.distance
+
+    @computed_field
+    @property
+    def moving_time_hours(self) -> float:
+        return to_hours(self.moving_time.total_seconds())
+
+    @computed_field
+    @property
+    def down_time_hours(self) -> float:
+        return to_hours(self.down_time.total_seconds())
+
+    @computed_field
+    @property
+    def active_time_hours(self) -> float:
+        return to_hours(self.active_time.total_seconds())

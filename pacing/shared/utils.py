@@ -6,13 +6,14 @@ def format_field(val: str, formatting: str):
     return f'{val:{formatting}}'
 
 
-def hours_to_pretty(hours_timedelta: timedelta | float):
+def hours_to_pretty(hours_timedelta: timedelta | float, round_milliseconds: bool = False):
     """
     Converts decimal hours to days, hours, minutes, and seconds.
     Leading zeroes can be omitted and last precision can be reduced to minutes.
     The last precision is rounded.
 
     :param hours_timedelta: the amount to convert
+    :round_milliseconds: whether to round ... 35.03s to 35s or 35.77 to 36s
     :return: string representing the day, hour, minute, and second of the decimal hours
     """
 
@@ -22,6 +23,9 @@ def hours_to_pretty(hours_timedelta: timedelta | float):
     else:
         is_neg = hours_timedelta < 0
         decimal_hours = hours_timedelta
+
+    if round_milliseconds:
+        decimal_hours = round(decimal_hours * 3600) / 3600
 
     if is_neg:
         decimal_hours *= -1

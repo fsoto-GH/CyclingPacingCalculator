@@ -8,7 +8,7 @@ from pydantic import BaseModel
 @dataclass
 class RestStop(BaseModel):
     name: str
-    open_hours: dict[Literal['0', '1', '2', '3', '4', '5', '6', 'Fixed'], str]
+    open_hours: dict[Literal['0', '1', '2', '3', '4', '5', '6', 'fixed'], str]
     address: str
     alt: str | None = None
     arrival_date: datetime | None = None

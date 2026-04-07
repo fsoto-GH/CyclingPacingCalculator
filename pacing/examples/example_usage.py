@@ -132,11 +132,11 @@ def main():
                             sub_split_distance=60
                         ),
                         # perhaps a last climb
-                        adjustment_time=timedelta(minutes=5)
+                        adjustment_time=timedelta(minutes=-5)
                     ),
                 ],
                 no_end_down_time=False,
-                sleep_time=timedelta(hours=8)
+                sleep_time=timedelta(hours=8),
             )
         ],
         # KOMs=[],
@@ -172,7 +172,7 @@ def main():
     )
 
     # define what details you want to see in the output by setting the booleans in the print function
-    printer.print(include_sub_splits=True, include_rolling_summary=False)
+    printer.print(include_sub_splits=True, include_rolling_summary=True)
 
 
 if __name__ == '__main__':
