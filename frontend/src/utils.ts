@@ -9,8 +9,9 @@ export function minutesToSeconds(minutes: string): number | undefined {
 /** Format minutes (float) into "#h #m #s" display. */
 export function minutesToHms(minutes: string): string {
   const val = parseFloat(minutes);
-  if (isNaN(val) || val < 0) return "";
-  const totalSeconds = Math.round(val * 60);
+  if (isNaN(val)) return "";
+  const sign = val < 0 ? "-" : "";
+  const totalSeconds = Math.round(Math.abs(val) * 60);
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
@@ -18,7 +19,7 @@ export function minutesToHms(minutes: string): string {
   if (h > 0) parts.push(`${h}h`);
   if (m > 0 || h > 0) parts.push(`${m}m`);
   parts.push(`${s}s`);
-  return parts.join(" ");
+  return sign + parts.join(" ");
 }
 
 /** Format a local datetime-local string for the datetime-local input. */

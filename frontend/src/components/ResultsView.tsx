@@ -209,11 +209,31 @@ export default function ResultsView({
           </div>
           <div>
             <dt>Start Time</dt>
-            <dd>{new Date(result.start_time).toLocaleString()}</dd>
+            <dd>
+              {new Date(result.start_time).toLocaleString(undefined, {
+                weekday: "short",
+                month: "numeric",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                timeZone: courseTz,
+                timeZoneName: "short",
+              })}
+            </dd>
           </div>
           <div>
             <dt>End Time</dt>
-            <dd>{new Date(result.end_time).toLocaleString()}</dd>
+            <dd>
+              {new Date(result.end_time).toLocaleString(undefined, {
+                weekday: "short",
+                month: "numeric",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                timeZone: courseTz,
+                timeZoneName: "short",
+              })}
+            </dd>
           </div>
           <div>
             <dt>Elapsed Time</dt>
@@ -329,11 +349,31 @@ function SegmentSection({
             </div>
             <div>
               <dt>Start</dt>
-              <dd>{new Date(segment.start_time).toLocaleString()}</dd>
+              <dd>
+                {new Date(segment.start_time).toLocaleString(undefined, {
+                  weekday: "short",
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  timeZone: courseTz,
+                  timeZoneName: "short",
+                })}
+              </dd>
             </div>
             <div>
               <dt>End</dt>
-              <dd>{new Date(segment.end_time).toLocaleString()}</dd>
+              <dd>
+                {new Date(segment.end_time).toLocaleString(undefined, {
+                  weekday: "short",
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  timeZone: courseTz,
+                  timeZoneName: "short",
+                })}
+              </dd>
             </div>
             <div>
               <dt>Elapsed</dt>
@@ -367,31 +407,35 @@ function SegmentSection({
             </div>
           </dl>
 
-          <table className="detail-table">
-            <thead>
-              <tr>
-                <th title="Split distance and span (start – end)">
-                  Distance ({dLabel})
-                </th>
-                <th title="Moving speed for this split">Speed ({sLabel})</th>
-                <th title="Average pace including decay">Pace ({sLabel})</th>
-                <th title="Split time + adjustment time">Active Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {segment.split_details.map((split, j) => (
-                <SplitRow
-                  key={j}
-                  split={split}
-                  dLabel={dLabel}
-                  segIdx={index}
-                  splitIdx={j}
-                  formSegments={formSegments}
-                  courseTz={courseTz}
-                />
-              ))}
-            </tbody>
-          </table>
+          <div className="detail-table-wrapper">
+            <table className="detail-table">
+              <thead>
+                <tr>
+                  <th title="Split number">#</th>
+                  <th title="Split distance and span (start – end)">
+                    Distance ({dLabel})
+                  </th>
+                  <th title="Moving speed for this split">Speed ({sLabel})</th>
+                  <th title="Average pace including decay">Pace ({sLabel})</th>
+                  <th title="Split time + adjustment time">Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {segment.split_details.map((split, j) => (
+                  <SplitRow
+                    key={j}
+                    split={split}
+                    splitNumber={j + 1}
+                    dLabel={dLabel}
+                    segIdx={index}
+                    splitIdx={j}
+                    formSegments={formSegments}
+                    courseTz={courseTz}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </div>
@@ -400,6 +444,7 @@ function SegmentSection({
 
 function SplitRow({
   split,
+  splitNumber,
   dLabel,
   segIdx,
   splitIdx,
@@ -407,6 +452,7 @@ function SplitRow({
   courseTz,
 }: {
   split: SplitDetail;
+  splitNumber: number;
   dLabel: string;
   segIdx: number;
   splitIdx: number;
@@ -473,8 +519,11 @@ function SplitRow({
         className={`split-row${etaInfo ? ` split-row-${etaInfo.status}` : ""}`}
         onClick={() => setExpanded(!expanded)}
       >
-        <td>
+        <td className="num-col">
           <span className="collapse-icon-sm">{expanded ? "▼" : "▶"}</span>
+          {splitNumber}
+        </td>
+        <td>
           {split.distance.toFixed(2)} ({split.span[0].toFixed(1)} –{" "}
           {split.span[1].toFixed(1)})
         </td>
@@ -484,7 +533,7 @@ function SplitRow({
       </tr>
       {expanded && (
         <tr className="split-detail-row">
-          <td colSpan={4}>
+          <td colSpan={5}>
             <dl className="summary-grid split-summary-grid">
               <div>
                 <dt>Moving Time</dt>
@@ -551,6 +600,7 @@ function SplitRow({
                   <table className="sub-split-table">
                     <thead>
                       <tr>
+                        <th title="Sub-split number">#</th>
                         <th title="Sub-split distance">Distance ({dLabel})</th>
                         <th title="Start – end position along the course">
                           Span
@@ -560,7 +610,7 @@ function SplitRow({
                     </thead>
                     <tbody>
                       {split.sub_splits.map((sub, k) => (
-                        <SubSplitRow key={k} sub={sub} />
+                        <SubSplitRow key={k} sub={sub} index={k + 1} />
                       ))}
                     </tbody>
                   </table>
@@ -665,10 +715,11 @@ function SplitRow({
   );
 }
 
-function SubSplitRow({ sub }: { sub: SubSplitDetail }) {
+function SubSplitRow({ sub, index }: { sub: SubSplitDetail; index: number }) {
   const subSplitTime = sub.moving_time_hours + sub.down_time_hours;
   return (
     <tr>
+      <td className="num-col">{index}</td>
       <td>{sub.distance.toFixed(2)}</td>
       <td>
         {sub.span[0].toFixed(2)} – {sub.span[1].toFixed(2)}

@@ -284,9 +284,39 @@ h4 {
 .split-form {
   border: 1px solid #2e2e2e;
   border-radius: 4px;
-  padding: 0.5rem 0.75rem;
   margin-bottom: 0.5rem;
   background: #222222;
+  overflow: hidden;
+}
+
+.split-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  background: #252525;
+}
+
+.split-header:hover {
+  background: #2a2a2a;
+}
+
+.split-header-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ccc;
+}
+
+.split-header-summary {
+  font-size: 0.8rem;
+  color: #777;
+  margin-left: 0.25rem;
+}
+
+.split-body {
+  padding: 0.5rem 0.75rem;
 }
 
 /* ── Rest Stop ── */
@@ -327,49 +357,126 @@ h4 {
 }
 
 /* ── Submit ── */
+/* ── Ghost button (inline utility) ── */
+.ghost-btn {
+  padding: 0.4rem 1rem;
+  background: transparent;
+  border: 1px solid #4361ee;
+  border-radius: 4px;
+  color: #4361ee;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.ghost-btn:hover {
+  background: #4361ee;
+  color: #fff;
+}
+
+/* ── Action Buttons ── */
 .button-row {
   display: flex;
   gap: 0.75rem;
   align-items: center;
   margin-top: 1.25rem;
+  flex-wrap: wrap;
 }
 
-.submit-btn {
-  padding: 0.6rem 2rem;
-  min-width: 160px;
-  background: #4361ee;
-  color: #fff;
+@media (max-width: 640px) {
+  .button-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .button-row .action-btn {
+    width: 100%;
+    min-width: unset;
+  }
+
+  .action-btn-reset {
+    margin-left: 0;
+  }
+}
+
+.action-btn {
+  padding: 0.55rem 1.5rem;
+  min-width: 120px;
   border: none;
   border-radius: 4px;
-  font-size: 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, opacity 0.15s, color 0.15s, border-color 0.15s;
   text-align: center;
+  white-space: nowrap;
 }
 
-.submit-btn:hover:not(:disabled) {
+.action-btn-primary {
+  background: #4361ee;
+  color: #fff;
+  min-width: 140px;
+}
+
+.action-btn-primary:hover:not(:disabled) {
   background: #3a56d4;
 }
 
-.submit-btn:disabled {
+.action-btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.reset-btn {
-  padding: 0.6rem 1.5rem;
-  background: #252525;
-  color: #aaaaaa;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+.action-btn-export {
+  background: #2d6a4f;
+  color: #fff;
 }
 
-.reset-btn:hover {
+.action-btn-export:hover:not(:disabled) {
+  background: #1b4332;
+}
+
+.action-btn-export:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.action-btn-reset {
+  margin-left: auto;
+  background: transparent;
+  color: #aaaaaa;
+  border: 1px solid #3a3a3a;
+}
+
+.action-btn-reset:hover {
+  background: #2e2e2e;
+  color: #f87171;
+  border-color: #f87171;
+}
+
+.action-btn-examples {
+  background: transparent;
+  color: #aaaaaa;
+  border: 1px solid #555;
+}
+
+.action-btn-examples:hover {
   background: #2e2e2e;
   color: #ffffff;
+  border-color: #888;
+}
+
+.action-btn-import {
+  background: transparent;
+  color: #aaaaaa;
+  border: 1px solid #555;
+}
+
+.action-btn-import:hover {
+  background: #2e2e2e;
+  color: #ffffff;
+  border-color: #888;
 }
 
 /* ── Results ── */
@@ -430,11 +537,17 @@ h4 {
 }
 
 /* ── Detail Table ── */
+.detail-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 0.75rem;
+}
+
 .detail-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.82rem;
-  margin-top: 0.75rem;
 }
 
 .detail-table th {
@@ -453,13 +566,15 @@ h4 {
   color: #ffffff;
 }
 
-@media (max-width: 640px) {
-  .detail-table {
-    display: block;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+.num-col {
+  width: 2rem;
+  text-align: center;
+  color: #777 !important;
+  font-size: 0.75rem;
+  user-select: none;
 }
+
+
 
 .split-row {
   cursor: pointer;
@@ -684,66 +799,73 @@ h4 {
   border: 1px solid #2e2e2e;
 }
 
-/* ── Title row with info button ── */
+/* ── Title row ── */
 .title-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   border-bottom: 2px solid #4361ee;
   padding-bottom: 0.5rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
 }
 
 .title-row h1 {
   border-bottom: none;
   margin-bottom: 0;
   padding-bottom: 0;
+  margin-right: auto;
 }
 
-.legend-btn {
-  display: inline-flex;
+.title-nav-buttons {
+  display: flex;
+  gap: 0.5rem;
   align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1px solid #4361ee;
-  background: transparent;
-  color: #4361ee;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
 }
 
-.ghost-btn {
-  margin-left: auto;
-  padding: 0.3rem 0.75rem;
+@media (max-width: 640px) {
+  .title-row {
+    gap: 0.4rem;
+  }
+
+  .title-nav-buttons {
+    width: 100%;
+  }
+
+  .title-nav-buttons .nav-btn {
+    flex: 1;
+    text-align: center;
+  }
+}
+
+.nav-btn {
+  padding: 0.3rem 0.85rem;
   background: transparent;
-  border: 1px solid #4361ee;
+  border: 1px solid #555;
   border-radius: 4px;
-  color: #4361ee;
+  color: #aaaaaa;
   font-size: 0.8rem;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
 
-.ghost-btn:hover {
-  background: #4361ee;
-  color: #fff;
-}
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
+.nav-btn:hover {
+  background: #2e2e2e;
+  color: #ffffff;
+  border-color: #888;
 }
 
-.legend-btn:hover {
-  background: #4361ee;
-  color: #fff;
+.nav-btn-legend {
+  color: #d4a017;
+  border-color: #d4a017;
+}
+
+.nav-btn-legend:hover {
+  background: #d4a017;
+  color: #1e1e1e;
+  border-color: #d4a017;
 }
 
 /* ── Legend Modal ── */
@@ -844,6 +966,42 @@ h4 {
   border-top: 1px solid #3a3a3a;
 }
 
+/* ── Example Cards ── */
+.example-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.example-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: #252525;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+}
+
+.example-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.example-card-info strong {
+  display: block;
+  font-size: 0.92rem;
+  color: #ffffff;
+  margin-bottom: 0.2rem;
+}
+
+.example-card-info p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #aaaaaa;
+  line-height: 1.4;
+}
+
 /* ── Pill Group ── */
 .pill-group {
   display: inline-flex;
@@ -919,7 +1077,7 @@ h4 {
 .per-day-hours {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 
 @media (max-width: 640px) {
@@ -927,13 +1085,28 @@ h4 {
     gap: 0.4rem;
   }
 
-  .day-hours-label {
-    min-width: 2rem;
-    font-size: 0.8rem;
+  .pill-group {
+    flex: 1;
+    display: flex;
+  }
+
+  .pill {
+    flex: 1;
+  }
+
+  .hours-range {
+    flex-basis: 100%;
+    width: 100%;
   }
 
   .hours-range input[type="time"] {
-    width: 6.5rem;
+    flex: 1;
+    width: auto;
+    font-size: 0.8rem;
+  }
+
+  .day-hours-label {
+    min-width: 2rem;
     font-size: 0.8rem;
   }
 

@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+﻿import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type {
   CourseForm as CourseFormState,
   SegmentForm as SegmentFormState,
-  SplitForm as SplitFormState,
   CourseDetail,
 } from "../types";
 import { makeDefaultDayHours } from "../types";
@@ -14,6 +13,8 @@ import { calculateCourse } from "../api";
 import SegmentFormComponent from "./SegmentForm";
 import ResultsView from "./ResultsView";
 import LegendModal from "./LegendModal";
+import ExampleModal from "./ExampleModal";
+import { EXAMPLES } from "../examples";
 import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
 import { FieldErrorContext, FieldError } from "./FieldError";
 
@@ -43,132 +44,6 @@ const INITIAL_FORM: CourseFormState = {
   start_time: nowLocalDatetime(),
   segmentCount: "1",
   segments: [makeDefaultSegment()],
-};
-
-function exampleSplit(overrides: Partial<SplitFormState>): SplitFormState {
-  return { ...makeDefaultSplit(), ...overrides };
-}
-
-function toLocalDatetime(iso: string): string {
-  const d = new Date(iso);
-  const offset = d.getTimezoneOffset();
-  return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 16);
-}
-
-const EXAMPLE_FORM: CourseFormState = {
-  unitSystem: "imperial",
-  timezone: browserTimezone,
-  mode: "target_distance",
-  init_moving_speed: "17",
-  min_moving_speed: "16",
-  down_time_ratio: "0.1",
-  split_decay: "0.1",
-  start_time: toLocalDatetime("2026-04-11T11:00:00.000Z"),
-  segmentCount: "2",
-  segments: [
-    {
-      sleep_time: "360",
-      include_end_down_time: true,
-      down_time_ratio: "",
-      split_decay: "",
-      moving_speed: "",
-      min_moving_speed: "",
-      splitCount: "2",
-      splits: [
-        exampleSplit({
-          distance: "50",
-          sub_split_mode: "even",
-          sub_split_count: "3",
-          adjustment_time: "0",
-          rest_stop: {
-            enabled: true,
-            name: "Taqueria El Sol",
-            address: "3100 14th St NW, Washington, DC 20010",
-            alt: "",
-            sameHoursEveryDay: true,
-            allDays: { mode: "hours", opens: "17:00", closes: "23:00" },
-            perDay: [
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-            ],
-          },
-        }),
-        exampleSplit({
-          distance: "100",
-          sub_split_mode: "even",
-          sub_split_count: "1",
-          adjustment_time: "2",
-          down_time: "750",
-          differentTimezone: true,
-          timezone: "America/New_York",
-          rest_stop: {
-            enabled: true,
-            name: "McDonald's",
-            address: "1539 Pennsylvania Ave. SE, Washington, DC",
-            alt: "https://www.mcdonalds.com/us/en-us/location/DC/WASHINGTON/1539-PENNSYLVANIA-SE/7394.html",
-            sameHoursEveryDay: false,
-            allDays: makeDefaultDayHours(),
-            perDay: [
-              { mode: "hours", opens: "05:30", closes: "02:00" },
-              { mode: "hours", opens: "05:30", closes: "02:00" },
-              { mode: "hours", opens: "05:30", closes: "02:00" },
-              { mode: "hours", opens: "05:30", closes: "03:00" },
-              { mode: "hours", opens: "05:30", closes: "03:00" },
-              { mode: "hours", opens: "05:30", closes: "03:00" },
-              { mode: "hours", opens: "05:30", closes: "02:00" },
-            ],
-          },
-        }),
-      ],
-    },
-    {
-      sleep_time: "0",
-      include_end_down_time: false,
-      down_time_ratio: "",
-      split_decay: "",
-      moving_speed: "",
-      min_moving_speed: "",
-      splitCount: "2",
-      splits: [
-        exampleSplit({
-          distance: "150",
-          sub_split_mode: "fixed",
-          sub_split_distance: "20",
-          last_sub_split_threshold: "10",
-          adjustment_time: "0",
-        }),
-        exampleSplit({
-          distance: "198",
-          sub_split_mode: "fixed",
-          sub_split_distance: "20",
-          last_sub_split_threshold: "10",
-          adjustment_time: "0",
-          rest_stop: {
-            enabled: true,
-            name: "Home",
-            address: "1600 Pennsylvania Ave NW, Washington, DC 20500",
-            alt: "",
-            sameHoursEveryDay: true,
-            allDays: { mode: "24h", opens: "06:00", closes: "22:00" },
-            perDay: [
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-              makeDefaultDayHours(),
-            ],
-          },
-        }),
-      ],
-    },
-  ],
 };
 
 /** Migrate a rest stop from the old text-based format to the new DayHoursEntry format. */
@@ -243,6 +118,7 @@ export default function CourseForm() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitted, setSubmitted] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [examplesOpen, setExamplesOpen] = useState(false);
 
   // Persist form to localStorage on every change
   useEffect(() => {
@@ -260,17 +136,49 @@ export default function CourseForm() {
     setSubmitted(false);
   }, []);
 
-  const handleLoadExample = useCallback(() => {
-    setForm(EXAMPLE_FORM);
+  const handleLoadExample = useCallback((example: CourseFormState) => {
+    setForm(example);
     setResult(null);
     setApiError(null);
     setTouched(new Set());
     setSubmitted(false);
   }, []);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = useCallback(() => {
+    const json = JSON.stringify(form, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pacing-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [form]);
+
+  const handleImport = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result as string) as CourseFormState;
+          handleLoadExample(parsed);
+        } catch {
+          setApiError("Invalid JSON file.");
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = "";
+    },
+    [handleLoadExample],
+  );
+
   const sLabel = speedLabel(form.unitSystem);
 
-  // ── Handlers ──
+  // â”€â”€ Handlers â”€â”€
   const handleSegmentCountChange = (raw: string) => {
     update({ segmentCount: raw });
     const n = parseInt(raw, 10);
@@ -304,7 +212,7 @@ export default function CourseForm() {
     });
   };
 
-  // ── Field-level validation keyed by input element IDs ──
+  // â”€â”€ Field-level validation keyed by input element IDs â”€â”€
   const computeFieldErrors = useCallback(
     (f: CourseFormState): Record<string, string> => {
       const e: Record<string, string> = {};
@@ -321,7 +229,7 @@ export default function CourseForm() {
       if (f.min_moving_speed.trim() === "" || isNaN(minSpeed) || minSpeed <= 0)
         e["course-min-speed"] = "Must be > 0";
       if (!isNaN(initSpeed) && !isNaN(minSpeed) && initSpeed < minSpeed)
-        e["course-init-speed"] = "Must be ≥ Overall Min Speed";
+        e["course-init-speed"] = "Must be â‰¥ Overall Min Speed";
       if (f.down_time_ratio.trim() === "" || isNaN(dtr) || dtr < 0 || dtr > 1)
         e["course-dtr"] = "Must be between 0 and 1";
 
@@ -357,15 +265,26 @@ export default function CourseForm() {
         }
         if (seg.moving_speed.trim() !== "") {
           const sms = parseFloat(seg.moving_speed);
+          const effectiveMin =
+            seg.min_moving_speed.trim() !== ""
+              ? parseFloat(seg.min_moving_speed)
+              : minSpeed;
           if (isNaN(sms) || sms <= 0) e[`${sp}-moving-speed`] = "Must be > 0";
-          else if (!isNaN(minSpeed) && sms < minSpeed)
-            e[`${sp}-moving-speed`] = `Must be ≥ ${minSpeed} (overall minimum)`;
+          else if (!isNaN(effectiveMin) && sms < effectiveMin)
+            e[`${sp}-moving-speed`] =
+              `Must be â‰¥ ${effectiveMin} (${seg.min_moving_speed.trim() !== "" ? "segment" : "overall"} minimum)`;
         }
         if (seg.min_moving_speed.trim() !== "") {
           const segMin = parseFloat(seg.min_moving_speed);
           if (isNaN(segMin) || segMin <= 0)
             e[`${sp}-min-speed`] = "Must be > 0";
         }
+
+        // Effective minimum for splits in this segment
+        const segMinSpeed =
+          seg.min_moving_speed.trim() !== ""
+            ? parseFloat(seg.min_moving_speed)
+            : minSpeed;
 
         const splitCount = parseInt(seg.splitCount, 10);
         if (isNaN(splitCount) || splitCount < 1)
@@ -380,20 +299,20 @@ export default function CourseForm() {
             const prevDist = parseFloat(seg.splits[j - 1].distance);
             if (!isNaN(dist) && !isNaN(prevDist) && dist <= prevDist)
               e[`${pp}-distance`] =
-                `Must be ≥ ${prevDist} (non-decreasing in Target Distance mode)`;
+                `Must be â‰¥ ${prevDist} (non-decreasing in Target Distance mode)`;
           }
 
           if (split.moving_speed.trim() !== "") {
             const spd = parseFloat(split.moving_speed);
             if (isNaN(spd) || spd <= 0) e[`${pp}-moving-speed`] = "Must be > 0";
-            else if (!isNaN(minSpeed) && spd < minSpeed)
+            else if (!isNaN(segMinSpeed) && spd < segMinSpeed)
               e[`${pp}-moving-speed`] =
-                `Must be ≥ ${minSpeed} (overall minimum)`;
+                `Must be â‰¥ ${segMinSpeed} (${seg.min_moving_speed.trim() !== "" ? "segment" : "overall"} minimum)`;
           }
 
           if (split.sub_split_mode === "even") {
             const ct = parseInt(split.sub_split_count, 10);
-            if (isNaN(ct) || ct < 1) e[`${pp}-ss-count`] = "Must be ≥ 1";
+            if (isNaN(ct) || ct < 1) e[`${pp}-ss-count`] = "Must be â‰¥ 1";
           } else if (split.sub_split_mode === "fixed") {
             const sd = parseFloat(split.sub_split_distance);
             if (isNaN(sd) || sd <= 0) e[`${pp}-ss-distance`] = "Must be > 0";
@@ -451,7 +370,7 @@ export default function CourseForm() {
     }
   }, []);
 
-  // ── Submit ──
+  // â”€â”€ Submit â”€â”€
   const handleSubmit = async (e: React.MouseEvent) => {
     e.preventDefault();
     setSubmitted(true);
@@ -483,7 +402,7 @@ export default function CourseForm() {
             if (typeof d === "string") return d;
             if (typeof d === "object" && d !== null) {
               const obj = d as { loc?: unknown[]; msg?: string };
-              const path = obj.loc ? obj.loc.join(" → ") : "";
+              const path = obj.loc ? obj.loc.join(" â†’ ") : "";
               const msg = obj.msg ?? JSON.stringify(d);
               return path ? `${path}: ${msg}` : msg;
             }
@@ -496,7 +415,7 @@ export default function CourseForm() {
           setApiError(`Server error (${axErr.response?.status ?? "unknown"})`);
         }
       } else {
-        setApiError("Network error — is the API running?");
+        setApiError("Network error â€” is the API running?");
       }
     } finally {
       setLoading(false);
@@ -508,21 +427,36 @@ export default function CourseForm() {
       <div className="course-form" onBlur={handleBlur}>
         <div className="title-row">
           <h1>Cycling Pacing Calculator</h1>
-          <button
-            type="button"
-            className="legend-btn"
-            onClick={() => setLegendOpen(true)}
-            title="Legend & definitions"
-          >
-            ℹ
-          </button>
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={handleLoadExample}
-          >
-            Load Example
-          </button>
+          <div className="title-nav-buttons">
+            <button
+              type="button"
+              className="nav-btn"
+              onClick={() => setExamplesOpen(true)}
+            >
+              Examples
+            </button>
+            <button
+              type="button"
+              className="nav-btn"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Import
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              style={{ display: "none" }}
+              onChange={handleImport}
+            />
+            <button
+              type="button"
+              className="nav-btn nav-btn-legend"
+              onClick={() => setLegendOpen(true)}
+            >
+              Legend
+            </button>
+          </div>
         </div>
         <p className="app-description">
           Plan multi-day cycling events with detailed pacing, rest stops, and
@@ -532,6 +466,12 @@ export default function CourseForm() {
           supports timezone-aware scheduling across regions.
         </p>
         <LegendModal open={legendOpen} onClose={() => setLegendOpen(false)} />
+        <ExampleModal
+          open={examplesOpen}
+          onClose={() => setExamplesOpen(false)}
+          examples={EXAMPLES}
+          onSelect={handleLoadExample}
+        />
 
         {/* Unit & Mode Toggles */}
         <div className="toggle-row-pair">
@@ -700,23 +640,40 @@ export default function CourseForm() {
           </div>
         )}
 
-        {/* Submit */}
+        {/* Action buttons */}
         <div className="button-row">
           <button
             type="button"
-            className="submit-btn"
+            className="action-btn action-btn-primary"
             onClick={handleSubmit}
             disabled={loading}
           >
             {loading ? "Calculating..." : "Calculate"}
           </button>
-          <button className="reset-btn" type="button" onClick={handleReset}>
-            Reset Form
+          <button
+            type="button"
+            className="action-btn action-btn-export"
+            onClick={handleExport}
+            disabled={Object.keys(allErrors).length > 0}
+            title={
+              Object.keys(allErrors).length > 0
+                ? "Fix validation errors before exporting"
+                : undefined
+            }
+          >
+            Export
+          </button>
+          <button
+            className="action-btn action-btn-reset"
+            type="button"
+            onClick={handleReset}
+          >
+            Reset
           </button>
         </div>
       </div>
 
-      {/* Results — outside course-form to avoid re-layout on form state changes */}
+      {/* Results â€” outside course-form to avoid re-layout on form state changes */}
       {result && (
         <ResultsView
           result={result}

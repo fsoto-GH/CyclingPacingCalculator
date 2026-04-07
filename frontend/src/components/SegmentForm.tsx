@@ -5,7 +5,7 @@ import type {
   UnitSystem,
   Mode,
 } from "../types";
-import { speedLabel } from "../utils";
+import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import SplitFormComponent from "./SplitForm";
@@ -36,6 +36,7 @@ export default function SegmentFormComponent({
   const update = (patch: Partial<SegmentForm>) =>
     onChange({ ...value, ...patch });
   const sLabel = speedLabel(unitSystem);
+  const dLabel = distanceLabel(unitSystem);
   const prefix = `seg${segIndex}`;
 
   const handleSplitCountChange = (raw: string) => {
@@ -76,7 +77,13 @@ export default function SegmentFormComponent({
     }, 0);
   })();
 
-  const summary = `Segment ${segIndex + 1}: ${value.splits.length} split${value.splits.length !== 1 ? "s" : ""}${totalDist > 0 ? `, ${totalDist.toFixed(1)} total` : ""}`;
+  const sleepHms = minutesToHms(value.sleep_time);
+  const summaryParts: string[] = [
+    `${value.splits.length} split${value.splits.length !== 1 ? "s" : ""}`,
+  ];
+  if (totalDist > 0) summaryParts.push(`${totalDist.toFixed(1)} ${dLabel}`);
+  if (sleepHms) summaryParts.push(`sleep ${sleepHms}`);
+  const summary = `Segment ${segIndex + 1}: ${summaryParts.join(", ")}`;
 
   return (
     <div className="segment-form">
@@ -204,6 +211,8 @@ export default function SegmentFormComponent({
                 value={split}
                 onChange={(s) => updateSplit(j, s)}
                 unitSystem={unitSystem}
+                isLast={j === value.splits.length - 1}
+                includeEndDownTime={value.include_end_down_time}
               />
             ))}
           </div>

@@ -130,7 +130,7 @@ def main():
         init_moving_speed=16.5,
         min_moving_speed=15,
         down_time_ratio=0.12,
-        split_decay=-0.5
+        split_decay=0.25
     )
 
     course_details = process_course(course)
