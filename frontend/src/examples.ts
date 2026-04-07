@@ -458,7 +458,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           },
           down_time: "",
           moving_speed: "",
-          adjustment_time: "0",
+          adjustment_time: "30",
           differentTimezone: true,
           timezone: "America/Detroit",
         },

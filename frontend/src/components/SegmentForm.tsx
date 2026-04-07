@@ -82,8 +82,8 @@ export default function SegmentFormComponent({
     `${value.splits.length} split${value.splits.length !== 1 ? "s" : ""}`,
   ];
   if (totalDist > 0) summaryParts.push(`${totalDist.toFixed(1)} ${dLabel}`);
-  if (sleepHms) summaryParts.push(`sleep ${sleepHms}`);
-  const summary = `Segment ${segIndex + 1}: ${summaryParts.join(", ")}`;
+  if (sleepHms) summaryParts.push(`💤 ${sleepHms}`);
+  const summary = `Segment ${segIndex + 1}: ${summaryParts.join(" · ")}`;
 
   return (
     <div className="segment-form">

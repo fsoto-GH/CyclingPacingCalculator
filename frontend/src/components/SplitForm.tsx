@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { SplitForm, UnitSystem } from "../types";
-import { speedLabel, distanceLabel } from "../utils";
+import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import TimeInput from "./TimeInput";
 import RestStopFormComponent from "./RestStopForm";
 import TimezoneSelect from "./TimezoneSelect";
@@ -39,8 +39,14 @@ export default function SplitFormComponent({
   const dLabel = distanceLabel(unitSystem);
   const prefix = `seg${segIndex}-split${splitIndex}`;
 
-  const summary = value.distance
-    ? `${value.distance} ${dLabel}`
+  const summaryParts: string[] = [];
+  if (value.distance) summaryParts.push(`${value.distance} ${dLabel}`);
+  const downHms = minutesToHms(value.down_time);
+  if (downHms) summaryParts.push(`↓${downHms}`);
+  const adjHms = minutesToHms(value.adjustment_time);
+  if (adjHms) summaryParts.push(`±${adjHms}`);
+  const summary = summaryParts.length
+    ? summaryParts.join(" · ")
     : "(no distance)";
 
   return (
