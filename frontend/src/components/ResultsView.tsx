@@ -9,6 +9,7 @@ import type {
   DayHoursEntry,
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
+import CourseSummaryNarrative from "./CourseSummaryNarrative";
 
 /** Convert HH:MM to minutes since midnight. */
 function timeToMin(t: string): number {
@@ -197,6 +198,13 @@ export default function ResultsView({
   return (
     <div className="results-view">
       <h2>Results</h2>
+
+      <CourseSummaryNarrative
+        result={result}
+        formSegments={formSegments}
+        courseTz={courseTz}
+        unitSystem={unitSystem}
+      />
 
       {/* Course Summary */}
       <div className="course-summary">

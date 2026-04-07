@@ -1,10 +1,11 @@
 import { useState } from "react";
-import type { SplitForm, UnitSystem } from "../types";
+import type { SplitForm, UnitSystem, SplitGpxProfile } from "../types";
 import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import TimeInput from "./TimeInput";
 import RestStopFormComponent from "./RestStopForm";
 import TimezoneSelect from "./TimezoneSelect";
 import { FieldError } from "./FieldError";
+import NearbyStopsPanel from "./NearbyStopsPanel";
 
 interface SplitFormProps {
   segIndex: number;
@@ -14,6 +15,7 @@ interface SplitFormProps {
   unitSystem: UnitSystem;
   isLast?: boolean;
   includeEndDownTime?: boolean;
+  gpxProfile?: SplitGpxProfile | null;
 }
 
 export default function SplitFormComponent({
@@ -24,9 +26,12 @@ export default function SplitFormComponent({
   unitSystem,
   isLast,
   includeEndDownTime,
+  gpxProfile,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
+
+  const [showNearby, setShowNearby] = useState(false);
 
   const hasOptionalValues =
     !!value.moving_speed ||
@@ -38,6 +43,10 @@ export default function SplitFormComponent({
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
   const prefix = `seg${segIndex}-split${splitIndex}`;
+
+  const elevUnit = unitSystem === "imperial" ? "ft" : "m";
+  const toElevUnit = (m: number) =>
+    unitSystem === "imperial" ? Math.round(m * 3.28084) : m;
 
   const summaryParts: string[] = [];
   if (value.distance) summaryParts.push(`${value.distance} ${dLabel}`);
@@ -55,6 +64,13 @@ export default function SplitFormComponent({
         <span className="collapse-icon-sm">{collapsed ? "▶" : "▼"}</span>
         <span className="split-header-title">Split {splitIndex + 1}</span>
         {collapsed && <span className="split-header-summary">{summary}</span>}
+        {gpxProfile && (
+          <span className="split-header-elev" title="Elevation gain / loss">
+            ⬆{toElevUnit(gpxProfile.elevGainM)}
+            {elevUnit} ⬇{toElevUnit(gpxProfile.elevLossM)}
+            {elevUnit}
+          </span>
+        )}
       </div>
 
       {!collapsed && (
@@ -243,11 +259,54 @@ export default function SplitFormComponent({
           </div>
 
           {/* Rest Stop */}
+          {gpxProfile && (
+            <div className="gpx-badge-row">
+              <span className="gpx-badge" title="Elevation gain">
+                ⬆ {toElevUnit(gpxProfile.elevGainM)} {elevUnit}
+              </span>
+              <span className="gpx-badge" title="Elevation loss">
+                ⬇ {toElevUnit(gpxProfile.elevLossM)} {elevUnit}
+              </span>
+              <span className="gpx-badge" title="Average grade">
+                ~ {gpxProfile.avgGradePct.toFixed(1)}% avg
+              </span>
+              <span className="gpx-badge" title="% of distance with grade > 5%">
+                🟡 {gpxProfile.steepPct}% steep
+              </span>
+              {gpxProfile.surface !== "unknown" && (
+                <span className="gpx-badge" title="Dominant surface">
+                  {gpxProfile.surface}
+                </span>
+              )}
+            </div>
+          )}
           <RestStopFormComponent
             prefix={`${prefix}-rs`}
             value={value.rest_stop}
             onChange={(rs) => update({ rest_stop: rs })}
           />
+          {gpxProfile?.endLat != null && (
+            <div className="nearby-stops-section">
+              <button
+                type="button"
+                className="nearby-search-btn"
+                onClick={() => setShowNearby(!showNearby)}
+              >
+                {showNearby ? "▲ Hide Nearby Stops" : "🔍 Find Nearby Stops"}
+              </button>
+              {showNearby && (
+                <NearbyStopsPanel
+                  lat={gpxProfile.endLat}
+                  lon={gpxProfile.endLon}
+                  onSelect={(patch) =>
+                    update({
+                      rest_stop: { ...value.rest_stop, ...patch },
+                    })
+                  }
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import type {
   SplitForm as SplitFormType,
   UnitSystem,
   Mode,
+  SplitGpxProfile,
 } from "../types";
 import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import { makeDefaultSplit } from "../defaults";
@@ -17,6 +18,7 @@ interface SegmentFormProps {
   onChange: (val: SegmentForm) => void;
   unitSystem: UnitSystem;
   mode: Mode;
+  gpxProfiles?: SplitGpxProfile[] | null;
 }
 
 export default function SegmentFormComponent({
@@ -25,6 +27,7 @@ export default function SegmentFormComponent({
   onChange,
   unitSystem,
   mode,
+  gpxProfiles,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(false);
   const hasOptionalValues =
@@ -213,6 +216,7 @@ export default function SegmentFormComponent({
                 unitSystem={unitSystem}
                 isLast={j === value.splits.length - 1}
                 includeEndDownTime={value.include_end_down_time}
+                gpxProfile={gpxProfiles?.[j] ?? null}
               />
             ))}
           </div>

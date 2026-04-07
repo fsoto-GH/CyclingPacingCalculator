@@ -3,6 +3,8 @@ import type {
   CourseForm as CourseFormState,
   SegmentForm as SegmentFormState,
   CourseDetail,
+  GpxTrackPoint,
+  SplitGpxProfile,
 } from "../types";
 import { makeDefaultDayHours } from "../types";
 import type { RestStopForm as RestStopFormType } from "../types";
@@ -11,6 +13,12 @@ import { makeDefaultSplit } from "../defaults";
 import { serializeCourse } from "../serialization";
 import { calculateCourse } from "../api";
 import { processCourse, CalcError } from "../calculator/courseProcessor";
+import {
+  parseGpx,
+  computeAllProfiles,
+  computeElevGainLoss,
+  extractSurfaceFromXml,
+} from "../calculator/gpxParser";
 import SegmentFormComponent from "./SegmentForm";
 import ResultsView from "./ResultsView";
 import LegendModal from "./LegendModal";
@@ -120,6 +128,12 @@ export default function CourseForm() {
   const [submitted, setSubmitted] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+
+  // GPX state — session only, not persisted to localStorage
+  const [gpxTrack, setGpxTrack] = useState<GpxTrackPoint[] | null>(null);
+  const [gpxSurface, setGpxSurface] = useState<string | null>(null);
+  const [gpxFileName, setGpxFileName] = useState<string | null>(null);
+  const gpxFileRef = useRef<HTMLInputElement>(null);
   const useEngine: "client" | "api" =
     new URLSearchParams(window.location.search).get("engine") === "api"
       ? "api"
@@ -181,7 +195,86 @@ export default function CourseForm() {
     [handleLoadExample],
   );
 
+  const handleGpxLoad = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const xml = reader.result as string;
+        try {
+          const track = parseGpx(xml);
+          setGpxTrack(track);
+          setGpxSurface(extractSurfaceFromXml(xml));
+          setGpxFileName(file.name);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Invalid GPX file";
+          setApiError(msg);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = "";
+    },
+    [],
+  );
+
+  const handleGpxClear = useCallback(() => {
+    setGpxTrack(null);
+    setGpxSurface(null);
+    setGpxFileName(null);
+    if (gpxFileRef.current) gpxFileRef.current.value = "";
+  }, []);
+
   const sLabel = speedLabel(form.unitSystem);
+
+  // Stable string key from split distances only — doesn't change when unrelated
+  // fields (rest stop, speed, etc.) are edited, so profiles aren't recomputed
+  // on every keystroke in those fields.
+  const splitDistancesKey = useMemo(
+    () =>
+      form.segments
+        .map((seg) => seg.splits.map((sp) => sp.distance).join(","))
+        .join("|"),
+    [form.segments],
+  );
+
+  const [gpxProfiles, setGpxProfiles] = useState<SplitGpxProfile[][] | null>(
+    null,
+  );
+
+  // Memoized — avoids re-running the 30k-point RDP on every render.
+  const bannerGainM = useMemo(
+    () => (gpxTrack ? computeElevGainLoss(gpxTrack).gainM : 0),
+    [gpxTrack],
+  );
+
+  // Debounced profile computation — expensive (GPX slicing + tzlookup per split).
+  // Runs 400 ms after the user stops editing distances.
+  useEffect(() => {
+    if (!gpxTrack || !gpxSurface) {
+      setGpxProfiles(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      try {
+        const splitDistances = form.segments.map((seg) =>
+          seg.splits.map((sp) => parseFloat(sp.distance) || 0),
+        );
+        setGpxProfiles(
+          computeAllProfiles(
+            gpxTrack,
+            gpxSurface,
+            splitDistances,
+            form.unitSystem,
+          ),
+        );
+      } catch {
+        setGpxProfiles(null);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpxTrack, gpxSurface, splitDistancesKey, form.unitSystem]);
 
   // â”€â”€ Handlers â”€â”€
   const handleSegmentCountChange = (raw: string) => {
@@ -234,7 +327,7 @@ export default function CourseForm() {
       if (f.min_moving_speed.trim() === "" || isNaN(minSpeed) || minSpeed <= 0)
         e["course-min-speed"] = "Must be > 0";
       if (!isNaN(initSpeed) && !isNaN(minSpeed) && initSpeed < minSpeed)
-        e["course-init-speed"] = "Must be â‰¥ Overall Min Speed";
+        e["course-init-speed"] = "Must be ≥ Overall Min Speed";
       if (f.down_time_ratio.trim() === "" || isNaN(dtr) || dtr < 0 || dtr > 1)
         e["course-dtr"] = "Must be between 0 and 1";
 
@@ -277,7 +370,7 @@ export default function CourseForm() {
           if (isNaN(sms) || sms <= 0) e[`${sp}-moving-speed`] = "Must be > 0";
           else if (!isNaN(effectiveMin) && sms < effectiveMin)
             e[`${sp}-moving-speed`] =
-              `Must be â‰¥ ${effectiveMin} (${seg.min_moving_speed.trim() !== "" ? "segment" : "overall"} minimum)`;
+              `Must be ≥ ${effectiveMin} (${seg.min_moving_speed.trim() !== "" ? "segment" : "overall"} minimum)`;
         }
         if (seg.min_moving_speed.trim() !== "") {
           const segMin = parseFloat(seg.min_moving_speed);
@@ -304,7 +397,7 @@ export default function CourseForm() {
             const prevDist = parseFloat(seg.splits[j - 1].distance);
             if (!isNaN(dist) && !isNaN(prevDist) && dist <= prevDist)
               e[`${pp}-distance`] =
-                `Must be â‰¥ ${prevDist} (non-decreasing in Target Distance mode)`;
+                `Must be ≥ ${prevDist} (non-decreasing in Target Distance mode)`;
           }
 
           if (split.moving_speed.trim() !== "") {
@@ -312,12 +405,12 @@ export default function CourseForm() {
             if (isNaN(spd) || spd <= 0) e[`${pp}-moving-speed`] = "Must be > 0";
             else if (!isNaN(segMinSpeed) && spd < segMinSpeed)
               e[`${pp}-moving-speed`] =
-                `Must be â‰¥ ${segMinSpeed} (${seg.min_moving_speed.trim() !== "" ? "segment" : "overall"} minimum)`;
+                `Must be ≥ ${segMinSpeed} (${seg.min_moving_speed.trim() !== "" ? "segment" : "overall"} minimum)`;
           }
 
           if (split.sub_split_mode === "even") {
             const ct = parseInt(split.sub_split_count, 10);
-            if (isNaN(ct) || ct < 1) e[`${pp}-ss-count`] = "Must be â‰¥ 1";
+            if (isNaN(ct) || ct < 1) e[`${pp}-ss-count`] = "Must be ≥ 1";
           } else if (split.sub_split_mode === "fixed") {
             const sd = parseFloat(split.sub_split_distance);
             if (isNaN(sd) || sd <= 0) e[`${pp}-ss-distance`] = "Must be > 0";
@@ -470,6 +563,21 @@ export default function CourseForm() {
             />
             <button
               type="button"
+              className="nav-btn"
+              onClick={() => gpxFileRef.current?.click()}
+              title="Load a GPX track file for elevation profiles and nearby stops"
+            >
+              Load GPX
+            </button>
+            <input
+              ref={gpxFileRef}
+              type="file"
+              accept=".gpx"
+              style={{ display: "none" }}
+              onChange={handleGpxLoad}
+            />
+            <button
+              type="button"
               className="nav-btn nav-btn-legend"
               onClick={() => setLegendOpen(true)}
             >
@@ -491,6 +599,33 @@ export default function CourseForm() {
           examples={EXAMPLES}
           onSelect={handleLoadExample}
         />
+
+        {/* GPX banner */}
+        {gpxFileName && gpxTrack && (
+          <div className="gpx-file-field">
+            <div className="gpx-file-meta">
+              <span className="gpx-file-label">🗺 GPX route</span>
+              <span className="gpx-file-name">{gpxFileName}</span>
+              <span className="gpx-file-stats">
+                {form.unitSystem === "imperial"
+                  ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toFixed(1)} mi`
+                  : `${gpxTrack[gpxTrack.length - 1].cumDist.toFixed(1)} km`}
+                {" · "}
+                {form.unitSystem === "imperial"
+                  ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
+                  : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="gpx-file-remove"
+              onClick={handleGpxClear}
+              aria-label="Remove GPX route"
+            >
+              Remove
+            </button>
+          </div>
+        )}
 
         {/* Unit & Mode Toggles */}
         <div className="toggle-row-pair">
@@ -647,6 +782,7 @@ export default function CourseForm() {
               onChange={(s) => updateSegment(i, s)}
               unitSystem={form.unitSystem}
               mode={form.mode}
+              gpxProfiles={gpxProfiles?.[i] ?? null}
             />
           ))}
         </div>

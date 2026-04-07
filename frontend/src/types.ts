@@ -1,6 +1,26 @@
 // ── Unit system (display-only toggle) ──
 export type UnitSystem = "imperial" | "metric";
 
+// ── GPX / elevation profile types ──
+
+export interface GpxTrackPoint {
+  lat: number;
+  lon: number;
+  ele: number; // metres
+  cumDist: number; // km from track start
+}
+
+export interface SplitGpxProfile {
+  elevGainM: number;
+  elevLossM: number;
+  avgGradePct: number;
+  steepPct: number; // % of distance where instantaneous grade > 5%
+  surface: string; // e.g. "paved" | "gravel" | "unknown"
+  endLat: number;
+  endLon: number;
+  endTimezone: string; // IANA tz at endpoint
+}
+
 // ── API request types ──
 export type Mode = "distance" | "target_distance";
 export type SubSplitMode = "even" | "fixed" | "custom";

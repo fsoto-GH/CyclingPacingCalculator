@@ -890,6 +890,53 @@ h4 {
   border-color: #d4a017;
 }
 
+/* ── Course Narrative ── */
+.narrative {
+  margin: 0.75rem 0 1.5rem;
+  padding: 0.9rem 1.2rem;
+  background: #151525;
+  border: 1px solid #2e2e4e;
+  border-left: 3px solid #4361ee;
+  border-radius: 6px;
+  line-height: 1.75;
+}
+
+.narrative-p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #c8c8d8;
+}
+
+.narrative-p + .narrative-p {
+  margin-top: 0.55rem;
+}
+
+.narrative-open {
+  color: #4ade80;
+  font-weight: 500;
+}
+
+.narrative-near {
+  color: #fbbf24;
+  font-weight: 500;
+}
+
+.narrative-closed {
+  color: #f87171;
+  font-weight: 500;
+}
+
+.narrative-elapsed {
+  color: #93c5fd;
+  font-weight: 500;
+}
+
+/* ── Modals ── */
+/* content.css resets margin:0 on all elements; restore auto-centering for dialogs */
+dialog {
+  margin: auto;
+}
+
 /* ── Legend Modal ── */
 .legend-modal {
   max-width: 680px;
@@ -1186,4 +1233,182 @@ h4 {
 .eta-closed {
   background: #4a1a1a;
   color: #f87171;
+}
+
+/* ── GPX elevation in split header ── */
+.split-header-elev {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: #60a5fa;
+  white-space: nowrap;
+  padding: 0.1rem 0.45rem;
+  background: #1e3a5f;
+  border-radius: 10px;
+  border: 1px solid #2d5a8e;
+}
+
+/* ── GPX elevation badge row ── */
+.gpx-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.gpx-badge {
+  font-size: 0.78rem;
+  background: #2a2a2a;
+  color: #94a3b8;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  padding: 0.15rem 0.55rem;
+  white-space: nowrap;
+}
+
+/* ── GPX file field (attached route indicator) ── */
+.gpx-file-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: var(--color-surface, #1e1e2e);
+  border: 1px solid var(--color-border, #3a3a5c);
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.gpx-file-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.gpx-file-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted, #888);
+  line-height: 1.2;
+}
+
+.gpx-file-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text, #e0e0e0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30ch;
+}
+
+.gpx-file-stats {
+  font-size: 0.78rem;
+  color: var(--color-text-muted, #888);
+  line-height: 1.2;
+}
+
+.gpx-file-remove {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--color-text-muted, #888);
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.5rem;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.gpx-file-remove:hover {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+/* ── Nearby stops ── */
+.nearby-stops-section {
+  margin-top: 0.75rem;
+}
+
+.nearby-search-btn {
+  font-size: 0.83rem;
+  padding: 0.3rem 0.8rem;
+  background: #1e3a5f;
+  color: #90c8f5;
+  border: 1px solid #2d5a8e;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.nearby-search-btn:hover:not(:disabled) {
+  background: #2a4f7a;
+}
+
+.nearby-search-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.nearby-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  background: #1a1a1a;
+}
+
+.nearby-item {
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.nearby-item:last-child {
+  border-bottom: none;
+}
+
+.nearby-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: none;
+  color: #d1d5db;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+  transition: background 0.1s;
+}
+
+.nearby-item-btn:hover {
+  background: #252525;
+}
+
+.nearby-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.nearby-dist {
+  font-size: 0.78rem;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.nearby-hours-badge {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.nearby-error,
+.nearby-empty {
+  font-size: 0.82rem;
+  color: #9ca3af;
+  margin: 0.4rem 0 0;
 }
