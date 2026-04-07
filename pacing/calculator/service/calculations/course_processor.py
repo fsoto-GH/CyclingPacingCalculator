@@ -25,6 +25,10 @@ def __validate_course(course: Course) -> bool:
     :param course:
     :return: bool indicating whether the course is valid or not
     """
+    for segment in course.segments:
+        if len(segment.splits) == 0:
+            raise ValueError("Each segment must have at least one split.")
+
     if course.mode == DISTANCE:
         return True
 
@@ -32,9 +36,6 @@ def __validate_course(course: Course) -> bool:
         # must be non-decreasing
         lass_distance_marker: float = 0
         for segment in course.segments:
-            if len(segment.splits) == 0:
-                raise ValueError("Each segment must have at least one split.")
-
             for split in segment.splits:
                 if split.distance <= lass_distance_marker:
                     raise ValueError("In DISTANCE mode, split distances must be non-decreasing.")

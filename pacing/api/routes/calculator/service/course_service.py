@@ -13,6 +13,22 @@ from pacing.calculator.dtos.sub_split_mode import *
 def validate_course(course: Course) -> list[str]:
     res: list[str] = []
 
+    if course.down_time_ratio < 0 or course.down_time_ratio > 1:
+        res.append(f"Course has invalid down_time_ratio '{course.down_time_ratio}'. "
+                   f"Down time ratio should be between 0 and 1.")
+        
+    if course.init_moving_speed <= 0:
+        res.append(f"Course has invalid init_moving_speed '{course.init_moving_speed}'. "
+                   f"Initial moving speed should be greater than 0.")
+    
+    if course.min_moving_speed <= 0:
+        res.append(f"Course has invalid min_moving_speed '{course.min_moving_speed}'. "
+                   f"Minimum moving speed should be greater than 0.")
+
+    if course.init_moving_speed < course.min_moving_speed:
+        res.append(f"Course has invalid init_moving_speed '{course.init_moving_speed}' which is less than "
+                   f"min_moving_speed '{course.min_moving_speed}'.")
+
     for i, segment in enumerate(course.segments):
         if segment.sleep_time < timedelta(hours=0):
             res.append(f"Segment {i} has invalid sleep_time '{segment.sleep_time}'. Sleep time cannot be negative.")

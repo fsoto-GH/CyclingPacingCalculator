@@ -53,7 +53,7 @@ def main():
                         sub_split_mode=sub_split_mode,
                         rest_stop=RestStop(
                             name="bp",
-                            open_hours=FixedOpenHours(hours="6:00a – 1:00a"),
+                            open_hours=FixedOpenHours(hours="6:00a - 1:00a"),
                             address="W365 US-2 #41, Harris, MI 49845",
                         ),
                     ),
@@ -62,7 +62,7 @@ def main():
                         sub_split_mode=sub_split_mode,
                         rest_stop=RestStop(
                             name="bp",
-                            open_hours=FixedOpenHours(hours="7:00a – 9:00p"),
+                            open_hours=FixedOpenHours(hours="7:00a - 9:00p"),
                             address="1223 US-2, Gulliver, MI 49840",
                         ),
                     ),
@@ -71,16 +71,16 @@ def main():
                         sub_split_mode=sub_split_mode,
                         rest_stop=RestStop(
                             name="Best Western Harbour Pointe Lakefront",
-                            open_hours=FixedOpenHours(hours="3:00p – 11:00a"),
+                            open_hours=FixedOpenHours(hours="3:00p - 11:00a"),
                             address="797 N State St, St Ignace, MI 49781",
                         ),
                     )
                 ],
-                sleep_time=timedelta(hours=11),
+                sleep_time=timedelta(hours=4),
                 no_end_down_time=False  # use this computed down_time to pad for debrief for sleep
             ),
             Segment(
-                moving_speed=16.0,
+                # moving_speed=16.0,
                 name="St Ignace to Chicago",
                 splits=[
                     Split(
@@ -88,7 +88,7 @@ def main():
                         sub_split_mode=sub_split_mode,
                         rest_stop=RestStop(
                             name="Mobil",
-                            open_hours=FixedOpenHours(hours="5:00a – 11:00p"),
+                            open_hours=FixedOpenHours(hours="5:00a - 11:00p"),
                             address="100 1st St, Elk Rapids, MI 49629",
                         ),
                     ),
@@ -115,7 +115,7 @@ def main():
                         sub_split_mode=sub_split_mode,
                         rest_stop=RestStop(
                             name="Barney’s",
-                            open_hours=FixedOpenHours(hours="7:00a – 9:00p"),
+                            open_hours=FixedOpenHours(hours="7:00a - 9:00p"),
                             address="10 N Thompson St, New Buffalo, MI 49117",
                         )
                     ),
@@ -129,8 +129,8 @@ def main():
         start_time=datetime(2025, 7, 12, 6, 0, 0),
         init_moving_speed=16.5,
         min_moving_speed=15,
-        down_time_ratio=0.085,
-        split_decay=0.0
+        down_time_ratio=0.12,
+        split_decay=-0.5
     )
 
     course_details = process_course(course)
