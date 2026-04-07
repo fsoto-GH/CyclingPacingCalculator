@@ -419,6 +419,14 @@ h4 {
   min-width: 140px;
 }
 
+.action-btn-primary--api {
+  color: #f5c518;
+}
+
+.action-btn-primary--api:hover:not(:disabled) {
+  color: #ffd93d;
+}
+
 .action-btn-primary:hover:not(:disabled) {
   background: #3a56d4;
 }
@@ -769,6 +777,12 @@ h4 {
 /* ── JSON ── */
 .json-section {
   margin-top: 1.5rem;
+}
+
+.json-controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .json-section button {

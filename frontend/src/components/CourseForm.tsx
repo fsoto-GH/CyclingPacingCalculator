@@ -10,6 +10,7 @@ import { nowLocalDatetime, speedLabel, distanceLabel } from "../utils";
 import { makeDefaultSplit } from "../defaults";
 import { serializeCourse } from "../serialization";
 import { calculateCourse } from "../api";
+import { processCourse, CalcError } from "../calculator/courseProcessor";
 import SegmentFormComponent from "./SegmentForm";
 import ResultsView from "./ResultsView";
 import LegendModal from "./LegendModal";
@@ -119,6 +120,10 @@ export default function CourseForm() {
   const [submitted, setSubmitted] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const useEngine: "client" | "api" =
+    new URLSearchParams(window.location.search).get("engine") === "api"
+      ? "api"
+      : "client";
 
   // Persist form to localStorage on every change
   useEffect(() => {
@@ -387,12 +392,23 @@ export default function CourseForm() {
     setLoading(true);
     try {
       const payload = serializeCourse(form);
-      const data = await calculateCourse(payload);
-      setResult(data);
-      setApiError(null);
+      if (useEngine === "client") {
+        setResult(processCourse(payload));
+        setApiError(null);
+      } else {
+        const data = await calculateCourse(payload);
+        setResult(data);
+        setApiError(null);
+      }
     } catch (err: unknown) {
       setResult(null);
-      if (typeof err === "object" && err !== null && "response" in err) {
+      if (err instanceof CalcError) {
+        setApiError(
+          err.validationErrors.length > 0
+            ? err.validationErrors.join("\n")
+            : err.message,
+        );
+      } else if (typeof err === "object" && err !== null && "response" in err) {
         const axErr = err as {
           response?: { data?: { detail?: unknown }; status?: number };
         };
@@ -635,7 +651,9 @@ export default function CourseForm() {
         {/* API error */}
         {apiError && (
           <div className="error-banner">
-            <strong>Server Error:</strong>
+            <strong>
+              {useEngine === "client" ? "Calc Error" : "Server Error"}:
+            </strong>
             <pre>{apiError}</pre>
           </div>
         )}
@@ -644,7 +662,7 @@ export default function CourseForm() {
         <div className="button-row">
           <button
             type="button"
-            className="action-btn action-btn-primary"
+            className={`action-btn action-btn-primary${useEngine === "api" ? " action-btn-primary--api" : ""}`}
             onClick={handleSubmit}
             disabled={loading}
           >

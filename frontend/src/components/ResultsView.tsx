@@ -190,6 +190,7 @@ export default function ResultsView({
   courseTz,
 }: ResultsViewProps) {
   const [showJson, setShowJson] = useState(false);
+  const [copied, setCopied] = useState(false);
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
 
@@ -283,9 +284,21 @@ export default function ResultsView({
 
       {/* Raw JSON */}
       <div className="json-section">
-        <button type="button" onClick={() => setShowJson(!showJson)}>
-          {showJson ? "Hide" : "Show"} Raw JSON
-        </button>
+        <div className="json-controls">
+          <button type="button" onClick={() => setShowJson(!showJson)}>
+            {showJson ? "Hide" : "Show"} Raw JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+          >
+            {copied ? "Copied!" : "Copy JSON"}
+          </button>
+        </div>
         {showJson && (
           <pre className="json-block">{JSON.stringify(result, null, 2)}</pre>
         )}
