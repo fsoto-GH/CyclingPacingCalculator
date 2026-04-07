@@ -4,7 +4,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from pacing.api.routes.calculator import v1_calculator
 
@@ -29,8 +29,16 @@ if os.path.isdir(_static_dir):
     async def serve_spa(full_path: str):
         file_path = os.path.join(_static_dir, full_path)
         if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(_static_dir, "index.html"))
+            response = FileResponse(file_path)
+            # Hashed assets (JS/CSS) can be cached indefinitely
+            if "/assets/" in full_path:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return response
+        # SPA fallback — always return index.html uncached so the browser
+        # picks up new builds immediately
+        response = FileResponse(os.path.join(_static_dir, "index.html"))
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
 
 if __name__ == '__main__':
     # this is to help debug

@@ -1,272 +1,193 @@
 # 🚴‍♂️ CyclingPacingCalculator
+
 ## 🧠 Why I Built This
- 
+
 Multi-day ultra-endurance cycling events don't have a simple finish time. Your speed decays as fatigue accumulates. Sleep windows eat into your clock. Rest stops, aid stations, and segments with different terrain all compound into a final elapsed time that is nearly impossible to estimate in your head.
 
 Before Mishigami 2025—a 1,121-mile race across Michigan—I needed a way to model different pacing strategies and understand the tradeoffs. How fast could I afford to start? How much would a 3-hour sleep window cost me versus a 1-hour nap? What happens if my average speed drops by 1 mph in the final 200 miles?
 
 I built this calculator to answer those questions. It powered my race plan for Mishigami, where I finished 2nd place—the first Chicagoan ever to complete the race in under 4 days.
 
-While the race is over, I plan to continue enhancing this project. I'd live to ultimately have:
--  A nice front-end to quickly modify inputs
--  GPX route support to split and visualize the route
--  Allow for GPX route analysis (insights into elevation gain&mdash;hilly segments or splits) to aid in planning
--  A way to, on-the-fly, find and select rest stops to ultimately export
+While the race is over, I plan to continue enhancing this project. I'd like to ultimately have:
 
-This repository contains my implementation of a cycling pacing calculator.
-- **A Dockerized API** that can be deployed and consumed by other applications.
-- **A standalone Python package** that exposes the core pacing logic without requiring the API.
+- GPX route support to split and visualize the route
+- Allow for GPX route analysis (insights into elevation gain — hilly segments or splits) to aid in planning
+- A way to, on-the-fly, find and select rest stops to ultimately export
+
+This repository contains:
+
+- **A React + Vite frontend** — a full-featured web UI for the calculator, runs entirely in the browser (no server required for normal use).
+- **A Dockerized FastAPI backend** — serves the frontend in production and exposes the calculator as an API.
+- **A standalone Python package** — the raw pacing logic, usable without the API or UI.
+
+---
+
+## 🖥️ Frontend (React + Vite)
+
+The frontend is a single-page React app located in [`frontend/`](./frontend). It runs the pacing calculator **entirely in the browser** — no API call is needed.
+
+### Features
+
+- Multi-segment, multi-split course builder
+- Imperial / metric toggle
+- Rest stop open hours with timezone-aware ETA badges
+- Collapsible segments and splits
+- Example courses (including the Mishigami Challenge)
+- Import / export course definitions as JSON
+- Results table with sub-split detail
+
+### Run the frontend locally (dev mode)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Opens at `http://localhost:5173`. The Vite dev server proxies `/v1/...` requests to `http://localhost:8000` if you want to test against the API.
+
+### Build the frontend (production)
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+Output goes to `../static/`. The resulting files are a fully static site — host them on GitHub Pages, Netlify, Cloudflare Pages, S3, or anywhere that serves static files.
+
+### Query parameters
+
+| Parameter | Values            | Default  | Description                                                                           |
+| --------- | ----------------- | -------- | ------------------------------------------------------------------------------------- |
+| `engine`  | `client` \| `api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
+
+Example: `http://localhost:5173/?engine=api`
+
+When `engine=api` is active, the Calculate button label renders in gold to indicate the API path is being used.
 
 ---
 
 ## 📦 Using the Calculator as a Python Package
 
-You don’t need to run the API to use the pacing logic. The core functionality lives in the [`calculator` package](./pacing/calculator), which contains all pacing‑related computations. It works alongside the [`printer` package](./pacing/printer), which formats results into clean, human‑readable output.
+You don't need to run the API to use the pacing logic. The core functionality lives in the [`calculator` package](./pacing/calculator), which contains all pacing‑related computations. It works alongside the [`printer` package](./pacing/printer), which formats results into clean, human‑readable output.
 
 To see how to use these packages directly, check out the [`examples/` directory](./pacing/examples). It includes runnable scripts demonstrating:
 
-- How to compute pacing strategies  
-- How to print results using the printer utilities  
-- A rough draft of my Mishigami Challenge pacing plan  
+- How to compute pacing strategies
+- How to print results using the printer utilities
+- A rough draft of my Mishigami Challenge pacing plan
 
 If you want to run the examples locally, install dependencies from the project root:
 
-```
+```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-# 🚀 Running the Pacing API with Docker
+## 🚀 Running with Docker Compose
 
-This section explains how to build, run, and manage the Pacing API using Docker and Docker Compose.
+Docker Compose is the easiest way to run everything together. The Docker build:
+
+1. Installs Node.js and builds the React frontend into `static/`
+2. Installs Python dependencies
+3. Starts the FastAPI server, which serves both the frontend (at `/`) and the API (at `/v1/...`)
+
+### Start
+
+```bash
+docker compose up -d --build
+```
+
+Then open `http://localhost:8000`. That's it — the frontend and API are both served from the same container.
+
+> **Note:** `--build` is required the first time, or any time you change **Python** code. For frontend changes, you must also rebuild the Docker image (via `--build`) since the React app is compiled into the image at build time — the volume mount in `docker-compose.yml` intentionally excludes `static/` to prevent a stale host build from overwriting the image-baked frontend.
+
+### Updating the frontend while using Docker Compose
+
+The `docker-compose.yml` mounts the project directory into the container for live Python reloading, but isolates the `static/` folder so Docker always serves the image-built frontend. This means:
+
+| Scenario | What to do |
+|---|---|
+| Changed Python code | `docker compose up -d` (no `--build`) — `--reload` picks it up automatically |
+| Changed frontend code | `docker compose up -d --build` to rebuild the image |
+| Frontend dev with HMR | Run `npm run dev` separately (proxies API to `localhost:8000`) |
+
+### Stop
+
+```bash
+docker compose down
+```
+
+### View logs
+
+```bash
+docker compose logs -f
+```
 
 ---
 
-## 🧱 Docker Image Commands
+## 🧱 Docker (without Compose)
 
-### **Build the Docker image**
+### Build
+
 ```bash
 docker build -t cycling/pacing-api:latest .
 ```
-- Tags the image as `cycling/pacing-api:latest`.
 
-### **Build without cache**
-```bash
-docker build --no-cache -t cycling/pacing-api:latest .
-```
-- Forces Docker to rebuild every layer from scratch.
+### Run
 
----
-
-## 🐳 Docker Container Commands
-
-### **Run the container**
 ```bash
 docker run -d -p 8000:8000 --name pacing-api cycling/pacing-api:latest
 ```
-- `-d` runs in detached mode  
-- `-p 8000:8000` maps container → host port  
-- `--name pacing-api` assigns a readable name  
-- `cycling/pacing-api:latest` selects the image  
 
-### **Stop the container**
+### Stop / Start
+
 ```bash
 docker stop pacing-api
-```
-
-### **Start the container**
-```bash
 docker start pacing-api
 ```
 
 ---
 
-## 🧩 Docker Compose Commands
+## 🧭 API: Swagger UI
 
-### **Start services (build if needed)**
-```bash
-docker compose up -d --build
-```
-- `-d` runs in detached mode  
-- `--build` rebuilds images before starting  
-
-### **Stop and remove containers**
-```bash
-docker compose down
-```
-
-### **View logs**
-```bash
-docker compose logs -f
-```
-- `-f` follows logs in real time  
-
-## 🧭 Using Swagger UI
-
-The API includes interactive documentation powered by Swagger.
-
-Once the container is running, open:
+When the container is running, interactive API docs are available at:
 
 ```
 http://localhost:8000/docs
 ```
 
-From there, you can:
-
-- Explore all endpoints  
-- View request/response models  
-- Execute POST requests directly in the browser  
-
-
-## 📬 Posting to the Calculator Endpoint
-
-Once the API is running (via Docker or Docker Compose), you can send requests to the calculator endpoint to compute pacing strategies programmatically.
-
-### **Base URL**
-```
-http://localhost:8000
-```
-
-### **Calculator Endpoint**
-```bash 
-http://localhost:8000/v1/cycling/calculator
-```
-
 ---
 
-## 🧮 POST to the Calculator
+## 📬 API: Calculator Endpoint
 
-The main calculator endpoint accepts a JSON payload describing the calculation mode and the required inputs. 
+**POST** `http://localhost:8000/v1/cycling/calculator`
 
-### **Example JSON Body**
+### Example request body
+
 ```json
 {
-	"segments": [
+  "segments": [
+    {
+      "splits": [
         {
-            "splits": [
-                {
-                    "distance": 40,
-                    "sub_split_mode": "fixed",
-                    "sub_split_distance": 20
-                }
-            ],
-            "sleep_time": 3600
+          "distance": 40,
+          "sub_split_mode": "fixed",
+          "sub_split_distance": 20
         }
-    ],
-    "mode": "distance",
-    "init_moving_speed": 20,
-    "min_moving_speed": 16.0,
-    "down_time_ratio": 0.05,
-    "split_decay": 0.25,
-    "start_time": "2026-03-04T08:10:00"
+      ],
+      "sleep_time": 3600
+    }
+  ],
+  "mode": "distance",
+  "init_moving_speed": 20,
+  "min_moving_speed": 16.0,
+  "down_time_ratio": 0.05,
+  "split_decay": 0.25,
+  "start_time": "2026-03-04T08:10:00"
 }
 ```
 
-### **Example Response**
-```json
-{
-    "segment_details": [
-        {
-            "split_details": [
-                {
-                    "distance": 40.0,
-                    "start_time": "2026-03-04T08:10:00",
-                    "end_time": "2026-03-04T10:10:00",
-                    "moving_speed": 20.0,
-                    "moving_time": "0d  2h  0m  0.00s",
-                    "down_time": "0d  0h  0m  0.00s",
-                    "split_time": "0d  2h  0m  0.00s",
-                    "active_time": "0d  2h  0m  0.00s",
-                    "pace": 20.0,
-                    "start_distance": 0.0,
-                    "sub_splits": [
-                        {
-                            "distance": 20.0,
-                            "start_time": "2026-03-04T08:10:00",
-                            "end_time": "2026-03-04T09:10:00",
-                            "moving_speed": 20.0,
-                            "moving_time": "0d  1h  0m  0.00s",
-                            "down_time": "0d  0h  0m  0.00s",
-                            "split_time": "0d  1h  0m  0.00s",
-                            "active_time": "0d  1h  0m  0.00s",
-                            "pace": 20.0,
-                            "start_distance": 0.0,
-                            "span": [
-                                0.0,
-                                20.0
-                            ]
-                        },
-                        {
-                            "distance": 20.0,
-                            "start_time": "2026-03-04T09:10:00",
-                            "end_time": "2026-03-04T10:10:00",
-                            "moving_speed": 20.0,
-                            "moving_time": "0d  1h  0m  0.00s",
-                            "down_time": "0d  0h  0m  0.00s",
-                            "split_time": "0d  1h  0m  0.00s",
-                            "active_time": "0d  1h  0m  0.00s",
-                            "pace": 20.0,
-                            "start_distance": 20.0,
-                            "span": [
-                                20.0,
-                                40.0
-                            ]
-                        }
-                    ],
-                    "adjustment_start": "2026-03-04T10:10:00",
-                    "adjustment_time": "0d  0h  0m  0.00s",
-                    "rest_stop": null,
-                    "span": [
-                        0.0,
-                        40.0
-                    ]
-                }
-            ],
-            "start_time": "2026-03-04T08:10:00",
-            "end_time": "2026-03-04T10:10:00",
-            "end_moving_speed": 19.75,
-            "distance": 40.0,
-            "start_distance": 0.0,
-            "moving_time": "0d  2h  0m  0.00s",
-            "down_time": "0d  0h  0m  0.00s",
-            "sleep_time": "0d  1h  0m  0.00s",
-            "adjustment_time": "0d  0h  0m  0.00s",
-            "moving_speed": null,
-            "adjustment_start": null,
-            "name": null,
-            "elapsed_time": "0d  3h  0m  0.00s",
-            "active_time": "0d  2h  0m  0.00s",
-            "span": [
-                0.0,
-                40.0
-            ],
-            "pace": 20.0,
-            "moving_time_hours": 2.0,
-            "down_time_hours": 0.0,
-            "adjustment_time_hours": 0.0,
-            "elapsed_time_hours": 3.0,
-            "active_time_hours": 2.0,
-            "sleep_time_hours": 1.0
-        }
-    ],
-    "start_time": "2026-03-04T08:10:00",
-    "end_time": "2026-03-04T11:10:00",
-    "elapsed_time": "0d  3h  0m  0.00s",
-    "moving_time": "0d  2h  0m  0.00s",
-    "down_time": "0d  0h  0m  0.00s",
-    "sleep_time": "0d  1h  0m  0.00s",
-    "adjustment_time": "0d  0h  0m  0.00s",
-    "start_distance": 0.0,
-    "distance": 40.0,
-    "adjustment_time_hours": 0.0,
-    "elapsed_time_hours": 3.0,
-    "down_time_hours": 0.0,
-    "moving_time_hours": 2.0,
-    "sleep_time_hours": 1.0
-}
-```
-
-(Your actual response fields will depend on your calculator logic.)
-
----
+See the Swagger UI at `/docs` for the full request/response schema.
