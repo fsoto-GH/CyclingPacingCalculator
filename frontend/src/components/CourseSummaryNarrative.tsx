@@ -266,10 +266,15 @@ export default function CourseSummaryNarrative({
       }
     } else {
       // Multi-segment: full framing per segment
+      const segLabel = seg.name ? (
+        <strong>{seg.name}</strong>
+      ) : (
+        <>Segment {i + 1}</>
+      );
       if (stops.length === 0) {
         paragraphs.push(
           <>
-            <strong>Segment {i + 1}</strong> covers{" "}
+            {segLabel} covers{" "}
             <strong>
               {dist} {dLabel}
             </strong>{" "}
@@ -281,7 +286,7 @@ export default function CourseSummaryNarrative({
         const word = stops.length === 1 ? "stop" : "stops";
         paragraphs.push(
           <>
-            <strong>Segment {i + 1}</strong> covers{" "}
+            {segLabel} covers{" "}
             <strong>
               {dist} {dLabel}
             </strong>{" "}
@@ -297,13 +302,18 @@ export default function CourseSummaryNarrative({
       const sleepHours = seg.sleep_time_hours;
       const nextSeg = result.segment_details[i + 1];
       const nextStart = fmtTime(nextSeg.start_time, courseTz);
+      const nextName = nextSeg.name ? (
+        <strong>{nextSeg.name}</strong>
+      ) : (
+        <>Segment {i + 2}</>
+      );
       paragraphs.push(
         <>
           After{" "}
           <strong title={formatHours(sleepHours, "full")}>
             {formatHours(sleepHours)} of rest
           </strong>
-          , Segment {i + 2} begins <strong>{nextStart}</strong>.
+          , {nextName} begins <strong>{nextStart}</strong>.
         </>,
       );
     }

@@ -86,7 +86,10 @@ export default function SegmentFormComponent({
   ];
   if (totalDist > 0) summaryParts.push(`${totalDist.toFixed(1)} ${dLabel}`);
   if (sleepHms) summaryParts.push(`💤 ${sleepHms}`);
-  const summary = `Segment ${segIndex + 1}: ${summaryParts.join(" · ")}`;
+  const displayName = value.name?.trim() || null;
+  const summary = displayName
+    ? `${displayName} — ${summaryParts.join(" · ")}`
+    : `Segment ${segIndex + 1}: ${summaryParts.join(" · ")}`;
 
   return (
     <div className="segment-form">
@@ -97,6 +100,15 @@ export default function SegmentFormComponent({
 
       {!collapsed && (
         <div className="segment-body">
+          <div className="field segment-name-field">
+            <input
+              id={`${prefix}-name`}
+              type="text"
+              placeholder={`Segment ${segIndex + 1} name (optional)`}
+              value={value.name ?? ""}
+              onChange={(e) => update({ name: e.target.value })}
+            />
+          </div>
           <div className="fields-grid">
             <TimeInput
               id={`${prefix}-sleep-time`}

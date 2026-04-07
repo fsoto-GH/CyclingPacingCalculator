@@ -29,6 +29,7 @@ import { FieldErrorContext, FieldError } from "./FieldError";
 
 function makeDefaultSegment(): SegmentFormState {
   return {
+    name: "",
     sleep_time: "0",
     include_end_down_time: false,
     down_time_ratio: "",
@@ -122,10 +123,9 @@ function loadSavedForm(): CourseFormState {
 export default function CourseForm() {
   const [form, setForm] = useState<CourseFormState>(loadSavedForm);
   const [result, setResult] = useState<CourseDetail | null>(null);
-  const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [, setLoading] = useState(false); // used by API engine path
   const [touched, setTouched] = useState<Set<string>>(new Set());
-  const [submitted, setSubmitted] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
 
@@ -152,7 +152,6 @@ export default function CourseForm() {
     setResult(null);
     setApiError(null);
     setTouched(new Set());
-    setSubmitted(false);
   }, []);
 
   const handleLoadExample = useCallback((example: CourseFormState) => {
@@ -160,7 +159,6 @@ export default function CourseForm() {
     setResult(null);
     setApiError(null);
     setTouched(new Set());
-    setSubmitted(false);
   }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -448,13 +446,12 @@ export default function CourseForm() {
   );
 
   const visibleErrors = useMemo(() => {
-    if (submitted) return allErrors;
     const visible: Record<string, string> = {};
     for (const [id, msg] of Object.entries(allErrors)) {
       if (touched.has(id)) visible[id] = msg;
     }
     return visible;
-  }, [allErrors, touched, submitted]);
+  }, [allErrors, touched]);
 
   const handleBlur = useCallback((e: React.FocusEvent) => {
     const id = (e.target as HTMLElement).id;
@@ -468,68 +465,81 @@ export default function CourseForm() {
     }
   }, []);
 
-  // â”€â”€ Submit â”€â”€
-  const handleSubmit = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    setSubmitted(true);
-    setApiError(null);
-    const errs = computeFieldErrors(form);
-    if (Object.keys(errs).length > 0) {
-      const firstId = Object.keys(errs)[0];
-      document
-        .getElementById(firstId)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
+  // -- Auto-calculate whenever the form becomes valid --
+  useEffect(() => {
+    if (Object.keys(allErrors).length > 0) return;
 
-    setLoading(true);
-    try {
-      const payload = serializeCourse(form);
-      if (useEngine === "client") {
-        setResult(processCourse(payload));
-        setApiError(null);
-      } else {
-        const data = await calculateCourse(payload);
-        setResult(data);
-        setApiError(null);
-      }
-    } catch (err: unknown) {
-      setResult(null);
-      if (err instanceof CalcError) {
-        setApiError(
-          err.validationErrors.length > 0
-            ? err.validationErrors.join("\n")
-            : err.message,
-        );
-      } else if (typeof err === "object" && err !== null && "response" in err) {
-        const axErr = err as {
-          response?: { data?: { detail?: unknown }; status?: number };
-        };
-        const detail = axErr.response?.data?.detail;
-        if (Array.isArray(detail)) {
-          const msgs = detail.map((d: unknown) => {
-            if (typeof d === "string") return d;
-            if (typeof d === "object" && d !== null) {
-              const obj = d as { loc?: unknown[]; msg?: string };
-              const path = obj.loc ? obj.loc.join(" â†’ ") : "";
-              const msg = obj.msg ?? JSON.stringify(d);
-              return path ? `${path}: ${msg}` : msg;
-            }
-            return JSON.stringify(d);
-          });
-          setApiError(msgs.join("\n"));
-        } else if (typeof detail === "string") {
-          setApiError(detail);
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const payload = serializeCourse(form);
+        if (useEngine === "client") {
+          if (!cancelled) {
+            setResult(processCourse(payload));
+            setApiError(null);
+          }
         } else {
-          setApiError(`Server error (${axErr.response?.status ?? "unknown"})`);
+          setLoading(true);
+          const data = await calculateCourse(payload);
+          if (!cancelled) {
+            setResult(data);
+            setApiError(null);
+            setLoading(false);
+          }
         }
-      } else {
-        setApiError("Network error â€” is the API running?");
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setLoading(false);
+        if (err instanceof CalcError) {
+          setApiError(
+            err.validationErrors.length > 0
+              ? err.validationErrors.join("\n")
+              : err.message,
+          );
+        } else if (
+          typeof err === "object" &&
+          err !== null &&
+          "response" in err
+        ) {
+          const axErr = err as {
+            response?: { data?: { detail?: unknown }; status?: number };
+          };
+          const detail = axErr.response?.data?.detail;
+          if (Array.isArray(detail)) {
+            const msgs = detail.map((d: unknown) => {
+              if (typeof d === "string") return d;
+              if (typeof d === "object" && d !== null) {
+                const obj = d as { loc?: unknown[]; msg?: string };
+                const path = obj.loc ? obj.loc.join(" -> ") : "";
+                const msg = obj.msg ?? JSON.stringify(d);
+                return path ? `${path}: ${msg}` : msg;
+              }
+              return JSON.stringify(d);
+            });
+            setApiError(msgs.join("\n"));
+          } else if (typeof detail === "string") {
+            setApiError(detail);
+          } else {
+            setApiError(
+              `Server error (${axErr.response?.status ?? "unknown"})`,
+            );
+          }
+        } else {
+          setApiError("Network error - is the API running?");
+        }
       }
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    // Debounce: short for client (synchronous), longer for API to reduce calls.
+    const delay = useEngine === "client" ? 250 : 500;
+    const timer = setTimeout(run, delay);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allErrors]);
 
   return (
     <FieldErrorContext.Provider value={visibleErrors}>
@@ -799,14 +809,6 @@ export default function CourseForm() {
 
         {/* Action buttons */}
         <div className="button-row">
-          <button
-            type="button"
-            className={`action-btn action-btn-primary${useEngine === "api" ? " action-btn-primary--api" : ""}`}
-            onClick={handleSubmit}
-            disabled={loading}
-          >
-            {loading ? "Calculating..." : "Calculate"}
-          </button>
           <button
             type="button"
             className="action-btn action-btn-export"

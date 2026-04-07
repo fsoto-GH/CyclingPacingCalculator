@@ -82,6 +82,7 @@ function serializeSplit(split: SplitForm): SplitPayload {
 
 function serializeSegment(seg: SegmentForm): SegmentPayload {
   const payload: SegmentPayload = {
+    name: seg.name?.trim() || null,
     splits: seg.splits.map(serializeSplit),
     sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
     no_end_down_time: !seg.include_end_down_time,

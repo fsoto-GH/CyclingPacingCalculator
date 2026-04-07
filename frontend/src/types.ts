@@ -46,6 +46,7 @@ export interface SplitPayload {
 }
 
 export interface SegmentPayload {
+  name?: string | null;
   splits: SplitPayload[];
   down_time_ratio?: number | null;
   split_decay?: number | null;
@@ -113,6 +114,7 @@ export interface SplitForm {
 }
 
 export interface SegmentForm {
+  name?: string;
   sleep_time: string; // minutes
   include_end_down_time: boolean; // inverts to no_end_down_time
   down_time_ratio: string;

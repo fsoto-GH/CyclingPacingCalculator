@@ -338,7 +338,7 @@ function computeSegmentDetail(
     sleep_time_hours: msToHours(sleepMs),
     moving_speed: null,
     adjustment_start: null,
-    name: null,
+    name: seg.name ?? null,
   };
 }
 
