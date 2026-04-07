@@ -108,11 +108,11 @@ Then open `http://localhost:8000`. That's it — the frontend and API are both s
 
 The `docker-compose.yml` mounts the project directory into the container for live Python reloading, but isolates the `static/` folder so Docker always serves the image-built frontend. This means:
 
-| Scenario | What to do |
-|---|---|
-| Changed Python code | `docker compose up -d` (no `--build`) — `--reload` picks it up automatically |
-| Changed frontend code | `docker compose up -d --build` to rebuild the image |
-| Frontend dev with HMR | Run `npm run dev` separately (proxies API to `localhost:8000`) |
+| Scenario              | What to do                                                                   |
+| --------------------- | ---------------------------------------------------------------------------- |
+| Changed Python code   | `docker compose up -d` (no `--build`) — `--reload` picks it up automatically |
+| Changed frontend code | `docker compose up -d --build` to rebuild the image                          |
+| Frontend dev with HMR | Run `npm run dev` separately (proxies API to `localhost:8000`)               |
 
 ### Stop
 
