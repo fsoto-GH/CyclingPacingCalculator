@@ -22,6 +22,9 @@ def post_course_information(course: Course):
         raise HTTPException(status_code=400, detail=validation_result)
 
     course_dto = course_to_dto(course)
-    processed_course = process_course(course_dto)
 
-    return processed_course
+    try:
+        processed_course = process_course(course_dto)
+        return processed_course
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

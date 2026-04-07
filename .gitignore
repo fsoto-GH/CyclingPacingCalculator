@@ -80,3 +80,7 @@ fabric.properties
 .idea/caches/build_file_checksums.ser
     
 __pycache__
+
+# Frontend
+frontend/node_modules/
+static/

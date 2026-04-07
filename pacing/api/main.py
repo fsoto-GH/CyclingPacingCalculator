@@ -1,10 +1,43 @@
+import os
+
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from pacing.api.routes.calculator import v1_calculator
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://127.0.0.1:5173",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(v1_calculator.router)
+
+# Serve the built React frontend if the static/ directory exists
+_static_dir = os.path.join(os.path.dirname(__file__), "..", "..", "static")
+if os.path.isdir(_static_dir):
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        file_path = os.path.join(_static_dir, full_path)
+        if os.path.isfile(file_path):
+            response = FileResponse(file_path)
+            # Hashed assets (JS/CSS) can be cached indefinitely
+            if "/assets/" in full_path:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return response
+        # SPA fallback — always return index.html uncached so the browser
+        # picks up new builds immediately
+        response = FileResponse(os.path.join(_static_dir, "index.html"))
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
 
 if __name__ == '__main__':
     # this is to help debug

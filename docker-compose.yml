@@ -9,8 +9,11 @@ services:
     ports:
       - "8000:8000"
     # links pacing directory to the container, so that changes to the code will be reflected in the container without needing to rebuild it
+    # the anonymous volume for /pacing/static ensures the frontend built during `docker build` is not
+    # overwritten by the host mount (which would serve a stale or missing build)
     volumes:
       - .:/pacing
+      - /pacing/static
     restart: always
     # command here overrides the CMD in the Dockerfile, so it will run the API when the container starts
     command: uvicorn pacing.api.main:app --host 0.0.0.0 --port 8000 --reload

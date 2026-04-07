@@ -21,7 +21,7 @@ def process_course(course: Course, start_distance: float = 0) -> CourseDetail:
 def __validate_course(course: Course) -> bool:
     """
     This mode validates course values.
-    In TARGET_DISTANCE mode, it checks that split distances are non-decreasing.
+    In TARGET_DISTANCE mode, it checks that split distances are increasing.
     :param course:
     :return: bool indicating whether the course is valid or not
     """
@@ -33,13 +33,13 @@ def __validate_course(course: Course) -> bool:
         return True
 
     if course.mode == TARGET_DISTANCE:
-        # must be non-decreasing
-        lass_distance_marker: float = 0
+        # must be increasing
+        last_distance_marker: float = 0
         for segment in course.segments:
             for split in segment.splits:
-                if split.distance <= lass_distance_marker:
-                    raise ValueError("In DISTANCE mode, split distances must be non-decreasing.")
-                lass_distance_marker = split.distance
+                if split.distance <= last_distance_marker:
+                    raise ValueError("In TARGET_DISTANCE mode, split distances must be increasing.")
+                last_distance_marker = split.distance
         return True
 
 

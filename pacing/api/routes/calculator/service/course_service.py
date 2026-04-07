@@ -38,13 +38,16 @@ def validate_course(course: Course) -> list[str]:
             if sub_split_validation_result is not None:
                 res.append(sub_split_validation_result)
 
-            # if 'Fixed' is a key, we ignore 0-6
-            if split.rest_stop and 'Fixed' in split.rest_stop.open_hours and len(split.rest_stop.open_hours) > 1:
-                res.append(f"Rest stop (Segment {i}, Split {j}) '{split.rest_stop.name}' "
-                           f"has 'Fixed' as a key in open hours but also has other keys, which is invalid.")
-            elif split.rest_stop and len(split.rest_stop.open_hours) != 7:
-                res.append(f"Rest stop (Segment {i}, Split {j}) '{split.rest_stop.name}' "
-                           f"should have either keys 0-6 (where 0 is Monday) or only the 'Fixed' key.")
+            # validate rest stop
+            if split.rest_stop is not None:
+                is_fixed = 'fixed' in split.rest_stop.open_hours
+                # if 'fixed' is a key, we ignore 0-6
+                if is_fixed and len(split.rest_stop.open_hours) > 1:
+                    res.append(f"Rest stop (Segment {i}, Split {j}) '{split.rest_stop.name}' "
+                               f"has 'fixed' as a key in open hours but also has other keys, which is invalid.")
+                elif not is_fixed and len(split.rest_stop.open_hours) != 7:
+                    res.append(f"Rest stop (Segment {i}, Split {j}) '{split.rest_stop.name}' "
+                               f"should have either keys 0-6 (where 0 is Monday) or only the 'Fixed' key.")
 
     return res
 
@@ -65,7 +68,7 @@ def course_to_dto(course: Course) -> CourseDto:
                 SplitDto(
                     distance=split.distance,
                     sub_split_mode=sub_split_to_dto(split),
-                    rest_stop=split.rest_stop,
+                    rest_stop=rest_stop_to_dto(split),
                     down_time=split.down_time,
                     moving_speed=split.moving_speed,
                     adjustment_time=split.adjustment_time
@@ -112,11 +115,12 @@ def rest_stop_to_dto(split: Split) -> RestStopDto | None:
         return None
 
     open_hours: OpenHours
-    if 'Fixed' in split.rest_stop.open_hours:
-        open_hours = FixedOpenHours(hours=split.rest_stop.open_hours['Fixed'])
+    if 'fixed' in split.rest_stop.open_hours:
+        open_hours = FixedOpenHours(hours=split.rest_stop.open_hours['fixed'])
     else:
-        hours = {k: v for k, v in zip(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], split.rest_stop.open_hours)}
-        open_hours = WeeklyOpenHours(*hours)
+        day_keys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+        day_values = {day_keys[int(k)]: v for k, v in split.rest_stop.open_hours.items()}
+        open_hours = WeeklyOpenHours(**day_values)
 
     return RestStopDto(
         name=split.rest_stop.name,
