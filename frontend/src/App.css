@@ -890,6 +890,36 @@ h4 {
   border-color: #d4a017;
 }
 
+.nav-btn-loading {
+  opacity: 0.7;
+  cursor: not-allowed;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ── Inline spinner ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #93c5fd;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.btn-spinner-sm {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-width: 1.5px;
+}
+
 /* ── Course section header + course name input ── */
 .course-section-header {
   display: flex;
@@ -1444,6 +1474,17 @@ dialog {
   margin-bottom: 0.75rem;
 }
 
+.gpx-file-field-loading {
+  border-color: #4361ee;
+  background: #131328;
+  animation: gpx-loading-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes gpx-loading-pulse {
+  0%, 100% { border-color: #4361ee; }
+  50%       { border-color: #7c94f7; }
+}
+
 .gpx-file-meta {
   display: flex;
   flex-direction: column;
@@ -1457,6 +1498,13 @@ dialog {
   letter-spacing: 0.05em;
   color: var(--color-text-muted, #888);
   line-height: 1.2;
+}
+
+.gpx-label-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #93c5fd;
 }
 
 .gpx-file-name {
@@ -1473,6 +1521,11 @@ dialog {
   font-size: 0.78rem;
   color: var(--color-text-muted, #888);
   line-height: 1.2;
+}
+
+.gpx-stats-loading {
+  color: #6b7280;
+  font-style: italic;
 }
 
 .gpx-file-remove {

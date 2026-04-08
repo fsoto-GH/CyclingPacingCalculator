@@ -134,6 +134,7 @@ export default function CourseForm() {
   const [gpxTrack, setGpxTrack] = useState<GpxTrackPoint[] | null>(null);
   const [gpxSurface, setGpxSurface] = useState<string | null>(null);
   const [gpxFileName, setGpxFileName] = useState<string | null>(null);
+  const [gpxLoading, setGpxLoading] = useState(false);
   const gpxFileRef = useRef<HTMLInputElement>(null);
   const useEngine: "client" | "api" =
     new URLSearchParams(window.location.search).get("engine") === "api"
@@ -198,18 +199,30 @@ export default function CourseForm() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      // Show loading state immediately with the filename
+      const displayName = file.name.replace(/\.gpx$/i, "");
+      setGpxFileName(displayName);
+      setGpxLoading(true);
+      setGpxTrack(null);
+      setGpxSurface(null);
       const reader = new FileReader();
       reader.onload = () => {
         const xml = reader.result as string;
-        try {
-          const track = parseGpx(xml);
-          setGpxTrack(track);
-          setGpxSurface(extractSurfaceFromXml(xml));
-          setGpxFileName(file.name);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "Invalid GPX file";
-          setApiError(msg);
-        }
+        // Yield to the browser so the loading banner renders before
+        // the synchronous (potentially heavy) parse blocks the main thread.
+        setTimeout(() => {
+          try {
+            const track = parseGpx(xml);
+            setGpxTrack(track);
+            setGpxSurface(extractSurfaceFromXml(xml));
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Invalid GPX file";
+            setApiError(msg);
+            setGpxFileName(null);
+          } finally {
+            setGpxLoading(false);
+          }
+        }, 0);
       };
       reader.readAsText(file);
       e.target.value = "";
@@ -221,6 +234,7 @@ export default function CourseForm() {
     setGpxTrack(null);
     setGpxSurface(null);
     setGpxFileName(null);
+    setGpxLoading(false);
     if (gpxFileRef.current) gpxFileRef.current.value = "";
   }, []);
 
@@ -585,11 +599,18 @@ export default function CourseForm() {
             />
             <button
               type="button"
-              className="nav-btn"
-              onClick={() => gpxFileRef.current?.click()}
+              className={`nav-btn${gpxLoading ? " nav-btn-loading" : ""}`}
+              onClick={() => !gpxLoading && gpxFileRef.current?.click()}
+              disabled={gpxLoading}
               title="Load a GPX track file for elevation profiles and nearby stops"
             >
-              Load GPX
+              {gpxLoading ? (
+                <>
+                  <span className="btn-spinner" /> Parsing…
+                </>
+              ) : (
+                "Load GPX"
+              )}
             </button>
             <input
               ref={gpxFileRef}
@@ -623,7 +644,20 @@ export default function CourseForm() {
         />
 
         {/* GPX banner */}
-        {gpxFileName && gpxTrack && (
+        {gpxFileName && gpxLoading && (
+          <div className="gpx-file-field gpx-file-field-loading">
+            <div className="gpx-file-meta">
+              <span className="gpx-file-label gpx-label-loading">
+                <span className="btn-spinner btn-spinner-sm" /> Parsing GPX
+              </span>
+              <span className="gpx-file-name">{gpxFileName}</span>
+              <span className="gpx-file-stats gpx-stats-loading">
+                Reading track points…
+              </span>
+            </div>
+          </div>
+        )}
+        {gpxFileName && gpxTrack && !gpxLoading && (
           <div className="gpx-file-field">
             <div className="gpx-file-meta">
               <span className="gpx-file-label">🗺 GPX route</span>
