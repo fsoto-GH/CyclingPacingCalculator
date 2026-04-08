@@ -182,6 +182,7 @@ interface ResultsViewProps {
   unitSystem: UnitSystem;
   formSegments: SegmentForm[];
   courseTz: string;
+  courseName?: string;
 }
 
 export default function ResultsView({
@@ -189,6 +190,7 @@ export default function ResultsView({
   unitSystem,
   formSegments,
   courseTz,
+  courseName,
 }: ResultsViewProps) {
   const [showJson, setShowJson] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -204,6 +206,7 @@ export default function ResultsView({
         formSegments={formSegments}
         courseTz={courseTz}
         unitSystem={unitSystem}
+        courseName={courseName}
       />
 
       {/* Course Summary */}
@@ -545,6 +548,9 @@ function SplitRow({
           {splitNumber}
         </td>
         <td>
+          {split.name && (
+            <span className="split-name-label">{split.name} — </span>
+          )}
           {split.distance.toFixed(2)} ({split.span[0].toFixed(1)} –{" "}
           {split.span[1].toFixed(1)})
         </td>
@@ -622,11 +628,12 @@ function SplitRow({
                     <thead>
                       <tr>
                         <th title="Sub-split number">#</th>
-                        <th title="Sub-split distance">Distance ({dLabel})</th>
-                        <th title="Start – end position along the course">
-                          Span
+                        <th title="Sub-split distance and span (start – end)">
+                          Distance ({dLabel})
                         </th>
-                        <th title="Moving time + down time">Split Time</th>
+                        <th title="Moving time">Moving</th>
+                        <th title="Down time">Down</th>
+                        <th title="Moving time + down time">Split</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -741,9 +748,15 @@ function SubSplitRow({ sub, index }: { sub: SubSplitDetail; index: number }) {
   return (
     <tr>
       <td className="num-col">{index}</td>
-      <td>{sub.distance.toFixed(2)}</td>
       <td>
-        {sub.span[0].toFixed(2)} – {sub.span[1].toFixed(2)}
+        {sub.distance.toFixed(2)} ({sub.span[0].toFixed(1)} – 
+        {sub.span[1].toFixed(1)})
+      </td>
+      <td title={formatHours(sub.moving_time_hours, "full")}>
+        {formatHours(sub.moving_time_hours)}
+      </td>
+      <td title={formatHours(sub.down_time_hours, "full")}>
+        {formatHours(sub.down_time_hours)}
       </td>
       <td title={formatHours(subSplitTime, "full")}>
         {formatHours(subSplitTime)}

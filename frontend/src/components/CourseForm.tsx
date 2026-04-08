@@ -44,6 +44,7 @@ function makeDefaultSegment(): SegmentFormState {
 const STORAGE_KEY = "cycling-pacing-form";
 
 const INITIAL_FORM: CourseFormState = {
+  name: "",
   unitSystem: "imperial",
   mode: "distance",
   timezone: browserTimezone,
@@ -255,9 +256,20 @@ export default function CourseForm() {
     }
     const timer = setTimeout(() => {
       try {
-        const splitDistances = form.segments.map((seg) =>
-          seg.splits.map((sp) => parseFloat(sp.distance) || 0),
-        );
+        // In target_distance mode the split distances are cumulative course
+        // markers; convert them to per-split chunk distances before slicing
+        // the GPX track (mirrors normalizeSplitDistances in courseProcessor).
+        let tdOffset = 0;
+        const splitDistances = form.segments.map((seg) => {
+          const raw = seg.splits.map((sp) => parseFloat(sp.distance) || 0);
+          if (form.mode !== "target_distance") return raw;
+          const markers = [tdOffset, ...raw];
+          const chunks = raw.map((_, i) =>
+            Math.max(0, markers[i + 1] - markers[i]),
+          );
+          tdOffset = raw[raw.length - 1] || tdOffset;
+          return chunks;
+        });
         setGpxProfiles(
           computeAllProfiles(
             gpxTrack,
@@ -272,7 +284,7 @@ export default function CourseForm() {
     }, 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpxTrack, gpxSurface, splitDistancesKey, form.unitSystem]);
+  }, [gpxTrack, gpxSurface, splitDistancesKey, form.unitSystem, form.mode]);
 
   // â”€â”€ Handlers â”€â”€
   const handleSegmentCountChange = (raw: string) => {
@@ -693,6 +705,20 @@ export default function CourseForm() {
           </div>
         </div>
 
+        {/* Course name + section label */}
+        <div className="course-section-header">
+          <h3 className="course-section-title">Course Settings</h3>
+          <div className="field course-name-field">
+            <input
+              id="course-name"
+              type="text"
+              placeholder="Course name (optional, e.g. Mishigami 2025)"
+              value={form.name ?? ""}
+              onChange={(e) => update({ name: e.target.value })}
+            />
+          </div>
+        </div>
+
         {/* Course-level inputs */}
         <div className="fields-grid">
           <div className="field">
@@ -839,6 +865,7 @@ export default function CourseForm() {
           unitSystem={form.unitSystem}
           formSegments={form.segments}
           courseTz={form.timezone}
+          courseName={form.name?.trim() || undefined}
         />
       )}
     </FieldErrorContext.Provider>

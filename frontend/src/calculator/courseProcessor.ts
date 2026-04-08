@@ -219,6 +219,7 @@ function computeSplitDetail(
   );
 
   const detail: SplitDetail = {
+    name: split.name ?? null,
     distance: split.distance,
     start_time: new Date(startTimeMs).toISOString(),
     end_time: new Date(endTimeMs).toISOString(),

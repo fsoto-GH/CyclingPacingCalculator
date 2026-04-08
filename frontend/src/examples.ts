@@ -190,6 +190,7 @@ const COMPLEX_EXAMPLE_FORM: CourseFormState = {
 
 // Mishigami — 1121.2 mi unsupported ultra-cycling loop around Lake Michigan
 const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
+  name: "Mishigami 2025",
   unitSystem: "imperial",
   timezone: "America/Chicago",
   mode: "target_distance",
@@ -202,6 +203,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
   segments: [
     {
       // Chicago → St Ignace
+      name: "Chicago to St Ignace",
       sleep_time: "240",
       include_end_down_time: true,
       down_time_ratio: "",
@@ -211,6 +213,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
       splitCount: "5",
       splits: [
         {
+          name: "Chicago to Milwaukee",
           distance: "114.3",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -241,6 +244,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Chicago",
         },
         {
+          name: "Milwaukee to Green Bay",
           distance: "246.5",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -271,6 +275,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Chicago",
         },
         {
+          name: "Green Bay to Bark River",
           distance: "394.3",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -301,6 +306,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Detroit",
         },
         {
+          name: "Bark River to Blaney Park",
           distance: "480.7",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -331,6 +337,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Detroit",
         },
         {
+          name: "Blaney Park to St Ignace",
           distance: "571.5",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -364,6 +371,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
     },
     {
       // St Ignace → Chicago
+      name: "St Ignace to Chicago",
       sleep_time: "0",
       include_end_down_time: false,
       down_time_ratio: "",
@@ -373,6 +381,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
       splitCount: "5",
       splits: [
         {
+          name: "St Ignace to Elk Rapids",
           distance: "696.8",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -403,6 +412,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Detroit",
         },
         {
+          name: "Elk Rapids to Manistee",
           distance: "805.3",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -433,6 +443,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Detroit",
         },
         {
+          name: "Manistee to Beechwood",
           distance: "936.2",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -463,6 +474,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Detroit",
         },
         {
+          name: "Beechwood to New Buffalo",
           distance: "1036.2",
           sub_split_mode: "fixed",
           sub_split_count: "1",
@@ -493,6 +505,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Detroit",
         },
         {
+          name: "New Buffalo to Chicago",
           distance: "1121.2",
           sub_split_mode: "fixed",
           sub_split_count: "1",

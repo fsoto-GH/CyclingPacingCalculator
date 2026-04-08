@@ -105,6 +105,43 @@ function fmtTime(iso: string, tz: string): string {
   });
 }
 
+/** Return the short timezone abbreviation for an ISO timestamp in a given IANA tz. */
+function tzAbbr(iso: string, tz: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    timeZoneName: "short",
+  }).formatToParts(new Date(iso));
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
+}
+
+/**
+ * Collect unique timezone transitions within a segment's splits.
+ * Returns pairs like [["CDT", "ET"], ...] for each transition boundary.
+ */
+function getSegmentTzShifts(
+  formSeg: SegmentForm,
+  courseTz: string,
+  splitEndTimes: string[],
+): string[] {
+  const abbrs: string[] = [];
+  let prev: string | null = null;
+
+  formSeg.splits.forEach((split, i) => {
+    const tz =
+      split.differentTimezone && split.timezone ? split.timezone : courseTz;
+    const endIso = splitEndTimes[i];
+    if (!endIso) return;
+    const abbr = tzAbbr(endIso, tz);
+    if (prev !== null && abbr !== prev) {
+      if (!abbrs.includes(prev)) abbrs.push(prev);
+      if (!abbrs.includes(abbr)) abbrs.push(abbr);
+    }
+    prev = abbr;
+  });
+
+  return abbrs; // non-empty only when there was at least one transition
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 interface StopInfo {
@@ -117,6 +154,7 @@ interface CourseSummaryNarrativeProps {
   formSegments: SegmentForm[];
   courseTz: string;
   unitSystem: UnitSystem;
+  courseName?: string;
 }
 
 export default function CourseSummaryNarrative({
@@ -124,6 +162,7 @@ export default function CourseSummaryNarrative({
   formSegments,
   courseTz,
   unitSystem,
+  courseName,
 }: CourseSummaryNarrativeProps) {
   const dLabel = distanceLabel(unitSystem);
   const segCount = result.segment_details.length;
@@ -150,7 +189,13 @@ export default function CourseSummaryNarrative({
   if (segCount === 1) {
     paragraphs.push(
       <>
-        A{" "}
+        {courseName ? (
+          <>
+            <strong>{courseName}</strong> — a{" "}
+          </>
+        ) : (
+          <>A </>
+        )}
         <strong>
           {totalDist}-{dLabel}
         </strong>{" "}
@@ -161,7 +206,13 @@ export default function CourseSummaryNarrative({
   } else {
     paragraphs.push(
       <>
-        A{" "}
+        {courseName ? (
+          <>
+            <strong>{courseName}</strong> — a{" "}
+          </>
+        ) : (
+          <>A </>
+        )}
         <strong>
           {totalDist}-{dLabel}
         </strong>{" "}
@@ -174,8 +225,24 @@ export default function CourseSummaryNarrative({
   // Per-segment sentences
   for (let i = 0; i < result.segment_details.length; i++) {
     const seg = result.segment_details[i];
+    const formSeg = formSegments[i];
     const stops = segStops[i];
     const dist = seg.distance.toFixed(1);
+
+    // Timezone shift note for this segment
+    const splitEndTimes = seg.split_details.map((s) => s.end_time);
+    const tzShifts = formSeg
+      ? getSegmentTzShifts(formSeg, courseTz, splitEndTimes)
+      : [];
+    const tzShiftNote: React.ReactNode =
+      tzShifts.length >= 2 ? (
+        <>
+          {" "}
+          <span className="narrative-tz">
+            (crosses time zones: {tzShifts.join(" → ")})
+          </span>
+        </>
+      ) : null;
 
     const openStops = stops.filter((s) => s.status === "open");
     const nearStops = stops.filter((s) => s.status === "near");
@@ -261,8 +328,11 @@ export default function CourseSummaryNarrative({
           <>
             {stops.length === 1 ? "One stop" : `${stops.length} stops`} along
             the way: <strong>{stopNames}</strong>.{statusDesc}
+            {tzShiftNote}
           </>,
         );
+      } else if (tzShiftNote) {
+        paragraphs.push(<>{tzShiftNote}</>);
       }
     } else {
       // Multi-segment: full framing per segment
@@ -278,7 +348,7 @@ export default function CourseSummaryNarrative({
             <strong>
               {dist} {dLabel}
             </strong>{" "}
-            with no rest stops.
+            with no rest stops.{tzShiftNote}
           </>,
         );
       } else {
@@ -292,6 +362,7 @@ export default function CourseSummaryNarrative({
             </strong>{" "}
             with {stops.length} {word} — <strong>{stopNames}</strong>.
             {statusDesc}
+            {tzShiftNote}
           </>,
         );
       }

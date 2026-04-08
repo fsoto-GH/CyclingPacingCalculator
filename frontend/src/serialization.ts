@@ -50,6 +50,7 @@ function serializeRestStop(split: SplitForm): RestStopPayload | null {
 
 function serializeSplit(split: SplitForm): SplitPayload {
   const payload: SplitPayload = {
+    name: split.name?.trim() || null,
     distance: parseFloat(split.distance),
     sub_split_mode: split.sub_split_mode,
     adjustment_time: minutesToSeconds(split.adjustment_time) ?? 0,

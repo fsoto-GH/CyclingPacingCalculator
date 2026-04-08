@@ -33,6 +33,7 @@ export interface RestStopPayload {
 }
 
 export interface SplitPayload {
+  name?: string | null;
   distance: number;
   sub_split_mode: SubSplitMode;
   sub_split_count?: number | null;
@@ -99,6 +100,7 @@ export interface RestStopForm {
 }
 
 export interface SplitForm {
+  name?: string;
   distance: string;
   sub_split_mode: SubSplitMode;
   sub_split_count: string;
@@ -126,6 +128,7 @@ export interface SegmentForm {
 }
 
 export interface CourseForm {
+  name?: string;
   unitSystem: UnitSystem;
   mode: Mode;
   timezone: string; // IANA timezone
@@ -158,6 +161,7 @@ export interface SubSplitDetail {
 }
 
 export interface SplitDetail extends SubSplitDetail {
+  name?: string | null;
   sub_splits: SubSplitDetail[];
   adjustment_start: string;
   adjustment_time: string;

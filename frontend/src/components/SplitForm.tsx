@@ -57,12 +57,16 @@ export default function SplitFormComponent({
   const summary = summaryParts.length
     ? summaryParts.join(" · ")
     : "(no distance)";
+  const displayName = value.name?.trim() || null;
+  const headerTitle = displayName ? displayName : `Split ${splitIndex + 1}`;
+
+  console.log("console.log: ", gpxProfile?.surface);
 
   return (
     <div className="split-form">
       <div className="split-header" onClick={() => setCollapsed((c) => !c)}>
         <span className="collapse-icon-sm">{collapsed ? "▶" : "▼"}</span>
-        <span className="split-header-title">Split {splitIndex + 1}</span>
+        <span className="split-header-title">{headerTitle}</span>
         {collapsed && <span className="split-header-summary">{summary}</span>}
         {gpxProfile && (
           <span className="split-header-elev" title="Elevation gain / loss">
@@ -75,6 +79,15 @@ export default function SplitFormComponent({
 
       {!collapsed && (
         <div className="split-body">
+          <div className="field segment-name-field split-name-field">
+            <input
+              id={`${prefix}-name`}
+              type="text"
+              placeholder={`Split ${splitIndex + 1} name (optional)`}
+              value={value.name ?? ""}
+              onChange={(e) => update({ name: e.target.value })}
+            />
+          </div>
           <div className="fields-grid">
             <div className="field">
               <label htmlFor={`${prefix}-distance`}>
@@ -258,7 +271,7 @@ export default function SplitFormComponent({
             )}
           </div>
 
-          {/* Rest Stop */}
+          {/* GPX elevation badges */}
           {gpxProfile && (
             <div className="gpx-badge-row">
               <span className="gpx-badge" title="Elevation gain">
@@ -280,6 +293,26 @@ export default function SplitFormComponent({
               )}
             </div>
           )}
+
+          {/* OSM endpoint map — shown when GPX is loaded and distance is set */}
+          {gpxProfile?.endLat != null && value.distance && (
+            <div className="split-map">
+              <iframe
+                title={`Split ${splitIndex + 1} endpoint`}
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${gpxProfile.endLon - 0.02},${gpxProfile.endLat - 0.015},${gpxProfile.endLon + 0.02},${gpxProfile.endLat + 0.015}&layer=mapnik&marker=${gpxProfile.endLat},${gpxProfile.endLon}`}
+                className="split-map-iframe"
+                loading="lazy"
+              />
+              <a
+                href={`https://www.openstreetmap.org/?mlat=${gpxProfile.endLat}&mlon=${gpxProfile.endLon}#map=14/${gpxProfile.endLat}/${gpxProfile.endLon}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="split-map-link"
+              >
+                Open in OSM ↗
+              </a>
+            </div>
+          )}
           <RestStopFormComponent
             prefix={`${prefix}-rs`}
             value={value.rest_stop}
@@ -287,17 +320,22 @@ export default function SplitFormComponent({
           />
           {gpxProfile?.endLat != null && (
             <div className="nearby-stops-section">
-              <button
-                type="button"
-                className="nearby-search-btn"
-                onClick={() => setShowNearby(!showNearby)}
-              >
-                {showNearby ? "▲ Hide Nearby Stops" : "🔍 Find Nearby Stops"}
-              </button>
+              {!showNearby && (
+                <button
+                  type="button"
+                  className="nearby-find-btn"
+                  onClick={() => setShowNearby(true)}
+                >
+                  🔍 Find Nearby Stops
+                </button>
+              )}
               {showNearby && (
                 <NearbyStopsPanel
+                  key={`${gpxProfile.endLat},${gpxProfile.endLon}`}
                   lat={gpxProfile.endLat}
                   lon={gpxProfile.endLon}
+                  unitSystem={unitSystem}
+                  onClose={() => setShowNearby(false)}
                   onSelect={(patch) =>
                     update({
                       rest_stop: { ...value.rest_stop, ...patch },

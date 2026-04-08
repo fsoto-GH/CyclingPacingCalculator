@@ -197,22 +197,20 @@ interface OverpassResponse {
  * Query Overpass API for nearby amenities.
  * @param lat      - Latitude of split endpoint
  * @param lon      - Longitude of split endpoint
- * @param radiusM  - Search radius in metres (default 2000)
+ * @param radiusM  - Search radius in metres (default 1000)
  * @param signal   - AbortSignal for cancellation
  */
 export async function queryNearbyAmenities(
   lat: number,
   lon: number,
-  radiusM = 2000,
+  radiusM = 1000,
   signal?: AbortSignal,
 ): Promise<NearbyAmenity[]> {
+  // Nodes only (no way) + maxsize cap to keep queries light.
   const query = `
-[out:json][timeout:15];
-(
-  node(around:${radiusM},${lat},${lon})[amenity~"${AMENITY_TYPES}"][name];
-  way(around:${radiusM},${lat},${lon})[amenity~"${AMENITY_TYPES}"][name];
-);
-out center tags;
+[out:json][timeout:10][maxsize:1048576];
+node(around:${radiusM},${lat},${lon})[amenity~"${AMENITY_TYPES}"][name];
+out;
 `.trim();
 
   const resp = await fetch(OVERPASS_URL, {
