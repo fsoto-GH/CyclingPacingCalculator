@@ -45,7 +45,11 @@ export default function SplitFormComponent({
       if (!value.differentTimezone || value.timezone !== detectedTz) {
         onChange({ ...value, differentTimezone: true, timezone: detectedTz });
       }
-    } else if (detectedTz === courseTz && value.differentTimezone && value.timezone === detectedTz) {
+    } else if (
+      detectedTz === courseTz &&
+      value.differentTimezone &&
+      value.timezone === detectedTz
+    ) {
       // Endpoint tz matches the course tz — clear the auto-set override
       onChange({ ...value, differentTimezone: false });
     }
@@ -79,13 +83,16 @@ export default function SplitFormComponent({
   const displayName = value.name?.trim() || null;
   const headerTitle = displayName ? displayName : `Split ${splitIndex + 1}`;
 
-  // Timezone badge — shown when GPX detected a different tz at this endpoint
-  const gpxTz = gpxProfile?.endTimezone ?? null;
-  const gpxTzDiffers = gpxTz != null && gpxTz !== courseTz;
-  const gpxTzAbbr = gpxTzDiffers
-    ? (new Intl.DateTimeFormat("en-US", { timeZone: gpxTz, timeZoneName: "short" })
+  // Timezone badge — shown whenever a split timezone override is active
+  const activeTz =
+    value.differentTimezone && value.timezone ? value.timezone : null;
+  const tzBadgeAbbr = activeTz
+    ? (new Intl.DateTimeFormat("en-US", {
+        timeZone: activeTz,
+        timeZoneName: "short",
+      })
         .formatToParts(new Date())
-        .find((p) => p.type === "timeZoneName")?.value ?? gpxTz)
+        .find((p) => p.type === "timeZoneName")?.value ?? activeTz)
     : null;
 
   return (
@@ -95,9 +102,12 @@ export default function SplitFormComponent({
         <span className="split-header-title">{headerTitle}</span>
         {collapsed && <span className="split-header-summary">{summary}</span>}
         <div className="split-header-badges">
-          {gpxTzAbbr && (
-            <span className="split-tz-badge" title={`Endpoint timezone: ${gpxTz}`}>
-              🕐 {gpxTzAbbr}
+          {tzBadgeAbbr && (
+            <span
+              className="split-tz-badge"
+              title={`Split timezone: ${activeTz}`}
+            >
+              🕐 {tzBadgeAbbr}
             </span>
           )}
           {gpxProfile && (
