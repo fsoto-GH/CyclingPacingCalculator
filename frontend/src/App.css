@@ -764,6 +764,20 @@ h4 {
   padding-top: 1.5rem;
 }
 
+.course-map-container {
+  height: 420px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+  border: 1px solid #3a3a3a;
+}
+
+@media (max-width: 640px) {
+  .course-map-container {
+    height: 260px;
+  }
+}
+
 .course-summary {
   margin-bottom: 1.5rem;
 }
@@ -852,7 +866,6 @@ h4 {
   font-size: 0.75rem;
   user-select: none;
 }
-
 
 
 .split-row {

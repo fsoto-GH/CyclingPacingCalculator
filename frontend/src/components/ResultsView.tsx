@@ -13,6 +13,7 @@ import type {
 import { speedLabel, distanceLabel, formatHours } from "../utils";
 import CourseSummaryNarrative from "./CourseSummaryNarrative";
 import GpxExportModal from "./GpxExportModal";
+import CourseMap from "./CourseMap";
 
 /** Convert HH:MM to minutes since midnight. */
 function timeToMin(t: string): number {
@@ -173,13 +174,6 @@ function getArrivalDayHours(
   return { dayLabel: dayName, hoursLabel };
 }
 
-/** Compact time cell with full-precision hover tooltip. */
-function TimeCell({ hours }: { hours: number | null | undefined }) {
-  return (
-    <td title={formatHours(hours, "full")}>{formatHours(hours, "compact")}</td>
-  );
-}
-
 interface ResultsViewProps {
   result: CourseDetail;
   unitSystem: UnitSystem;
@@ -219,6 +213,15 @@ export default function ResultsView({
         unitSystem={unitSystem}
         courseName={courseName}
       />
+
+      {gpxTrack && splitBoundariesKm && (
+        <CourseMap
+          gpxTrack={gpxTrack}
+          splitBoundariesKm={splitBoundariesKm}
+          formSegments={formSegments}
+          unitSystem={unitSystem}
+        />
+      )}
 
       {/* Course Summary */}
       <div className="course-summary">
@@ -467,7 +470,7 @@ function SegmentSection({
                     Distance ({dLabel})
                   </th>
                   <th title="Start to end time with active duration">
-                    Time Span
+                    Time Span ({sLabel})
                   </th>
                   <th title="Average pace including decay">Pace ({sLabel})</th>
                 </tr>
@@ -663,7 +666,9 @@ function SplitRow({
                 )}
               <div>
                 <dt>Speed</dt>
-                <dd>{split.moving_speed.toFixed(2)} {sLabel}</dd>
+                <dd>
+                  {split.moving_speed.toFixed(2)} {sLabel}
+                </dd>
               </div>
               <div>
                 <dt>Start</dt>
