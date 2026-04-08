@@ -18,6 +18,8 @@ interface SplitFormProps {
   gpxProfile?: SplitGpxProfile | null;
   courseTz: string;
   gpxDistStatus?: "over" | "under-last" | null;
+  nearbyCity?: string | null;
+  nearbyCity_fetching?: boolean;
 }
 
 export default function SplitFormComponent({
@@ -31,6 +33,8 @@ export default function SplitFormComponent({
   gpxProfile,
   courseTz,
   gpxDistStatus,
+  nearbyCity,
+  nearbyCity_fetching,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
@@ -167,6 +171,14 @@ export default function SplitFormComponent({
                 onChange={(e) => update({ distance: e.target.value })}
               />
               <FieldError fieldId={`${prefix}-distance`} />
+              {nearbyCity_fetching && (
+                <span className="split-nearby-city split-nearby-city--loading">
+                  (finding nearest city...)
+                </span>
+              )}
+              {!nearbyCity_fetching && nearbyCity && (
+                <span className="split-nearby-city">{nearbyCity}</span>
+              )}
             </div>
           </div>
 

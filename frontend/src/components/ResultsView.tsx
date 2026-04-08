@@ -183,6 +183,7 @@ interface ResultsViewProps {
   formSegments: SegmentForm[];
   courseTz: string;
   courseName?: string;
+  cityLabels?: (string | null)[][];
 }
 
 export default function ResultsView({
@@ -191,6 +192,7 @@ export default function ResultsView({
   formSegments,
   courseTz,
   courseName,
+  cityLabels,
 }: ResultsViewProps) {
   const [showJson, setShowJson] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -290,6 +292,7 @@ export default function ResultsView({
           dLabel={dLabel}
           formSegments={formSegments}
           courseTz={courseTz}
+          cityLabels={cityLabels?.[i]}
         />
       ))}
 
@@ -325,6 +328,7 @@ function SegmentSection({
   dLabel,
   formSegments,
   courseTz,
+  cityLabels,
 }: {
   segment: SegmentDetail;
   index: number;
@@ -332,6 +336,7 @@ function SegmentSection({
   dLabel: string;
   formSegments: SegmentForm[];
   courseTz: string;
+  cityLabels?: (string | null)[];
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -455,6 +460,7 @@ function SegmentSection({
                     splitIdx={j}
                     formSegments={formSegments}
                     courseTz={courseTz}
+                    nearbyCity={cityLabels?.[j] ?? null}
                   />
                 ))}
               </tbody>
@@ -474,6 +480,7 @@ function SplitRow({
   splitIdx,
   formSegments,
   courseTz,
+  nearbyCity,
 }: {
   split: SplitDetail;
   splitNumber: number;
@@ -482,6 +489,7 @@ function SplitRow({
   splitIdx: number;
   formSegments: SegmentForm[];
   courseTz: string;
+  nearbyCity?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -593,30 +601,23 @@ function SplitRow({
                 )}
               <div>
                 <dt>Start</dt>
-                <dd>
-                  {splitTz
-                    ? fmtInTz(split.start_time, courseTz)
-                    : new Date(split.start_time).toLocaleString(
-                        undefined,
-                        dateOpts,
-                      )}
-                </dd>
+                <dd>{fmtInTz(split.start_time, courseTz)}</dd>
               </div>
               <div>
                 <dt>End</dt>
                 <dd>
-                  {splitTz
-                    ? fmtInTz(split.end_time, courseTz)
-                    : new Date(split.end_time).toLocaleString(
-                        undefined,
-                        dateOpts,
-                      )}
+                  {fmtInTz(split.end_time, courseTz)}
+                  {splitTz && (
+                    <span className="split-end-tz">
+                      {fmtInTz(split.end_time, splitTz)}
+                    </span>
+                  )}
                 </dd>
               </div>
-              {splitTz && (
+              {nearbyCity && (
                 <div>
-                  <dt>End ({splitTz.split("/").pop()?.replace(/_/g, " ")})</dt>
-                  <dd>{fmtInTz(split.end_time, splitTz)}</dd>
+                  <dt>Nearest City</dt>
+                  <dd>{nearbyCity}</dd>
                 </div>
               )}
             </dl>

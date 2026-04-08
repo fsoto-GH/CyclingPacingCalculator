@@ -18,7 +18,9 @@ import {
   computeAllProfiles,
   computeElevGainLoss,
   extractSurfaceFromXml,
+  interpolateLatLon,
 } from "../calculator/gpxParser";
+import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
 import ResultsView from "./ResultsView";
@@ -140,6 +142,23 @@ export default function CourseForm() {
   const [gpxFileName, setGpxFileName] = useState<string | null>(null);
   const [gpxLoading, setGpxLoading] = useState(false);
   const gpxFileRef = useRef<HTMLInputElement>(null);
+
+  // City label state — resolved city name per [segIdx][splitIdx].
+  // null = not yet fetched or fetch failed; undefined cell = no GPX.
+  const [cityLabels, setCityLabels] = useState<(string | null)[][]>([]);
+  // true while that cell is the actively in-flight request.
+  const [cityFetching, setCityFetching] = useState<boolean[][]>([]);
+  // Queue of pending geocode requests (not state — mutations don't need re-render).
+  type CityQueueItem = { segIdx: number; splitIdx: number; endKm: number };
+  const cityQueueRef = useRef<CityQueueItem[]>([]);
+  // Monotonically increasing generation — increment to cancel in-progress loop.
+  const cityGenRef = useRef(0);
+  // Tracks the endKm that was last successfully fetched per [segIdx][splitIdx],
+  // so we can apply the >5 mi threshold on distance edits.
+  const lastFetchedKmRef = useRef<(number | null)[][]>([]);
+  // Stable ref to gpxTrack for use inside async queue processor.
+  const gpxTrackRef = useRef<GpxTrackPoint[] | null>(null);
+  gpxTrackRef.current = gpxTrack;
 
   // Restore GPX from IndexedDB on mount (large files don't fit in localStorage).
   useEffect(() => {
@@ -527,6 +546,116 @@ export default function CourseForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, form.unitSystem, form.mode, splitDistancesKey]);
 
+  // City label queue
+  // Runs 600 ms after splitBoundariesKm changes. Each uncached Nominatim
+  // request is staggered 1100 ms apart to respect the 1 req/s policy.
+  // A distance change > 8.047 km (~5 mi) invalidates that cell cached label.
+  useEffect(() => {
+    if (!splitBoundariesKm || !gpxTrack) {
+      // GPX cleared -- wipe all city state and cancel any in-flight work.
+      cityGenRef.current++;
+      cityQueueRef.current = [];
+      setCityLabels([]);
+      setCityFetching([]);
+      lastFetchedKmRef.current = [];
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      const gen = ++cityGenRef.current;
+      const track = gpxTrackRef.current;
+      if (!track) return;
+
+      const toFetch: CityQueueItem[] = [];
+      splitBoundariesKm.forEach((segBounds, si) => {
+        segBounds.forEach(([, endKm], sj) => {
+          const prevKm = lastFetchedKmRef.current[si]?.[sj] ?? null;
+          const needsFetch =
+            prevKm === null || Math.abs(endKm - prevKm) > 8.047;
+          if (needsFetch) {
+            setCityLabels((prev) => {
+              const next = prev.map((r) => [...r]);
+              if (!next[si]) next[si] = [];
+              next[si][sj] = null;
+              return next;
+            });
+            cityQueueRef.current = cityQueueRef.current.filter(
+              (q) => !(q.segIdx === si && q.splitIdx === sj),
+            );
+            toFetch.push({ segIdx: si, splitIdx: sj, endKm });
+          }
+        });
+      });
+
+      if (toFetch.length === 0) return;
+
+      setCityFetching((prev) => {
+        const next = prev.map((r) => [...r]);
+        for (const { segIdx: si, splitIdx: sj } of toFetch) {
+          if (!next[si]) next[si] = [];
+          next[si][sj] = true;
+        }
+        return next;
+      });
+
+      cityQueueRef.current = [...cityQueueRef.current, ...toFetch];
+
+      async function processCityQueue() {
+        let lastWasNetwork = false;
+        while (cityQueueRef.current.length > 0 && cityGenRef.current === gen) {
+          const item = cityQueueRef.current.shift();
+          if (!item) break;
+          const { segIdx: si, splitIdx: sj, endKm } = item;
+          const t = gpxTrackRef.current;
+          if (!t) break;
+
+          const coord = interpolateLatLon(t, endKm);
+          const cached = coord
+            ? getCachedGeocode(coord.lat, coord.lon)
+            : undefined;
+          const isNetwork = coord !== null && cached === undefined;
+
+          // Only wait between actual network requests — cached hits are free.
+          if (isNetwork && lastWasNetwork) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 1100));
+            if (cityGenRef.current !== gen) break;
+          }
+          lastWasNetwork = isNetwork;
+
+          let label: string | null = null;
+          if (coord) {
+            label =
+              cached !== undefined
+                ? cached
+                : await reverseGeocode(coord.lat, coord.lon);
+          }
+
+          if (cityGenRef.current !== gen) break;
+
+          if (!lastFetchedKmRef.current[si]) lastFetchedKmRef.current[si] = [];
+          lastFetchedKmRef.current[si][sj] = endKm;
+
+          setCityLabels((prev) => {
+            const next = prev.map((r) => [...r]);
+            if (!next[si]) next[si] = [];
+            next[si][sj] = label;
+            return next;
+          });
+          setCityFetching((prev) => {
+            const next = prev.map((r) => [...r]);
+            if (!next[si]) next[si] = [];
+            next[si][sj] = false;
+            return next;
+          });
+        }
+      }
+
+      processCityQueue();
+    }, 600);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpxTrack, splitBoundariesKm]);
   // â”€â”€ Handlers â”€â”€
   const handleSegmentCountChange = (raw: string) => {
     update({ segmentCount: raw });
@@ -1097,6 +1226,8 @@ export default function CourseForm() {
               splitStatuses={splitGpxStatuses[i]}
               gpxTrack={gpxTrack}
               splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
+              cityLabels={cityLabels[i]}
+              cityFetching={cityFetching[i]}
             />
           ))}
         </div>
@@ -1144,6 +1275,7 @@ export default function CourseForm() {
           formSegments={form.segments}
           courseTz={form.timezone}
           courseName={form.name?.trim() || undefined}
+          cityLabels={cityLabels}
         />
       )}
     </FieldErrorContext.Provider>

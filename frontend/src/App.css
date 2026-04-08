@@ -341,6 +341,29 @@ h4 {
   color: #facc15; /* yellow-400 */
 }
 
+.split-nearby-city {
+  display: block;
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 0.15rem;
+}
+
+.split-nearby-city--loading {
+  animation: city-pulse 1.4s ease-in-out infinite;
+}
+
+.split-end-tz {
+  display: block;
+  font-size: 0.8em;
+  color: #888;
+  margin-top: 0.1rem;
+}
+
+@keyframes city-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 .split-header-summary {
   font-size: 0.8rem;
   color: #777;
@@ -796,6 +819,7 @@ h4 {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   margin-top: 0.75rem;
+  color-scheme: dark;
 }
 
 .detail-table {

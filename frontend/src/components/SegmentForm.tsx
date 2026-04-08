@@ -25,6 +25,8 @@ interface SegmentFormProps {
   splitStatuses?: ("over" | "under-last" | null)[];
   gpxTrack?: GpxTrackPoint[] | null;
   splitBoundariesKm?: [number, number][] | null;
+  cityLabels?: (string | null)[];
+  cityFetching?: boolean[];
 }
 
 export default function SegmentFormComponent({
@@ -38,6 +40,8 @@ export default function SegmentFormComponent({
   splitStatuses,
   gpxTrack,
   splitBoundariesKm,
+  cityLabels,
+  cityFetching,
 }: SegmentFormProps) {
   const [showExportModal, setShowExportModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -256,6 +260,8 @@ export default function SegmentFormComponent({
                 gpxProfile={gpxProfiles?.[j] ?? null}
                 courseTz={courseTz}
                 gpxDistStatus={splitStatuses?.[j] ?? null}
+                nearbyCity={cityLabels?.[j] ?? null}
+                nearbyCity_fetching={cityFetching?.[j] ?? false}
               />
             ))}
           </div>

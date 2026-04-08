@@ -326,6 +326,39 @@ export function computeSplitProfile(
 }
 
 /**
+ * Interpolate a lat/lon coordinate at an arbitrary cumulative distance (km)
+ * along the track. Uses binary search + linear interpolation between the two
+ * bracketing track points. Returns null if the track is empty or km is
+ * outside the track's range.
+ */
+export function interpolateLatLon(
+  track: GpxTrackPoint[],
+  km: number,
+): { lat: number; lon: number } | null {
+  if (track.length === 0) return null;
+  if (km <= track[0].cumDist) return { lat: track[0].lat, lon: track[0].lon };
+  const last = track[track.length - 1];
+  if (km >= last.cumDist) return { lat: last.lat, lon: last.lon };
+
+  // Binary search for the first point with cumDist >= km
+  let lo = 0,
+    hi = track.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (track[mid].cumDist < km) lo = mid + 1;
+    else hi = mid;
+  }
+  const b = track[lo];
+  const a = track[lo - 1];
+  const span = b.cumDist - a.cumDist;
+  const t = span < 1e-10 ? 0 : (km - a.cumDist) / span;
+  return {
+    lat: a.lat + t * (b.lat - a.lat),
+    lon: a.lon + t * (b.lon - a.lon),
+  };
+}
+
+/**
  * Slice raw track points between startKm and endKm (inclusive of boundary
  * points). Used for GPX export of individual splits.
  */
