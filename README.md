@@ -39,16 +39,20 @@ The frontend is a single-page React app located in [`frontend/`](./frontend). It
 
 ### Features
 
-- Multi-segment, multi-split course builder
+- Multi-segment, multi-split course builder with Distance and Target Distance modes
 - Imperial / metric toggle
-- Rest stop open hours with timezone-aware ETA badges
-- Collapsible segments and splits
+- Rest stop open hours with timezone-aware ETA badges (🟢 Open / 🟡 Near / 🔴 Closed)
+- Collapsible segments, splits, and results
 - Example courses (including the Mishigami Challenge)
 - Import / export course definitions as JSON
-- Results table with sub-split detail
-- GPX route loading with per-split elevation analysis
-- OSM-powered nearby stop search at each split endpoint
+- GPX route loading with per-split elevation analysis (gain, loss, grade, surface)
+- GPX split export — download a trimmed GPX for any individual split from the Results section
+- OSM-powered nearby stop search at each split endpoint via the Overpass API
+- Nearby city labels on split distance inputs via the Nominatim reverse geocoding API
+- Automatic timezone detection from GPX coordinates (no API call)
 - Natural language course summary with open-hours status
+- Real-time auto-calculation (no Calculate button needed)
+- Form state persisted to **localStorage**; GPX file persisted to **IndexedDB**
 
 ### Run the frontend locally (dev mode)
 
@@ -69,6 +73,17 @@ npm run build
 ```
 
 Output goes to `../static/`. The resulting files are a fully static site — host them on GitHub Pages, Netlify, Cloudflare Pages, S3, or anywhere that serves static files.
+
+### Browser persistence
+
+The frontend uses two browser-local storage mechanisms — no server, no account required:
+
+| Storage      | What is stored                   | Lifetime                              |
+| ------------ | -------------------------------- | ------------------------------------- |
+| localStorage | Full form state (JSON, compact)  | Until cleared manually or Reset       |
+| IndexedDB    | Raw GPX file (keyed by filename) | Until Remove / Reset or browser clear |
+
+Both are restored automatically on page load. If you export a course JSON and later import it on the same browser, the referenced GPX file (if still present in IndexedDB) is restored without re-uploading.
 
 ### Query parameters
 
@@ -245,6 +260,18 @@ Each expanded split shows:
 - Percentage of distance with grade > 5 % (marked 🟡 steep)
 - Dominant surface (e.g. `asphalt`, `gravel`)
 - An embedded OpenStreetMap iframe centred on the split endpoint with a pin
+- Nearest city label (fetched in the background via Nominatim with 1 req/s rate limiting)
+
+### GPX split export
+
+From the **Results** section, each segment has an **Export GPX splits** button that opens a modal listing all splits with their elevation statistics. You can select individual splits or the full segment and download a trimmed GPX. The exported file contains course waypoints only — any device-specific extensions or metadata from the original file are not preserved.
+
+### GPX distance indicators
+
+When a GPX file is loaded, the calculator checks your split configuration against the GPX total distance:
+
+- **Red \*** on a segment header or split — cumulative distance at that point exceeds the GPX course distance.
+- **Yellow \*** on the final segment — total configured distance falls short of the GPX course distance.
 
 ---
 
@@ -353,3 +380,20 @@ The **Load Example** button (toolbar) opens a modal with pre-built course config
 | **Mishigami Challenge** | A two-segment, 1,121-mile plan modelled on the actual Mishigami ultra-endurance race across Michigan (Chicago → St Ignace → Chicago), with realistic pacing decay, sleep windows, and timezone crossings. |
 
 Examples are defined as plain TypeScript objects in [`frontend/src/examples.ts`](./frontend/src/examples.ts). Adding a new example is as simple as adding an entry to the exported array — no build step or configuration change required.
+
+---
+
+## 🌍 APIs & External Services Used
+
+The frontend uses the following third-party APIs and services. All are free and open, and no API key is required for any of them.
+
+| Service           | Used for                                                               | Docs / Policy                                                                                                     |
+| ----------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **OpenStreetMap** | Map tiles in the embedded split-endpoint iframe                        | [osmfoundation.org](https://osmfoundation.org/wiki/Tile_Usage_Policy)                                             |
+| **Overpass API**  | Nearby rest stop / amenity search at split endpoints                   | [overpass-api.de](https://overpass-api.de)                                                                        |
+| **Nominatim**     | Reverse geocoding — nearest city label per split                       | [nominatim.org](https://nominatim.org) · [Usage Policy](https://operations.osmfoundation.org/policies/nominatim/) |
+| **tz-lookup**     | Browser-side timezone detection from GPS coordinates (no network call) | [npmjs.com/package/tz-lookup](https://www.npmjs.com/package/tz-lookup)                                            |
+
+### Nominatim rate limiting
+
+Nominatim's usage policy requires a maximum of **1 request per second**. The calculator enforces this with a sequential queue — city labels load one at a time with a 1.1 s gap between network requests. Coordinates that have been fetched in the current session are cached in memory and resolve instantly without a new request.

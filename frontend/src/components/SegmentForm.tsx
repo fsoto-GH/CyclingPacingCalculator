@@ -5,14 +5,12 @@ import type {
   UnitSystem,
   Mode,
   SplitGpxProfile,
-  GpxTrackPoint,
 } from "../types";
 import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import SplitFormComponent from "./SplitForm";
 import { FieldError } from "./FieldError";
-import GpxExportModal from "./GpxExportModal";
 
 interface SegmentFormProps {
   segIndex: number;
@@ -23,8 +21,6 @@ interface SegmentFormProps {
   gpxProfiles?: SplitGpxProfile[] | null;
   courseTz: string;
   splitStatuses?: ("over" | "under-last" | null)[];
-  gpxTrack?: GpxTrackPoint[] | null;
-  splitBoundariesKm?: [number, number][] | null;
   cityLabels?: (string | null)[];
   cityFetching?: boolean[];
 }
@@ -38,12 +34,9 @@ export default function SegmentFormComponent({
   gpxProfiles,
   courseTz,
   splitStatuses,
-  gpxTrack,
-  splitBoundariesKm,
   cityLabels,
   cityFetching,
 }: SegmentFormProps) {
-  const [showExportModal, setShowExportModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const hasOptionalValues =
     !!value.down_time_ratio ||
@@ -265,33 +258,7 @@ export default function SegmentFormComponent({
               />
             ))}
           </div>
-
-          {gpxTrack && (
-            <div className="segment-export-footer">
-              <button
-                type="button"
-                className="nav-btn segment-export-btn"
-                onClick={() => setShowExportModal(true)}
-              >
-                See GPX export options
-              </button>
-            </div>
-          )}
         </div>
-      )}
-
-      {gpxTrack && showExportModal && (
-        <GpxExportModal
-          open={showExportModal}
-          onClose={() => setShowExportModal(false)}
-          segIndex={segIndex}
-          segName={value.name}
-          splits={value.splits}
-          gpxTrack={gpxTrack}
-          splitBoundariesKm={splitBoundariesKm ?? []}
-          gpxProfiles={gpxProfiles ?? []}
-          unitSystem={unitSystem}
-        />
       )}
     </div>
   );

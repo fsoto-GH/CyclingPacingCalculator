@@ -980,7 +980,7 @@ export default function CourseForm() {
               className="nav-btn nav-btn-legend"
               onClick={() => setLegendOpen(true)}
             >
-              Legend
+              Guide
             </button>
           </div>
         </div>
@@ -1224,8 +1224,6 @@ export default function CourseForm() {
               gpxProfiles={gpxProfiles?.[i] ?? null}
               courseTz={form.timezone}
               splitStatuses={splitGpxStatuses[i]}
-              gpxTrack={gpxTrack}
-              splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
               cityLabels={cityLabels[i]}
               cityFetching={cityFetching[i]}
             />
@@ -1276,6 +1274,9 @@ export default function CourseForm() {
           courseTz={form.timezone}
           courseName={form.name?.trim() || undefined}
           cityLabels={cityLabels}
+          gpxTrack={gpxTrack}
+          splitBoundariesKm={splitBoundariesKm}
+          gpxProfiles={gpxProfiles}
         />
       )}
     </FieldErrorContext.Provider>

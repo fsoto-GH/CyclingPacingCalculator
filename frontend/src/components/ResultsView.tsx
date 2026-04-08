@@ -7,9 +7,12 @@ import type {
   UnitSystem,
   SegmentForm,
   DayHoursEntry,
+  GpxTrackPoint,
+  SplitGpxProfile,
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
 import CourseSummaryNarrative from "./CourseSummaryNarrative";
+import GpxExportModal from "./GpxExportModal";
 
 /** Convert HH:MM to minutes since midnight. */
 function timeToMin(t: string): number {
@@ -184,6 +187,9 @@ interface ResultsViewProps {
   courseTz: string;
   courseName?: string;
   cityLabels?: (string | null)[][];
+  gpxTrack?: GpxTrackPoint[] | null;
+  splitBoundariesKm?: [number, number][][] | null;
+  gpxProfiles?: SplitGpxProfile[][] | null;
 }
 
 export default function ResultsView({
@@ -193,6 +199,9 @@ export default function ResultsView({
   courseTz,
   courseName,
   cityLabels,
+  gpxTrack,
+  splitBoundariesKm,
+  gpxProfiles,
 }: ResultsViewProps) {
   const [showJson, setShowJson] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -293,6 +302,10 @@ export default function ResultsView({
           formSegments={formSegments}
           courseTz={courseTz}
           cityLabels={cityLabels?.[i]}
+          gpxTrack={gpxTrack}
+          splitBoundariesKm={splitBoundariesKm}
+          gpxProfiles={gpxProfiles}
+          unitSystem={unitSystem}
         />
       ))}
 
@@ -326,19 +339,28 @@ function SegmentSection({
   index,
   sLabel,
   dLabel,
+  unitSystem,
   formSegments,
   courseTz,
   cityLabels,
+  gpxTrack,
+  splitBoundariesKm,
+  gpxProfiles,
 }: {
   segment: SegmentDetail;
   index: number;
   sLabel: string;
   dLabel: string;
+  unitSystem: UnitSystem;
   formSegments: SegmentForm[];
   courseTz: string;
   cityLabels?: (string | null)[];
+  gpxTrack?: GpxTrackPoint[] | null;
+  splitBoundariesKm?: [number, number][][] | null;
+  gpxProfiles?: SplitGpxProfile[][] | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   return (
     <div className="segment-result">
@@ -466,7 +488,31 @@ function SegmentSection({
               </tbody>
             </table>
           </div>
+          {gpxTrack && (
+            <div className="segment-export-footer">
+              <button
+                type="button"
+                className="nav-btn segment-export-btn"
+                onClick={() => setShowExportModal(true)}
+              >
+                Export GPX splits
+              </button>
+            </div>
+          )}
         </>
+      )}
+      {gpxTrack && showExportModal && (
+        <GpxExportModal
+          open={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          segIndex={index}
+          segName={formSegments[index]?.name}
+          splits={formSegments[index]?.splits ?? []}
+          gpxTrack={gpxTrack}
+          splitBoundariesKm={splitBoundariesKm?.[index] ?? []}
+          gpxProfiles={gpxProfiles?.[index] ?? []}
+          unitSystem={unitSystem}
+        />
       )}
     </div>
   );
