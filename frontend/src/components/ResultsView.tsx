@@ -466,9 +466,10 @@ function SegmentSection({
                   <th title="Split distance and span (start – end)">
                     Distance ({dLabel})
                   </th>
-                  <th title="Moving speed for this split">Speed ({sLabel})</th>
+                  <th title="Start to end time with active duration">
+                    Time Span
+                  </th>
                   <th title="Average pace including decay">Pace ({sLabel})</th>
-                  <th title="Split time + adjustment time">Active</th>
                 </tr>
               </thead>
               <tbody>
@@ -478,6 +479,7 @@ function SegmentSection({
                     split={split}
                     splitNumber={j + 1}
                     dLabel={dLabel}
+                    sLabel={sLabel}
                     segIdx={index}
                     splitIdx={j}
                     formSegments={formSegments}
@@ -522,6 +524,7 @@ function SplitRow({
   split,
   splitNumber,
   dLabel,
+  sLabel,
   segIdx,
   splitIdx,
   formSegments,
@@ -531,6 +534,7 @@ function SplitRow({
   split: SplitDetail;
   splitNumber: number;
   dLabel: string;
+  sLabel: string;
   segIdx: number;
   splitIdx: number;
   formSegments: SegmentForm[];
@@ -591,6 +595,19 @@ function SplitRow({
     });
   }
 
+  /** Format a date compactly (no weekday, short month) in course timezone. */
+  function fmtSpanDate(iso: string) {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: courseTz,
+    });
+  }
+
+  const timeSpan = `${fmtSpanDate(split.start_time)}\u2009—\u2009${fmtSpanDate(split.end_time)} (${split.active_time_hours.toFixed(2)}h)`;
+
   return (
     <>
       <tr
@@ -608,9 +625,8 @@ function SplitRow({
           {split.distance.toFixed(2)} ({split.span[0].toFixed(1)} –{" "}
           {split.span[1].toFixed(1)})
         </td>
-        <td>{split.moving_speed.toFixed(2)}</td>
+        <td className="time-span-cell">{timeSpan}</td>
         <td>{split.pace.toFixed(2)}</td>
-        <TimeCell hours={split.active_time_hours} />
       </tr>
       {expanded && (
         <tr className="split-detail-row">
@@ -645,6 +661,10 @@ function SplitRow({
                     </dd>
                   </div>
                 )}
+              <div>
+                <dt>Speed</dt>
+                <dd>{split.moving_speed.toFixed(2)} {sLabel}</dd>
+              </div>
               <div>
                 <dt>Start</dt>
                 <dd>{fmtInTz(split.start_time, courseTz)}</dd>

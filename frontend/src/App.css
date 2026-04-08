@@ -901,7 +901,7 @@ h4 {
   background: #1a1a2e;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 860px) {
   .split-detail-panel {
     grid-template-columns: 1fr;
   }
