@@ -19,6 +19,7 @@ import {
   computeElevGainLoss,
   extractSurfaceFromXml,
 } from "../calculator/gpxParser";
+import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
 import ResultsView from "./ResultsView";
 import LegendModal from "./LegendModal";
@@ -129,6 +130,9 @@ export default function CourseForm() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [gpxMissingWarning, setGpxMissingWarning] = useState<string | null>(
+    null,
+  );
 
   // GPX state — session only, not persisted to localStorage
   const [gpxTrack, setGpxTrack] = useState<GpxTrackPoint[] | null>(null);
@@ -136,6 +140,33 @@ export default function CourseForm() {
   const [gpxFileName, setGpxFileName] = useState<string | null>(null);
   const [gpxLoading, setGpxLoading] = useState(false);
   const gpxFileRef = useRef<HTMLInputElement>(null);
+
+  // Restore GPX from IndexedDB on mount (large files don't fit in localStorage).
+  useEffect(() => {
+    loadGpx()
+      .then((record) => {
+        if (!record) return;
+        setGpxFileName(record.fileName);
+        setGpxLoading(true);
+        setTimeout(() => {
+          try {
+            setGpxTrack(parseGpx(record.xml));
+            setGpxSurface(extractSurfaceFromXml(record.xml));
+          } catch {
+            // Stored file is corrupt — silently drop it.
+            clearGpx().catch(() => {});
+            setGpxFileName(null);
+          } finally {
+            setGpxLoading(false);
+          }
+        }, 0);
+      })
+      .catch(() => {
+        /* IDB unavailable — no-op */
+      });
+    // Run once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const useEngine: "client" | "api" =
     new URLSearchParams(window.location.search).get("engine") === "api"
       ? "api"
@@ -154,19 +185,74 @@ export default function CourseForm() {
     setResult(null);
     setApiError(null);
     setTouched(new Set());
+    setGpxTrack(null);
+    setGpxSurface(null);
+    setGpxFileName(null);
+    setGpxMissingWarning(null);
+    clearGpx().catch(() => {});
   }, []);
 
-  const handleLoadExample = useCallback((example: CourseFormState) => {
-    setForm(example);
-    setResult(null);
-    setApiError(null);
-    setTouched(new Set());
-  }, []);
+  const handleLoadExample = useCallback(
+    (example: CourseFormState, gpxUrl?: string) => {
+      setForm(example);
+      setResult(null);
+      setApiError(null);
+      setTouched(new Set());
+
+      if (!gpxUrl) return;
+
+      // Derive the display filename from the URL (strip path and extension)
+      const displayName =
+        gpxUrl
+          .split("/")
+          .pop()
+          ?.replace(/\.gpx$/i, "") ?? "example";
+      setGpxFileName(displayName);
+      setGpxLoading(true);
+      setGpxTrack(null);
+      setGpxSurface(null);
+      setGpxMissingWarning(null);
+
+      fetch(gpxUrl)
+        .then((res) => {
+          if (!res.ok) throw new Error(`Failed to fetch GPX (${res.status})`);
+          return res.text();
+        })
+        .then((xml) => {
+          setTimeout(() => {
+            try {
+              setGpxTrack(parseGpx(xml));
+              setGpxSurface(extractSurfaceFromXml(xml));
+              saveGpx(displayName, xml).catch(() => {});
+            } catch (err: unknown) {
+              const msg =
+                err instanceof Error ? err.message : "Invalid GPX file";
+              setApiError(msg);
+              setGpxFileName(null);
+            } finally {
+              setGpxLoading(false);
+            }
+          }, 0);
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : "Failed to load GPX";
+          setApiError(msg);
+          setGpxFileName(null);
+          setGpxLoading(false);
+        });
+    },
+    [],
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = useCallback(() => {
-    const json = JSON.stringify(form, null, 2);
+    // Embed the current GPX filename so an import on the same browser can
+    // attempt to restore the file from IndexedDB.
+    const exportData = gpxFileName
+      ? { ...form, gpxFileName }
+      : { ...form, gpxFileName: undefined };
+    const json = JSON.stringify(exportData, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -174,7 +260,7 @@ export default function CourseForm() {
     a.download = `pacing-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [form]);
+  }, [form, gpxFileName]);
 
   const handleImport = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,6 +271,43 @@ export default function CourseForm() {
         try {
           const parsed = JSON.parse(reader.result as string) as CourseFormState;
           handleLoadExample(parsed);
+          setGpxMissingWarning(null);
+
+          const embeddedName = parsed.gpxFileName;
+          if (!embeddedName) return;
+
+          // Try to restore the GPX from IndexedDB by filename.
+          loadGpx(embeddedName)
+            .then((record) => {
+              if (record) {
+                // Found the named file — restore it.
+                setGpxFileName(record.fileName);
+                setGpxLoading(true);
+                setTimeout(() => {
+                  try {
+                    setGpxTrack(parseGpx(record.xml));
+                    setGpxSurface(extractSurfaceFromXml(record.xml));
+                  } catch {
+                    setGpxFileName(null);
+                    setGpxMissingWarning(
+                      `This export included a GPX file “${embeddedName}” but it could not be loaded. Re-upload the file.`,
+                    );
+                  } finally {
+                    setGpxLoading(false);
+                  }
+                }, 0);
+              } else {
+                // No record stored under that filename in this browser., or it’s a different file.
+                setGpxMissingWarning(
+                  `This export included a GPX file “${embeddedName}” but it is no longer stored in this browser. Re-upload the file.`,
+                );
+              }
+            })
+            .catch(() => {
+              setGpxMissingWarning(
+                `This export included a GPX file “${embeddedName}” but it could not be loaded. Re-upload the file.`,
+              );
+            });
         } catch {
           setApiError("Invalid JSON file.");
         }
@@ -215,6 +338,11 @@ export default function CourseForm() {
             const track = parseGpx(xml);
             setGpxTrack(track);
             setGpxSurface(extractSurfaceFromXml(xml));
+            setGpxMissingWarning(null);
+            // Persist to IDB so the GPX survives a page reload.
+            saveGpx(displayName, xml).catch(() => {
+              /* IDB unavailable */
+            });
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : "Invalid GPX file";
             setApiError(msg);
@@ -235,7 +363,11 @@ export default function CourseForm() {
     setGpxSurface(null);
     setGpxFileName(null);
     setGpxLoading(false);
+    setGpxMissingWarning(null);
     if (gpxFileRef.current) gpxFileRef.current.value = "";
+    clearGpx().catch(() => {
+      /* IDB unavailable */
+    });
   }, []);
 
   const sLabel = speedLabel(form.unitSystem);
@@ -774,6 +906,19 @@ export default function CourseForm() {
               aria-label="Remove GPX route"
             >
               Remove
+            </button>
+          </div>
+        )}
+        {gpxMissingWarning && (
+          <div className="gpx-missing-warning">
+            <span>⚠ {gpxMissingWarning}</span>
+            <button
+              type="button"
+              className="gpx-missing-dismiss"
+              onClick={() => setGpxMissingWarning(null)}
+              aria-label="Dismiss warning"
+            >
+              ✕
             </button>
           </div>
         )}

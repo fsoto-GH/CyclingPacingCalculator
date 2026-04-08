@@ -108,6 +108,12 @@ export default function SegmentFormComponent({
         <span className="collapse-icon">{collapsed ? "▶" : "▼"}</span>
         <h3>
           {summary}
+          {splitStatuses?.some((s) => s === "over") && (
+            <span className="gpx-dist-asterisk gpx-dist-asterisk--over">
+              {" "}
+              *
+            </span>
+          )}
           {splitStatuses?.some((s) => s === "under-last") && (
             <span className="gpx-dist-asterisk gpx-dist-asterisk--under">
               {" "}

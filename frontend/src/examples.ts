@@ -506,7 +506,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
         },
         {
           name: "New Buffalo to Chicago",
-          distance: "1121.2",
+          distance: "1115.2",
           sub_split_mode: "fixed",
           sub_split_count: "1",
           sub_split_distance: "50",
@@ -554,9 +554,10 @@ export const EXAMPLES: ExampleEntry[] = [
     form: COMPLEX_EXAMPLE_FORM,
   },
   {
-    name: "Mishigami — 1121.2 mi Around Lake Michigan",
+    name: "Mishigami 2025 — 1115.2 mi Around Lake Michigan",
     description:
       "2 segments (Chicago ↔ St Ignace), 10 splits with rest stops, imperial, fixed 50 mi sub-splits, 4h sleep at turnaround.",
     form: MISHIGAMI_EXAMPLE_FORM,
+    gpxUrl: "./examples/Mishigami-2025_Official.gpx",
   },
 ];

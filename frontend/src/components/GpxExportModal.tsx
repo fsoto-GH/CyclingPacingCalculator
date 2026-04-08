@@ -250,7 +250,7 @@ export default function GpxExportModal({
           <span className="gpx-export-count">
             {checked.filter(Boolean).length} of {splits.length} splits selected
           </span>
-          {anyChecked && (
+          {anyChecked ? (
             <span className="gpx-export-aggregates">
               <span>
                 {toDistUnit(aggregates.distKmTotal).toFixed(2)} {dLabel}
@@ -261,6 +261,10 @@ export default function GpxExportModal({
               <span className="gpx-export-loss">
                 ↓ {toElevUnit(aggregates.lossMTotal)} {elevUnit}
               </span>
+            </span>
+          ) : (
+            <span className="gpx-export-aggregates gpx-export-aggregates--empty">
+              No splits selected
             </span>
           )}
           <div className="gpx-export-filename-row">

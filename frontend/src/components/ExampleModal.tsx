@@ -5,13 +5,15 @@ export interface ExampleEntry {
   name: string;
   description: string;
   form: CourseFormState;
+  /** URL of a bundled GPX file to load alongside this example (relative to app root). */
+  gpxUrl?: string;
 }
 
 interface ExampleModalProps {
   open: boolean;
   onClose: () => void;
   examples: ExampleEntry[];
-  onSelect: (form: CourseFormState) => void;
+  onSelect: (form: CourseFormState, gpxUrl?: string) => void;
 }
 
 export default function ExampleModal({
@@ -29,8 +31,8 @@ export default function ExampleModal({
     else if (!open && el.open) el.close();
   }, [open]);
 
-  function handleSelect(form: CourseFormState) {
-    onSelect(form);
+  function handleSelect(form: CourseFormState, gpxUrl?: string) {
+    onSelect(form, gpxUrl);
     onClose();
   }
 
@@ -53,7 +55,7 @@ export default function ExampleModal({
               <button
                 type="button"
                 className="ghost-btn"
-                onClick={() => handleSelect(ex.form)}
+                onClick={() => handleSelect(ex.form, ex.gpxUrl)}
               >
                 Load
               </button>

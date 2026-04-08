@@ -230,6 +230,14 @@ h4 {
   user-select: none;
   background: #252525;
   border-radius: 6px 6px 0 0;
+  flex-wrap: wrap;
+}
+
+.segment-header h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .segment-header:hover {
@@ -305,6 +313,8 @@ h4 {
   cursor: pointer;
   user-select: none;
   background: #252525;
+  flex-wrap: wrap;
+  row-gap: 0.15rem;
 }
 
 .split-header:hover {
@@ -315,6 +325,7 @@ h4 {
   font-size: 0.85rem;
   font-weight: 600;
   color: #ccc;
+  flex-shrink: 0;
 }
 
 .gpx-dist-asterisk {
@@ -334,6 +345,11 @@ h4 {
   font-size: 0.8rem;
   color: #777;
   margin-left: 0.25rem;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
 }
 
 .split-body {
@@ -644,6 +660,7 @@ h4 {
   border-top: 1px solid #3a3a3a;
   background: #1e1e1e;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .gpx-export-footer-info {
@@ -651,6 +668,7 @@ h4 {
   flex-direction: column;
   gap: 0.35rem;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .gpx-export-count {
@@ -663,6 +681,11 @@ h4 {
   gap: 0.75rem;
   font-size: 0.8rem;
   color: #aaa;
+}
+
+.gpx-export-aggregates--empty {
+  color: #555;
+  font-style: italic;
 }
 
 .gpx-export-filename-row {
@@ -686,6 +709,8 @@ h4 {
   font-size: 0.82rem;
   padding: 0.25rem 0.5rem;
   width: 14rem;
+  min-width: 0;
+  flex: 1 1 8rem;
 }
 
 .gpx-export-filename-input:focus {
@@ -1758,6 +1783,36 @@ dialog {
 .gpx-file-remove:hover {
   color: #f87171;
   border-color: #f87171;
+}
+
+.gpx-missing-warning {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid #92400e;
+  border-radius: 6px;
+  background: #1c1108;
+  color: #fbbf24;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.gpx-missing-dismiss {
+  background: none;
+  border: none;
+  color: #f59e0b;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.gpx-missing-dismiss:hover {
+  color: #fcd34d;
 }
 
 /* ── Nearby stops ── */
