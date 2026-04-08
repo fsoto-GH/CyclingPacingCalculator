@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { SplitForm, UnitSystem, SplitGpxProfile } from "../types";
 import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import TimeInput from "./TimeInput";
@@ -16,6 +16,7 @@ interface SplitFormProps {
   isLast?: boolean;
   includeEndDownTime?: boolean;
   gpxProfile?: SplitGpxProfile | null;
+  courseTz: string;
 }
 
 export default function SplitFormComponent({
@@ -27,11 +28,29 @@ export default function SplitFormComponent({
   isLast,
   includeEndDownTime,
   gpxProfile,
+  courseTz,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
 
   const [showNearby, setShowNearby] = useState(false);
+
+  // Auto-detect timezone from GPX endpoint. Runs whenever the detected tz
+  // or the course tz changes; leaves any *manually* set timezone alone once
+  // the GPX profile is gone.
+  useEffect(() => {
+    const detectedTz = gpxProfile?.endTimezone ?? null;
+    if (detectedTz && detectedTz !== courseTz) {
+      // Endpoint is in a different tz — enable the override
+      if (!value.differentTimezone || value.timezone !== detectedTz) {
+        onChange({ ...value, differentTimezone: true, timezone: detectedTz });
+      }
+    } else if (detectedTz === courseTz && value.differentTimezone && value.timezone === detectedTz) {
+      // Endpoint tz matches the course tz — clear the auto-set override
+      onChange({ ...value, differentTimezone: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpxProfile?.endTimezone, courseTz]);
 
   const hasOptionalValues =
     !!value.moving_speed ||
@@ -60,7 +79,14 @@ export default function SplitFormComponent({
   const displayName = value.name?.trim() || null;
   const headerTitle = displayName ? displayName : `Split ${splitIndex + 1}`;
 
-  console.log("console.log: ", gpxProfile?.surface);
+  // Timezone badge — shown when GPX detected a different tz at this endpoint
+  const gpxTz = gpxProfile?.endTimezone ?? null;
+  const gpxTzDiffers = gpxTz != null && gpxTz !== courseTz;
+  const gpxTzAbbr = gpxTzDiffers
+    ? (new Intl.DateTimeFormat("en-US", { timeZone: gpxTz, timeZoneName: "short" })
+        .formatToParts(new Date())
+        .find((p) => p.type === "timeZoneName")?.value ?? gpxTz)
+    : null;
 
   return (
     <div className="split-form">
@@ -68,13 +94,20 @@ export default function SplitFormComponent({
         <span className="collapse-icon-sm">{collapsed ? "▶" : "▼"}</span>
         <span className="split-header-title">{headerTitle}</span>
         {collapsed && <span className="split-header-summary">{summary}</span>}
-        {gpxProfile && (
-          <span className="split-header-elev" title="Elevation gain / loss">
-            ⬆{toElevUnit(gpxProfile.elevGainM)}
-            {elevUnit} ⬇{toElevUnit(gpxProfile.elevLossM)}
-            {elevUnit}
-          </span>
-        )}
+        <div className="split-header-badges">
+          {gpxTzAbbr && (
+            <span className="split-tz-badge" title={`Endpoint timezone: ${gpxTz}`}>
+              🕐 {gpxTzAbbr}
+            </span>
+          )}
+          {gpxProfile && (
+            <span className="split-header-elev" title="Elevation gain / loss">
+              ⬆{toElevUnit(gpxProfile.elevGainM)}
+              {elevUnit} ⬇{toElevUnit(gpxProfile.elevLossM)}
+              {elevUnit}
+            </span>
+          )}
+        </div>
       </div>
 
       {!collapsed && (

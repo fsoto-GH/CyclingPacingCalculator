@@ -819,6 +819,7 @@ export default function CourseForm() {
               unitSystem={form.unitSystem}
               mode={form.mode}
               gpxProfiles={gpxProfiles?.[i] ?? null}
+              courseTz={form.timezone}
             />
           ))}
         </div>

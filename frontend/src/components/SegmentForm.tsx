@@ -19,6 +19,7 @@ interface SegmentFormProps {
   unitSystem: UnitSystem;
   mode: Mode;
   gpxProfiles?: SplitGpxProfile[] | null;
+  courseTz: string;
 }
 
 export default function SegmentFormComponent({
@@ -28,6 +29,7 @@ export default function SegmentFormComponent({
   unitSystem,
   mode,
   gpxProfiles,
+  courseTz,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(false);
   const hasOptionalValues =
@@ -229,6 +231,7 @@ export default function SegmentFormComponent({
                 isLast={j === value.splits.length - 1}
                 includeEndDownTime={value.include_end_down_time}
                 gpxProfile={gpxProfiles?.[j] ?? null}
+                courseTz={courseTz}
               />
             ))}
           </div>

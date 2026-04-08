@@ -1326,8 +1326,15 @@ dialog {
 }
 
 /* ── GPX elevation in split header ── */
-.split-header-elev {
+.split-header-badges {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.split-header-elev {
   font-size: 0.72rem;
   color: #60a5fa;
   white-space: nowrap;
@@ -1335,6 +1342,16 @@ dialog {
   background: #1e3a5f;
   border-radius: 10px;
   border: 1px solid #2d5a8e;
+}
+
+.split-tz-badge {
+  font-size: 0.72rem;
+  color: #c4b5fd;
+  white-space: nowrap;
+  padding: 0.1rem 0.45rem;
+  background: #2e1f4f;
+  border-radius: 10px;
+  border: 1px solid #6d4fa0;
 }
 
 /* ── GPX elevation badge row ── */
