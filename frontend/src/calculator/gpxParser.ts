@@ -326,6 +326,76 @@ export function computeSplitProfile(
 }
 
 /**
+ * Slice raw track points between startKm and endKm (inclusive of boundary
+ * points). Used for GPX export of individual splits.
+ */
+export function sliceTrackPoints(
+  track: GpxTrackPoint[],
+  startKm: number,
+  endKm: number,
+): GpxTrackPoint[] {
+  let lo = 0,
+    hi = track.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (track[mid].cumDist < startKm) lo = mid + 1;
+    else hi = mid;
+  }
+  const startIdx = lo;
+
+  lo = startIdx;
+  hi = track.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (track[mid].cumDist <= endKm) lo = mid + 1;
+    else hi = mid;
+  }
+  const endIdx = lo;
+
+  return track.slice(startIdx, endIdx);
+}
+
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Serialize a list of named track segments into a standard GPX 1.1 string.
+ * Each entry in `segments` becomes its own <trkseg>.
+ */
+export function buildGpxString(
+  segments: Array<{ name: string; points: GpxTrackPoint[] }>,
+  trackName = "Exported Track",
+): string {
+  const trksegs = segments
+    .filter((s) => s.points.length > 0)
+    .map((s) => {
+      const pts = s.points
+        .map(
+          (p) =>
+            `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}"><ele>${p.ele.toFixed(1)}</ele></trkpt>`,
+        )
+        .join("\n");
+      return `    <trkseg>\n      <!-- ${escapeXml(s.name)} -->\n${pts}\n    </trkseg>`;
+    })
+    .join("\n");
+
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<gpx version="1.1" creator="CyclingPacingCalculator" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+    `  <trk>\n` +
+    `    <name>${escapeXml(trackName)}</name>\n` +
+    trksegs +
+    `\n  </trk>\n` +
+    `</gpx>`
+  );
+}
+
+/**
  * Compute SplitGpxProfile for every split in a course.
  *
  * @param track         - Full parsed GPX track

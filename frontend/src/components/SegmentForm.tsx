@@ -5,12 +5,14 @@ import type {
   UnitSystem,
   Mode,
   SplitGpxProfile,
+  GpxTrackPoint,
 } from "../types";
 import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import SplitFormComponent from "./SplitForm";
 import { FieldError } from "./FieldError";
+import GpxExportModal from "./GpxExportModal";
 
 interface SegmentFormProps {
   segIndex: number;
@@ -20,6 +22,9 @@ interface SegmentFormProps {
   mode: Mode;
   gpxProfiles?: SplitGpxProfile[] | null;
   courseTz: string;
+  splitStatuses?: ("over" | "under-last" | null)[];
+  gpxTrack?: GpxTrackPoint[] | null;
+  splitBoundariesKm?: [number, number][] | null;
 }
 
 export default function SegmentFormComponent({
@@ -30,7 +35,11 @@ export default function SegmentFormComponent({
   mode,
   gpxProfiles,
   courseTz,
+  splitStatuses,
+  gpxTrack,
+  splitBoundariesKm,
 }: SegmentFormProps) {
+  const [showExportModal, setShowExportModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const hasOptionalValues =
     !!value.down_time_ratio ||
@@ -97,7 +106,15 @@ export default function SegmentFormComponent({
     <div className="segment-form">
       <div className="segment-header" onClick={() => setCollapsed(!collapsed)}>
         <span className="collapse-icon">{collapsed ? "▶" : "▼"}</span>
-        <h3>{summary}</h3>
+        <h3>
+          {summary}
+          {splitStatuses?.some((s) => s === "under-last") && (
+            <span className="gpx-dist-asterisk gpx-dist-asterisk--under">
+              {" "}
+              *
+            </span>
+          )}
+        </h3>
       </div>
 
       {!collapsed && (
@@ -232,10 +249,37 @@ export default function SegmentFormComponent({
                 includeEndDownTime={value.include_end_down_time}
                 gpxProfile={gpxProfiles?.[j] ?? null}
                 courseTz={courseTz}
+                gpxDistStatus={splitStatuses?.[j] ?? null}
               />
             ))}
           </div>
+
+          {gpxTrack && (
+            <div className="segment-export-footer">
+              <button
+                type="button"
+                className="nav-btn segment-export-btn"
+                onClick={() => setShowExportModal(true)}
+              >
+                See GPX export options
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {gpxTrack && showExportModal && (
+        <GpxExportModal
+          open={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          segIndex={segIndex}
+          segName={value.name}
+          splits={value.splits}
+          gpxTrack={gpxTrack}
+          splitBoundariesKm={splitBoundariesKm ?? []}
+          gpxProfiles={gpxProfiles ?? []}
+          unitSystem={unitSystem}
+        />
       )}
     </div>
   );

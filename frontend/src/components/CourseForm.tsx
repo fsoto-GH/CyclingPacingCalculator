@@ -261,6 +261,74 @@ export default function CourseForm() {
     [gpxTrack],
   );
 
+  // Per-split distance status relative to the GPX total.
+  // "over"       → this split's cumulative distance exceeds the GPX total (red)
+  // "under-last" → last split/segment and total hasn't reached GPX total (yellow)
+  // null         → no GPX loaded or within range
+  const splitGpxStatuses = useMemo<Array<Array<"over" | "under-last" | null>>>(
+    () => {
+      const makeNull = () =>
+        form.segments.map((s) =>
+          s.splits.map((): "over" | "under-last" | null => null),
+        );
+      if (!gpxTrack) return makeNull();
+
+      const gpxTotalKm = gpxTrack[gpxTrack.length - 1].cumDist;
+      const gpxTotal =
+        form.unitSystem === "imperial"
+          ? Math.round((gpxTotalKm / 1.60934) * 10) / 10
+          : Math.round(gpxTotalKm * 10) / 10;
+
+      // Build cumulative distance from course start (in user units) for each split.
+      let offset = 0;
+      const cumDists: number[][] = [];
+      for (const seg of form.segments) {
+        const segCums: number[] = [];
+        if (form.mode === "target_distance") {
+          // In target_distance mode the distance field is already an absolute
+          // cumulative course marker (same as tdOffset logic in splitDistances).
+          // Do NOT add segOffset — the value IS the cumulative distance.
+          for (const split of seg.splits) {
+            const d = parseFloat(split.distance);
+            segCums.push(isNaN(d) ? 0 : d);
+          }
+          const lastD = parseFloat(
+            seg.splits[seg.splits.length - 1]?.distance ?? "0",
+          );
+          // Track where this segment ends (mirrors tdOffset = raw[last])
+          offset = isNaN(lastD) ? offset : lastD;
+        } else {
+          for (const split of seg.splits) {
+            const d = parseFloat(split.distance);
+            offset += isNaN(d) ? 0 : d;
+            segCums.push(offset);
+          }
+        }
+        cumDists.push(segCums);
+      }
+
+      const lastSegIdx = form.segments.length - 1;
+      const lastSplitIdx = (form.segments[lastSegIdx]?.splits.length ?? 1) - 1;
+      const totalConfigured = cumDists[lastSegIdx]?.[lastSplitIdx] ?? 0;
+
+      return form.segments.map((seg, i) =>
+        seg.splits.map((_, j): "over" | "under-last" | null => {
+          const cum = cumDists[i]?.[j] ?? 0;
+          if (cum > gpxTotal + 1e-9) return "over";
+          if (
+            i === lastSegIdx &&
+            j === lastSplitIdx &&
+            totalConfigured < gpxTotal - 1e-9
+          )
+            return "under-last";
+          return null;
+        }),
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gpxTrack, form.unitSystem, form.mode, splitDistancesKey, form.segments],
+  );
+
   // Debounced profile computation — expensive (GPX slicing + tzlookup per split).
   // Runs 400 ms after the user stops editing distances.
   useEffect(() => {
@@ -299,6 +367,33 @@ export default function CourseForm() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, gpxSurface, splitDistancesKey, form.unitSystem, form.mode]);
+
+  // Per-split [startKm, endKm] boundaries in the GPX track.
+  // Used by the GPX export modal to slice the raw track for each split.
+  const splitBoundariesKm = useMemo<[number, number][][] | null>(() => {
+    if (!gpxTrack) return null;
+    const toKm = form.unitSystem === "imperial" ? 1.60934 : 1;
+    let tdOffset = 0;
+    let cumulativeKm = 0;
+    return form.segments.map((seg) => {
+      const raw = seg.splits.map((sp) => parseFloat(sp.distance) || 0);
+      let chunks: number[];
+      if (form.mode !== "target_distance") {
+        chunks = raw;
+      } else {
+        const markers = [tdOffset, ...raw];
+        chunks = raw.map((_, i) => Math.max(0, markers[i + 1] - markers[i]));
+        tdOffset = raw[raw.length - 1] || tdOffset;
+      }
+      return chunks.map((d) => {
+        const startKm = cumulativeKm;
+        const endKm = cumulativeKm + d * toKm;
+        cumulativeKm = endKm;
+        return [startKm, endKm] as [number, number];
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpxTrack, form.unitSystem, form.mode, splitDistancesKey]);
 
   // â”€â”€ Handlers â”€â”€
   const handleSegmentCountChange = (raw: string) => {
@@ -854,6 +949,9 @@ export default function CourseForm() {
               mode={form.mode}
               gpxProfiles={gpxProfiles?.[i] ?? null}
               courseTz={form.timezone}
+              splitStatuses={splitGpxStatuses[i]}
+              gpxTrack={gpxTrack}
+              splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
             />
           ))}
         </div>

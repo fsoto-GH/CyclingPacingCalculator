@@ -17,6 +17,7 @@ interface SplitFormProps {
   includeEndDownTime?: boolean;
   gpxProfile?: SplitGpxProfile | null;
   courseTz: string;
+  gpxDistStatus?: "over" | "under-last" | null;
 }
 
 export default function SplitFormComponent({
@@ -29,6 +30,7 @@ export default function SplitFormComponent({
   includeEndDownTime,
   gpxProfile,
   courseTz,
+  gpxDistStatus,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
@@ -99,7 +101,27 @@ export default function SplitFormComponent({
     <div className="split-form">
       <div className="split-header" onClick={() => setCollapsed((c) => !c)}>
         <span className="collapse-icon-sm">{collapsed ? "▶" : "▼"}</span>
-        <span className="split-header-title">{headerTitle}</span>
+        <span className="split-header-title">
+          {headerTitle}
+          {gpxDistStatus === "over" && (
+            <span
+              className="gpx-dist-asterisk gpx-dist-asterisk--over"
+              title="Split distance exceeds GPX track total"
+            >
+              {" "}
+              *
+            </span>
+          )}
+          {gpxDistStatus === "under-last" && (
+            <span
+              className="gpx-dist-asterisk gpx-dist-asterisk--under"
+              title="Total distance has not reached GPX track total"
+            >
+              {" "}
+              *
+            </span>
+          )}
+        </span>
         {collapsed && <span className="split-header-summary">{summary}</span>}
         <div className="split-header-badges">
           {tzBadgeAbbr && (
