@@ -40,7 +40,11 @@ const AMENITY_TYPES = [
   "restaurant",
 ].join("|");
 
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
 
 /** Haversine distance in metres between two lat/lon pairs */
 function distanceM(
@@ -213,50 +217,65 @@ node(around:${radiusM},${lat},${lon})[amenity~"${AMENITY_TYPES}"][name];
 out;
 `.trim();
 
-  const resp = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `data=${encodeURIComponent(query)}`,
-    signal,
-  });
+  const body = `data=${encodeURIComponent(query)}`;
 
-  if (!resp.ok) throw new Error(`Overpass error: ${resp.status}`);
-  const data: OverpassResponse = await resp.json();
+  let lastError: unknown;
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    try {
+      const resp = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+        signal,
+      });
+      if (!resp.ok) throw new Error(`Overpass error: ${resp.status}`);
+      const data: OverpassResponse = await resp.json();
 
-  const results: NearbyAmenity[] = data.elements
-    .filter((el) => el.tags?.name)
-    .map((el) => {
-      const elLat = el.lat ?? el.center?.lat ?? lat;
-      const elLon = el.lon ?? el.center?.lon ?? lon;
-      const tags = el.tags ?? {};
-      const rawHours = tags["opening_hours"] ?? null;
-      const hours = rawHours ? parseOsmHours(rawHours) : null;
+      const results: NearbyAmenity[] = data.elements
+        .filter((el) => el.tags?.name)
+        .map((el) => {
+          const elLat = el.lat ?? el.center?.lat ?? lat;
+          const elLon = el.lon ?? el.center?.lon ?? lon;
+          const tags = el.tags ?? {};
+          const rawHours = tags["opening_hours"] ?? null;
+          const hours = rawHours ? parseOsmHours(rawHours) : null;
 
-      // Build a best-effort address from OSM addr:* tags
-      const addrParts: string[] = [];
-      if (tags["addr:housenumber"] && tags["addr:street"]) {
-        addrParts.push(`${tags["addr:housenumber"]} ${tags["addr:street"]}`);
-      } else if (tags["addr:street"]) {
-        addrParts.push(tags["addr:street"]);
-      }
-      if (tags["addr:city"]) addrParts.push(tags["addr:city"]);
-      if (tags["addr:state"]) addrParts.push(tags["addr:state"]);
+          // Build a best-effort address from OSM addr:* tags
+          const addrParts: string[] = [];
+          if (tags["addr:housenumber"] && tags["addr:street"]) {
+            addrParts.push(
+              `${tags["addr:housenumber"]} ${tags["addr:street"]}`,
+            );
+          } else if (tags["addr:street"]) {
+            addrParts.push(tags["addr:street"]);
+          }
+          if (tags["addr:city"]) addrParts.push(tags["addr:city"]);
+          if (tags["addr:state"]) addrParts.push(tags["addr:state"]);
 
-      return {
-        id: el.id,
-        name: tags.name ?? "",
-        amenity: tags.amenity ?? "",
-        distanceM: Math.round(distanceM(lat, lon, elLat, elLon)),
-        lat: elLat,
-        lon: elLon,
-        address: addrParts.join(", "),
-        hours,
-        rawHours,
-      };
-    });
+          return {
+            id: el.id,
+            name: tags.name ?? "",
+            amenity: tags.amenity ?? "",
+            distanceM: Math.round(distanceM(lat, lon, elLat, elLon)),
+            lat: elLat,
+            lon: elLon,
+            address: addrParts.join(", "),
+            hours,
+            rawHours,
+          };
+        });
 
-  // Sort by distance ascending
-  results.sort((a, b) => a.distanceM - b.distanceM);
+      // Sort by distance ascending
+      results.sort((a, b) => a.distanceM - b.distanceM);
 
-  return results;
+      return results;
+    } catch (err: unknown) {
+      if ((err as { name?: string }).name === "AbortError") throw err;
+      lastError = err;
+      // Try next mirror
+    }
+  }
+
+  throw lastError ?? new Error("All Overpass endpoints failed");
 }
