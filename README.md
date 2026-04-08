@@ -220,9 +220,9 @@ The parser reads either `<trkpt>` (track) or `<rtept>` (route) elements, extract
 
 Raw GPS elevation data is notoriously noisy. A naïve cumulative-sum approach can produce wildly inflated gain/loss figures. The calculator uses a two-step algorithm that matches the output of [gpx.studio](https://gpx.studio):
 
-1. **Ramer–Douglas–Peucker (RDP) simplification** is run on the `(cumulative distance, elevation)` 2D plane with a 20 m perpendicular-distance tolerance. This identifies *significant terrain anchors* — the peaks and valleys that represent genuine changes in slope — while discarding GPS jitter between them.
+1. **Ramer–Douglas–Peucker (RDP) simplification** is run on the `(cumulative distance, elevation)` 2D plane with a 20 m perpendicular-distance tolerance. This identifies _significant terrain anchors_ — the peaks and valleys that represent genuine changes in slope — while discarding GPS jitter between them.
 
-2. **100 m sliding-window smoothing** is then applied *between each pair of adjacent anchors*. A running sum maintains the window average in O(1) per step (the window start and end pointers advance monotonically), so the overall pass is O(n) rather than O(n·w). The raw GPS elevation is forced at each anchor endpoint to prevent drift.
+2. **100 m sliding-window smoothing** is then applied _between each pair of adjacent anchors_. A running sum maintains the window average in O(1) per step (the window start and end pointers advance monotonically), so the overall pass is O(n) rather than O(n·w). The raw GPS elevation is forced at each anchor endpoint to prevent drift.
 
 3. Gain and loss are accumulated on the smoothed signal.
 
@@ -230,7 +230,7 @@ This produces results close to Garmin and Strava, and identical to gpx.studio fo
 
 ### Per-split profiles
 
-Once the full track is processed, it is *sliced* by split. Each split's start and end kilometre positions are resolved with **binary search** (O(log n)), avoiding a linear scan across potentially 30 000+ track points per split. The slice then receives its own elevation computation, average grade, percentage of distance with grade > 5 %, and a dominant surface tag.
+Once the full track is processed, it is _sliced_ by split. Each split's start and end kilometre positions are resolved with **binary search** (O(log n)), avoiding a linear scan across potentially 30 000+ track points per split. The slice then receives its own elevation computation, average grade, percentage of distance with grade > 5 %, and a dominant surface tag.
 
 In `target_distance` mode (where split distances are cumulative course markers rather than chunks), the profile computation normalises to chunk distances before slicing — mirroring the same normalisation done in the calculator engine.
 
@@ -293,23 +293,23 @@ Every course has a primary IANA timezone (e.g. `America/Chicago`). All start tim
 
 ### Per-split timezone override
 
-Individual splits can be assigned a different IANA timezone via the *Different timezone?* checkbox. This is useful for routes that cross timezone boundaries mid-segment (common on long-distance events like Mishigami, which crosses entre Michigan).
+Individual splits can be assigned a different IANA timezone via the _Different timezone?_ checkbox. This is useful for routes that cross timezone boundaries mid-segment (common on long-distance events like Mishigami, which crosses entre Michigan).
 
 When a GPX file is loaded, each split's endpoint timezone is **automatically detected** using the [tz-lookup](https://www.npmjs.com/package/tz-lookup) library, which performs a point-in-polygon lookup against a compact boundary dataset entirely in the browser — no geocoding API call required.
 
 ### Timezone-aware ETA badges
 
-The results table checks each rest stop's open hours against the predicted arrival time in the *correct* timezone for that split. Badges show:
+The results table checks each rest stop's open hours against the predicted arrival time in the _correct_ timezone for that split. Badges show:
 
-| Badge | Meaning |
-|-------|---------|
-| 🟢 Open | Arriving well within open hours (>30 min margin) |
-| 🟡 Near | Arriving within 30 minutes of opening or closing |
-| 🔴 Closed | Arriving outside open hours |
+| Badge     | Meaning                                          |
+| --------- | ------------------------------------------------ |
+| 🟢 Open   | Arriving well within open hours (>30 min margin) |
+| 🟡 Near   | Arriving within 30 minutes of opening or closing |
+| 🔴 Closed | Arriving outside open hours                      |
 
 ### Narrative timezone shifts
 
-The natural language summary detects when a segment crosses a timezone boundary (e.g. CDT → ET) and appends a note inline: *(crosses time zones: CDT → ET)*. This uses `Intl.DateTimeFormat` to resolve the short abbreviation of each split's end time in the appropriate IANA zone.
+The natural language summary detects when a segment crosses a timezone boundary (e.g. CDT → ET) and appends a note inline: _(crosses time zones: CDT → ET)_. This uses `Intl.DateTimeFormat` to resolve the short abbreviation of each split's end time in the appropriate IANA zone.
 
 ---
 
@@ -346,11 +346,10 @@ The **Load Example** button (toolbar) opens a modal with pre-built course config
 
 ### Included examples
 
-| Example | Description |
-|---------|-------------|
-| **Simple Example** | A single 100-mile segment split into two halves, demonstrating sub-split modes (even and fixed) and a real rest stop at Specialized Chicago with per-day hours. |
-| **Complex Example** | A multi-segment course with sleep time between segments, per-segment speed/decay overrides, and multiple timezones. |
+| Example                 | Description                                                                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Simple Example**      | A single 100-mile segment split into two halves, demonstrating sub-split modes (even and fixed) and a real rest stop at Specialized Chicago with per-day hours.                                           |
+| **Complex Example**     | A multi-segment course with sleep time between segments, per-segment speed/decay overrides, and multiple timezones.                                                                                       |
 | **Mishigami Challenge** | A two-segment, 1,121-mile plan modelled on the actual Mishigami ultra-endurance race across Michigan (Chicago → St Ignace → Chicago), with realistic pacing decay, sleep windows, and timezone crossings. |
 
 Examples are defined as plain TypeScript objects in [`frontend/src/examples.ts`](./frontend/src/examples.ts). Adding a new example is as simple as adding an entry to the exported array — no build step or configuration change required.
-
