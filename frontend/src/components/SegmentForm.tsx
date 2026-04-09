@@ -7,7 +7,12 @@ import type {
   SplitGpxProfile,
   GpxTrackPoint,
 } from "../types";
-import { speedLabel, distanceLabel, minutesToHms } from "../utils";
+import {
+  speedLabel,
+  distanceLabel,
+  minutesToHms,
+  SEGMENT_COLORS,
+} from "../utils";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import SplitFormComponent from "./SplitForm";
@@ -64,6 +69,7 @@ export default function SegmentFormComponent({
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
   const prefix = `seg${segIndex}`;
+  const segColor = SEGMENT_COLORS[segIndex % SEGMENT_COLORS.length];
 
   const handleSplitCountChange = (raw: string) => {
     update({ splitCount: raw });
@@ -158,7 +164,9 @@ export default function SegmentFormComponent({
   return (
     <div className="segment-form">
       <div className="segment-header" onClick={() => setCollapsed(!collapsed)}>
-        <span className="collapse-icon">{collapsed ? "▶" : "▼"}</span>
+        <span className="collapse-icon" style={{ color: segColor }}>
+          {collapsed ? "▶" : "▼"}
+        </span>
         <div className="split-header-left">
           <div className="split-header-titlerow">
             <span
@@ -279,16 +287,23 @@ export default function SegmentFormComponent({
             </div>
 
             <div className="field">
-              <label>
-                <input
-                  id={`${prefix}-end-dt`}
-                  type="checkbox"
-                  checked={value.include_end_down_time}
-                  onChange={(e) =>
-                    update({ include_end_down_time: e.target.checked })
-                  }
-                />{" "}
-                Include Down Time on Last Split?
+              <label
+                htmlFor={`${prefix}-end-dt`}
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+              >
+                <label className="toggle-switch">
+                  <input
+                    id={`${prefix}-end-dt`}
+                    type="checkbox"
+                    checked={value.include_end_down_time}
+                    onChange={(e) =>
+                      update({ include_end_down_time: e.target.checked })
+                    }
+                  />
+                  <span className="toggle-track" />
+                  <span className="toggle-thumb" />
+                </label>
+                Down Time on Last
               </label>
             </div>
           </div>
@@ -365,7 +380,10 @@ export default function SegmentFormComponent({
             </div>
           )}
 
-          <div className="splits-container">
+          <div
+            className="splits-container"
+            style={{ borderLeftColor: `${segColor}33` }}
+          >
             {value.splits.map((split, j) => (
               <SplitFormComponent
                 key={j}

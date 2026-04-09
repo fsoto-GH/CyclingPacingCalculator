@@ -93,11 +93,28 @@ export default function SplitFormComponent({
   // Only active when GPX is loaded + endpoint coords are available + distance set.
   type LayoutState = "form" | "both" | "map";
   const [layoutState, setLayoutState] = useState<LayoutState>("form");
-  const [formColWidth, setFormColWidth] = useState(300);
+  const [formColWidth, setFormColWidth] = useState(350);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
   const resizeHandleRef = useRef<HTMLDivElement | null>(null);
+  const splitFormRef = useRef<HTMLDivElement | null>(null);
+  // Seed from actual window width so mobile first-render is already stacked
+  // (prevents Leaflet from initialising into a 0-height container)
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 520,
+  );
+
+  // Track container width to auto-stack the "both" layout when narrow
+  useEffect(() => {
+    const el = splitFormRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setIsNarrow(entry.contentRect.width < 520);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Condition that unlocks the slider UI
   const mapAvailable =
@@ -116,7 +133,7 @@ export default function SplitFormComponent({
       if (!isDragging.current) return;
       const delta = e.clientX - dragStartX.current;
       setFormColWidth(
-        Math.min(500, Math.max(180, dragStartWidth.current + delta)),
+        Math.min(500, Math.max(350, dragStartWidth.current + delta)),
       );
     }
     function onMouseUp() {
@@ -158,6 +175,8 @@ export default function SplitFormComponent({
   const adjHms = minutesToHms(value.adjustment_time);
   const displayName = value.name?.trim() || null;
   const headerTitle = displayName ? displayName : `Split ${splitIndex + 1}`;
+  const [isEditingName, setIsEditingName] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   // Timezone badge — shown whenever a split timezone override is active
   const activeTz =
@@ -172,7 +191,7 @@ export default function SplitFormComponent({
     : null;
 
   return (
-    <div className="split-form">
+    <div className="split-form" ref={splitFormRef}>
       <div className="split-header" onClick={() => setCollapsed((c) => !c)}>
         <span className="collapse-icon-sm">{collapsed ? "▶" : "▼"}</span>
         <div className="split-header-left">
@@ -338,9 +357,6 @@ export default function SplitFormComponent({
               ))}
             </div>
           </div>
-          {layoutState === "both" && (
-            <span className="split-view-bar-hint">drag handle to resize</span>
-          )}
         </div>
       )}
 
@@ -516,30 +532,22 @@ export default function SplitFormComponent({
                     allowNegative
                   />
 
-                  <div className="field">
-                    <label>
-                      <input
-                        id={`${prefix}-diff-tz`}
-                        type="checkbox"
-                        checked={value.differentTimezone}
-                        onChange={(e) =>
-                          update({ differentTimezone: e.target.checked })
-                        }
-                      />{" "}
-                      Different timezone?
-                    </label>
+                  <div className="field field--full-width">
+                    <label htmlFor={`${prefix}-tz`}>Split Timezone</label>
+                    <TimezoneSelect
+                      id={`${prefix}-tz`}
+                      value={
+                        value.differentTimezone ? value.timezone : courseTz
+                      }
+                      onChange={(tz) =>
+                        update(
+                          tz === courseTz
+                            ? { differentTimezone: false }
+                            : { differentTimezone: true, timezone: tz },
+                        )
+                      }
+                    />
                   </div>
-
-                  {value.differentTimezone && (
-                    <div className="field">
-                      <label htmlFor={`${prefix}-tz`}>Split Timezone</label>
-                      <TimezoneSelect
-                        id={`${prefix}-tz`}
-                        value={value.timezone}
-                        onChange={(tz) => update({ timezone: tz })}
-                      />
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -572,6 +580,14 @@ export default function SplitFormComponent({
 
           // ── Select layout shell ──
           if (mapAvailable && layoutState === "both") {
+            if (isNarrow) {
+              return (
+                <div className="split-two-pane split-two-pane--stacked">
+                  <div className="split-form-col">{formContent}</div>
+                  <div className="split-map-col">{mapContent}</div>
+                </div>
+              );
+            }
             return (
               <div className="split-two-pane">
                 <div className="split-form-col" style={{ width: formColWidth }}>

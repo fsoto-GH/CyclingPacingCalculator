@@ -5,6 +5,7 @@ import {
   Polyline,
   CircleMarker,
   Popup,
+  useMap,
 } from "react-leaflet";
 import type {
   LatLngBoundsExpression,
@@ -13,8 +14,8 @@ import type {
 } from "leaflet";
 import type { GpxTrackPoint, UnitSystem, SegmentForm } from "../types";
 import type { RestStopForm } from "../types";
-import { interpolateLatLon } from "../calculator/gpxParser";
-import { distanceLabel } from "../utils";
+import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
+import { distanceLabel, SEGMENT_COLORS } from "../utils";
 
 interface RouteMarker {
   lat: number;
@@ -22,6 +23,7 @@ interface RouteMarker {
   label: string;
   distanceStr: string;
   role: "start" | "split" | "finish" | "stop";
+  segIdx: number;
 }
 
 interface CourseMapProps {
@@ -57,6 +59,25 @@ const MARKER_COLORS: Record<RouteMarker["role"], string> = {
   stop: "#a855f7", // purple — rest stops
 };
 
+// Scroll wheel zoom is disabled until the user clicks inside the map,
+// re-disabled when the mouse leaves — prevents accidental zoom while scrolling.
+function ScrollWheelActivator() {
+  const map = useMap();
+  useEffect(() => {
+    map.scrollWheelZoom.disable();
+    const el = map.getContainer();
+    const enable = () => map.scrollWheelZoom.enable();
+    const disable = () => map.scrollWheelZoom.disable();
+    el.addEventListener("click", enable);
+    el.addEventListener("mouseleave", disable);
+    return () => {
+      el.removeEventListener("click", enable);
+      el.removeEventListener("mouseleave", disable);
+    };
+  }, [map]);
+  return null;
+}
+
 export default function CourseMap({
   gpxTrack,
   splitBoundariesKm,
@@ -71,6 +92,23 @@ export default function CourseMap({
       : (km: number) => km;
 
   const polyline = useMemo(() => decimateTrack(gpxTrack), [gpxTrack]);
+
+  // Per-segment sliced + decimated polylines for colour coding.
+  // splitBoundariesKm[si] = [[startKm, endKm], ...] for each split in segment si.
+  const segmentPolylines = useMemo(() => {
+    if (splitBoundariesKm.length === 0) {
+      // No boundaries yet — render whole track in segment-0 colour
+      return [{ positions: polyline, segIdx: 0 }];
+    }
+    return splitBoundariesKm.map((segBounds, si) => {
+      const startKm = segBounds[0]?.[0] ?? 0;
+      const endKm =
+        segBounds[segBounds.length - 1]?.[1] ??
+        gpxTrack[gpxTrack.length - 1].cumDist;
+      const slice = sliceTrackPoints(gpxTrack, startKm, endKm);
+      return { positions: decimateTrack(slice), segIdx: si };
+    });
+  }, [gpxTrack, splitBoundariesKm, polyline]);
 
   const bounds = useMemo<LatLngBoundsExpression>(() => {
     let minLat = Infinity,
@@ -99,6 +137,7 @@ export default function CourseMap({
       lon: start.lon,
       label: "Start",
       distanceStr: `0 ${dLabel}`,
+      segIdx: 0,
       role: "start",
     });
 
@@ -128,6 +167,7 @@ export default function CourseMap({
           lon: coord.lon,
           label,
           distanceStr,
+          segIdx: si,
           role: "split",
         });
       }
@@ -154,6 +194,7 @@ export default function CourseMap({
             lon: coord.lon,
             label: `🛑 ${rs.name}`,
             distanceStr: `${toUserDist(endKm).toFixed(1)} ${dLabel}`,
+            segIdx: si,
             role: "stop",
           });
         }
@@ -221,15 +262,23 @@ export default function CourseMap({
         scrollWheelZoom={true}
         style={{ height: "100%", width: "100%" }}
       >
+        <ScrollWheelActivator />
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           maxZoom={19}
         />
-        <Polyline
-          positions={polyline as LatLngExpression[]}
-          pathOptions={{ color: "#6b8aff", weight: 3, opacity: 0.85 }}
-        />
+        {segmentPolylines.map(({ positions, segIdx }) => (
+          <Polyline
+            key={segIdx}
+            positions={positions as LatLngExpression[]}
+            pathOptions={{
+              color: SEGMENT_COLORS[segIdx % SEGMENT_COLORS.length],
+              weight: 3,
+              opacity: 0.85,
+            }}
+          />
+        ))}
         {markers.map((m, i) => (
           <CircleMarker
             key={i}
@@ -238,7 +287,10 @@ export default function CourseMap({
             pathOptions={{
               color: "#1a1a2e",
               weight: 2,
-              fillColor: MARKER_COLORS[m.role],
+              fillColor:
+                m.role === "split" || m.role === "finish"
+                  ? SEGMENT_COLORS[m.segIdx % SEGMENT_COLORS.length]
+                  : MARKER_COLORS[m.role],
               fillOpacity: 1,
             }}
           >

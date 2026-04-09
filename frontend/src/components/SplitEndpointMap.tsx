@@ -137,6 +137,41 @@ function FitBounds({ bounds }: { bounds: LatLngBoundsExpression }) {
   return null;
 }
 
+// Calls invalidateSize after mount and whenever the map container resizes.
+// Uses map.getContainer() so no external ref is needed — the container is
+// always available inside a MapContainer child component.
+function MapInvalidator() {
+  const map = useMap();
+  useEffect(() => {
+    map.invalidateSize();
+    const container = map.getContainer();
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [map]);
+  return null;
+}
+
+// Scroll wheel zoom is disabled until the user clicks inside the map,
+// and re-disabled whenever the mouse leaves — prevents accidental zoom
+// while scrolling the page past the map.
+function ScrollWheelActivator() {
+  const map = useMap();
+  useEffect(() => {
+    map.scrollWheelZoom.disable();
+    const el = map.getContainer();
+    const enable = () => map.scrollWheelZoom.enable();
+    const disable = () => map.scrollWheelZoom.disable();
+    el.addEventListener("click", enable);
+    el.addEventListener("mouseleave", disable);
+    return () => {
+      el.removeEventListener("click", enable);
+      el.removeEventListener("mouseleave", disable);
+    };
+  }, [map]);
+  return null;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface SplitEndpointMapProps {
@@ -467,6 +502,8 @@ export default function SplitEndpointMap({
           scrollWheelZoom={true}
           style={{ height: "100%", width: "100%" }}
         >
+          <MapInvalidator />
+          <ScrollWheelActivator />
           <FitBounds bounds={bounds} />
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

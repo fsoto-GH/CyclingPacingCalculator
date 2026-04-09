@@ -1,5 +1,17 @@
 import type { UnitSystem } from "./types";
 
+/** Deterministic per-segment accent colours; cycles if more segments than entries. */
+export const SEGMENT_COLORS = [
+  "#4361ee", // indigo
+  "#f72585", // hot pink
+  "#4cc9f0", // sky
+  "#06d6a0", // mint
+  "#fb8500", // orange
+  "#7209b7", // violet
+  "#ef233c", // red
+  "#80b918", // lime
+] as const;
+
 /** Convert minutes (float) to total seconds for the API. Returns undefined if blank. */
 export function minutesToSeconds(minutes: string): number | undefined {
   if (minutes.trim() === "") return undefined;
