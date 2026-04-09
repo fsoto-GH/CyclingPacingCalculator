@@ -5,6 +5,7 @@ import {
   Polyline,
   CircleMarker,
   Marker,
+  Pane,
   Popup,
   useMap,
 } from "react-leaflet";
@@ -16,44 +17,20 @@ import type {
 } from "leaflet";
 import type { GpxTrackPoint, UnitSystem, RestStopForm } from "../types";
 import { sliceTrackPoints, interpolateLatLon } from "../calculator/gpxParser";
-import { queryNearbyAmenities } from "../calculator/overpass";
+import {
+  AMENITY_ICONS,
+  AMENITY_LABELS,
+  AMENITY_COLORS,
+} from "../calculator/overpass";
+import { reverseGeocode } from "../calculator/geocode";
 import type { NearbyAmenity } from "../calculator/overpass";
+import FindNearbyModal from "./FindNearbyModal";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** ±10 mi expressed in km */
 const SLICE_KM = 16.0934;
 const SEARCH_RADIUS_M = 1609.34;
-
-const AMENITY_ICONS: Record<string, string> = {
-  fuel: "⛽",
-  supermarket: "🛒",
-  convenience: "🏪",
-  pharmacy: "💊",
-  fast_food: "🍔",
-  cafe: "☕",
-  restaurant: "🍽️",
-};
-
-const AMENITY_LABELS: Record<string, string> = {
-  fuel: "Gas Station",
-  supermarket: "Grocery",
-  convenience: "Convenience",
-  pharmacy: "Pharmacy",
-  fast_food: "Fast Food",
-  cafe: "Café",
-  restaurant: "Restaurant",
-};
-
-const AMENITY_COLORS: Record<string, string> = {
-  fuel: "#fb923c",
-  supermarket: "#60a5fa",
-  convenience: "#818cf8",
-  pharmacy: "#4ade80",
-  fast_food: "#fbbf24",
-  cafe: "#fbbf24",
-  restaurant: "#fbbf24",
-};
 
 // Module-level cache — persists across remounts so the same address is never re-fetched
 const geocodeCache = new Map<
@@ -82,9 +59,9 @@ function decimateTrack(track: GpxTrackPoint[]): [number, number][] {
 function fmtDist(m: number, unitSystem: UnitSystem): string {
   if (unitSystem === "imperial") {
     const mi = m / 1609.34;
-    return mi < 0.1 ? `${Math.round(m * 3.28084)} ft` : `${mi.toFixed(2)} mi`;
+    return mi < 0.1 ? `${Math.round(m * 3.28084)} ft` : `${mi.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
   }
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`;
 }
 
 /** Forward azimuth in degrees (0 = north, clockwise). */
@@ -128,6 +105,154 @@ function makeTickIcon(label: string) {
 }
 
 // ── Inner child — must live inside MapContainer ───────────────────────────────
+
+/** Interval between markers in km at given Leaflet zoom level. */
+function getIntervalKm(zoom: number, unitSystem: UnitSystem): number {
+  if (unitSystem === "imperial") {
+    const MI = 1.60934;
+    if (zoom >= 14) return 1 * MI;
+    if (zoom >= 13) return 2 * MI;
+    if (zoom >= 12) return 5 * MI;
+    if (zoom >= 11) return 10 * MI;
+    if (zoom >= 10) return 20 * MI;
+    return 50 * MI;
+  }
+  if (zoom >= 14) return 1;
+  if (zoom >= 13) return 2;
+  if (zoom >= 12) return 5;
+  if (zoom >= 11) return 10;
+  if (zoom >= 10) return 25;
+  return 50;
+}
+
+/** Subtle route-direction arrow (smaller, white — distinct from the endpoint indicator). */
+function makeRouteArrowIcon(bearingDeg: number) {
+  return divIcon({
+    html: `<svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${bearingDeg}deg);transform-origin:50% 50%;display:block;overflow:visible"><polygon points="12,2 20,20 12,15 4,20" fill="rgba(255,255,255,0.70)" stroke="rgba(0,0,0,0.40)" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
+    className: "",
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+/**
+ * Zoom-adaptive distance labels and direction arrows, scoped to the ±SLICE_KM
+ * window around the split endpoint. Anchored at endKm so labels align consistently.
+ */
+function ZoomableMarkers({
+  gpxTrack,
+  endKm,
+  unitSystem,
+}: {
+  gpxTrack: GpxTrackPoint[];
+  endKm: number;
+  unitSystem: UnitSystem;
+}) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  const [viewport, setViewport] = useState(() => {
+    const b = map.getBounds();
+    return { s: b.getSouth(), n: b.getNorth(), w: b.getWest(), e: b.getEast() };
+  });
+
+  useEffect(() => {
+    const update = () => {
+      setZoom(map.getZoom());
+      const b = map.getBounds();
+      setViewport({
+        s: b.getSouth(),
+        n: b.getNorth(),
+        w: b.getWest(),
+        e: b.getEast(),
+      });
+    };
+    map.on("zoomend moveend", update);
+    return () => {
+      map.off("zoomend moveend", update);
+    };
+  }, [map]);
+
+  // Stage 1: precompute all positions within ±SLICE_KM — reruns on zoom/unit/endpoint change
+  const allMarkers = useMemo(() => {
+    const intervalKm = getIntervalKm(zoom, unitSystem);
+    const startKm = endKm - SLICE_KM;
+    const endKmRange = endKm + SLICE_KM;
+    const dLabel = unitSystem === "imperial" ? "mi" : "km";
+    const firstN = Math.ceil((startKm - endKm) / intervalKm);
+    const lastN = Math.floor((endKmRange - endKm) / intervalKm);
+
+    const dist: Array<{ km: number; lat: number; lon: number; label: string }> =
+      [];
+    for (let n = firstN; n <= lastN; n++) {
+      const km = endKm + n * intervalKm;
+      const pt = interpolateLatLon(gpxTrack, km);
+      if (!pt) continue;
+      const userDist = unitSystem === "imperial" ? km / 1.60934 : km;
+      dist.push({
+        km,
+        lat: pt.lat,
+        lon: pt.lon,
+        label: `${userDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`,
+      });
+    }
+
+    const arrow: Array<{
+      km: number;
+      lat: number;
+      lon: number;
+      bearing: number;
+    }> = [];
+    for (let n = firstN; n < lastN; n++) {
+      const km = endKm + (n + 0.5) * intervalKm;
+      const pt = interpolateLatLon(gpxTrack, km);
+      const ptAhead = interpolateLatLon(gpxTrack, km + 0.3);
+      if (!pt || !ptAhead) continue;
+      arrow.push({
+        km,
+        lat: pt.lat,
+        lon: pt.lon,
+        bearing: computeBearing(pt.lat, pt.lon, ptAhead.lat, ptAhead.lon),
+      });
+    }
+
+    return { dist, arrow };
+  }, [gpxTrack, endKm, zoom, unitSystem]);
+
+  // Stage 2: cheap viewport filter — O(n) bounds check, no interpolation — reruns on pan
+  const { distMarkers, arrowMarkers } = useMemo(() => {
+    const pad = 0.02; // ~2 km buffer so markers preload just before entering view
+    const { s, n, w, e } = viewport;
+    const inView = (lat: number, lon: number) =>
+      lat >= s - pad && lat <= n + pad && lon >= w - pad && lon <= e + pad;
+    return {
+      distMarkers: allMarkers.dist.filter((m) => inView(m.lat, m.lon)),
+      arrowMarkers: allMarkers.arrow.filter((m) => inView(m.lat, m.lon)),
+    };
+  }, [allMarkers, viewport]);
+
+  return (
+    <>
+      {distMarkers.map((m) => (
+        <Marker
+          key={`tick-${m.km}`}
+          position={[m.lat, m.lon]}
+          icon={makeTickIcon(m.label)}
+          interactive={false}
+          pane="route-labels"
+        />
+      ))}
+      {arrowMarkers.map((m) => (
+        <Marker
+          key={`arrow-${m.km}`}
+          position={[m.lat, m.lon]}
+          icon={makeRouteArrowIcon(m.bearing)}
+          interactive={false}
+          pane="route-labels"
+        />
+      ))}
+    </>
+  );
+}
 
 function FitBounds({ bounds }: { bounds: LatLngBoundsExpression }) {
   const map = useMap();
@@ -194,15 +319,12 @@ export default function SplitEndpointMap({
   unitSystem,
   restStop,
   onSelectStop,
-  onAddressLoading,
 }: SplitEndpointMapProps) {
   const [showNearby, setShowNearby] = useState(false);
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const [restStopCoords, setRestStopCoords] = useState<{
     lat: number;
@@ -212,9 +334,6 @@ export default function SplitEndpointMap({
   } | null>(null);
   const geocodeAbortRef = useRef<AbortController | null>(null);
   const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const nameGeocodeAbortRef = useRef<AbortController | null>(null);
-  // Track whether the panel was open so the endpoint-change effect can re-fetch
-  const showNearbyRef = useRef(false);
   const isFirstEndpointRender = useRef(true);
 
   useEffect(() => {
@@ -231,50 +350,24 @@ export default function SplitEndpointMap({
     }
   }
 
-  // Abort any in-flight requests and pending timers on unmount
+  // Abort geocode requests and pending timers on unmount
   useEffect(
     () => () => {
-      abortRef.current?.abort();
       geocodeAbortRef.current?.abort();
-      nameGeocodeAbortRef.current?.abort();
       if (geocodeTimerRef.current !== null)
         clearTimeout(geocodeTimerRef.current);
     },
     [],
   );
 
-  // Keep showNearbyRef in sync with state so effects can read it without re-running
-  useEffect(() => {
-    showNearbyRef.current = showNearby;
-  }, [showNearby]);
-
-  // When the endpoint moves, invalidate cached results and re-fetch if panel is open
+  // When the endpoint moves, clear cached results so user re-searches from modal
   useEffect(() => {
     if (isFirstEndpointRender.current) {
       isFirstEndpointRender.current = false;
       return;
     }
-    abortRef.current?.abort();
     setAmenities(null);
-    setFetchError(null);
-    if (!showNearbyRef.current) return;
-
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setLoading(true);
-    queryNearbyAmenities(endLat, endLon, SEARCH_RADIUS_M, ctrl.signal)
-      .then((results) => {
-        if (ctrl.signal.aborted) return;
-        results.sort((a, b) => a.distanceM - b.distanceM);
-        setAmenities(results);
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string }).name === "AbortError") return;
-        setFetchError("Could not fetch nearby stops.");
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false);
-      });
+    setShowNearby(false);
   }, [endLat, endLon]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Geocode the rest stop address via Nominatim — debounced 600 ms, cached by address
@@ -327,34 +420,7 @@ export default function SplitEndpointMap({
     }, 600);
   }, [restStop?.address]);
 
-  // Distance tick marks every 1 mi (imperial) or 1 km (metric) along the track slice
-  const tickMarks = useMemo(() => {
-    const INTERVAL = unitSystem === "imperial" ? 2.5 * 1.60934 : 4.0; // 2.5 mi or 4 km in km
-    const startDist = endKm - SLICE_KM;
-    const endDist = endKm + SLICE_KM;
-    // Anchor at endpoint so ticks are endKm ± n*INTERVAL (e.g. 10.2, 14.2, 6.2…)
-    const firstN = Math.ceil((startDist - endKm) / INTERVAL);
-    const lastN = Math.floor((endDist - endKm) / INTERVAL);
-    const ticks: Array<{
-      km: number;
-      label: string;
-      lat: number;
-      lon: number;
-    }> = [];
-    for (let n = firstN; n <= lastN; n++) {
-      const km = endKm + n * INTERVAL;
-      const pt = interpolateLatLon(gpxTrack, km);
-      if (!pt) continue;
-      const label =
-        unitSystem === "imperial"
-          ? `${(km / 1.60934).toFixed(1)} mi`
-          : `${km.toFixed(1)} km`;
-      ticks.push({ km, label, lat: pt.lat, lon: pt.lon });
-    }
-    return ticks;
-  }, [gpxTrack, endKm, unitSystem]);
-
-  // Track slice: ±0.5 mi around the endpoint
+  // Track slice: ±SLICE_KM around the endpoint
   const polyline = useMemo(() => {
     const slice = sliceTrackPoints(
       gpxTrack,
@@ -395,31 +461,10 @@ export default function SplitEndpointMap({
     ];
   }, [endLat, endLon, restStopCoords]);
 
-  const handleFindNearby = useCallback(() => {
+  const handleModalResults = useCallback((results: NearbyAmenity[]) => {
+    setAmenities(results);
     setShowNearby(true);
-    // If already fetched (or currently fetching), just reveal pins
-    if (amenities !== null || loading) return;
-
-    abortRef.current?.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setLoading(true);
-    setFetchError(null);
-
-    queryNearbyAmenities(endLat, endLon, SEARCH_RADIUS_M, ctrl.signal)
-      .then((results) => {
-        if (ctrl.signal.aborted) return;
-        results.sort((a, b) => a.distanceM - b.distanceM);
-        setAmenities(results);
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string }).name === "AbortError") return;
-        setFetchError("Could not fetch nearby stops.");
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false);
-      });
-  }, [endLat, endLon, amenities, loading]);
+  }, []);
 
   function handleSelect(a: NearbyAmenity) {
     const patch: Partial<RestStopForm> = { enabled: true, name: a.name };
@@ -427,73 +472,37 @@ export default function SplitEndpointMap({
       patch.sameHoursEveryDay = false;
       patch.perDay = a.hours;
     }
-    if (a.address) {
-      patch.address = a.address;
-      onSelectStop(patch);
+    if (a.streetLine && a.hasLocality) {
+      // Full address: house + street + city/state — use as-is, single call
+      onSelectStop({ ...patch, address: a.address });
       return;
     }
-    // No address from Overpass — look it up via Nominatim using the place name
-    onSelectStop({ ...patch, address: "" });
-    onAddressLoading?.(true);
-    nameGeocodeAbortRef.current?.abort();
-    const ctrl = new AbortController();
-    nameGeocodeAbortRef.current = ctrl;
-    fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(a.name)}&format=json&limit=1&addressdetails=1`,
-      { signal: ctrl.signal, headers: { "Accept-Language": "en" } },
-    )
-      .then((r) => r.json())
-      .then(
-        (
-          res: Array<{
-            display_name: string;
-            address?: {
-              house_number?: string;
-              road?: string;
-              city?: string;
-              town?: string;
-              village?: string;
-              state?: string;
-            };
-          }>,
-        ) => {
-          if (ctrl.signal.aborted) return;
-          if (res.length === 0) return;
-          const ad = res[0].address ?? {};
-          const street = [ad.house_number, ad.road].filter(Boolean).join(" ");
-          const locality = ad.city ?? ad.town ?? ad.village ?? "";
-          const parts = [street, locality, ad.state].filter(Boolean);
-          const addr =
-            parts.length > 0 ? parts.join(", ") : res[0].display_name;
-          onSelectStop({ address: addr });
-        },
-      )
-      .catch(() => {})
-      .finally(() => {
-        if (!ctrl.signal.aborted) onAddressLoading?.(false);
+    if (a.streetLine) {
+      // Partial: have house + street but no city — wait for geocode then single call
+      reverseGeocode(a.lat, a.lon).then((cityState) => {
+        const address = cityState
+          ? `${a.streetLine}, ${cityState}`
+          : a.streetLine;
+        onSelectStop({ ...patch, address });
       });
+      return;
+    }
+    // No usable address — fall back to coordinates, single call
+    onSelectStop({
+      ...patch,
+      address: `${a.lat.toFixed(6)}, ${a.lon.toFixed(6)}`,
+    });
   }
 
   return (
     <div className="split-endpoint-map">
       <div className="split-endpoint-map-canvas" ref={canvasRef}>
-        {/* Status overlays */}
-        {loading && (
-          <div className="split-map-status">Searching nearby stops…</div>
-        )}
-        {fetchError && (
-          <div className="split-map-status split-map-status--error">
-            {fetchError}
+        {/* Empty-result overlay */}
+        {showNearby && amenities !== null && amenities.length === 0 && (
+          <div className="split-map-status">
+            No stops found within {fmtDist(SEARCH_RADIUS_M, unitSystem)}.
           </div>
         )}
-        {showNearby &&
-          !loading &&
-          amenities !== null &&
-          amenities.length === 0 && (
-            <div className="split-map-status">
-              No stops found within {fmtDist(SEARCH_RADIUS_M, unitSystem)}.
-            </div>
-          )}
 
         <MapContainer
           ref={mapRef}
@@ -502,6 +511,8 @@ export default function SplitEndpointMap({
           scrollWheelZoom={true}
           style={{ height: "100%", width: "100%" }}
         >
+          <Pane name="route-lines" style={{ zIndex: 393 }} />
+          <Pane name="route-labels" style={{ zIndex: 397 }} />
           <MapInvalidator />
           <ScrollWheelActivator />
           <FitBounds bounds={bounds} />
@@ -511,22 +522,19 @@ export default function SplitEndpointMap({
             maxZoom={19}
           />
 
-          {/* Distance tick marks along the route */}
-          {tickMarks.map((t) => (
-            <Marker
-              key={t.km}
-              position={[t.lat, t.lon]}
-              icon={makeTickIcon(t.label)}
-              interactive={false}
-              zIndexOffset={-1000}
-            />
-          ))}
+          {/* Zoom-adaptive distance labels and direction arrows */}
+          <ZoomableMarkers
+            gpxTrack={gpxTrack}
+            endKm={endKm}
+            unitSystem={unitSystem}
+          />
 
           {/* Route slice polyline */}
           {polyline.length >= 2 && (
             <Polyline
               positions={polyline as LatLngExpression[]}
               pathOptions={{ color: "#6b8aff", weight: 3, opacity: 0.85 }}
+              pane="route-lines"
             />
           )}
 
@@ -598,6 +606,9 @@ export default function SplitEndpointMap({
                   weight: 1.5,
                   fillColor: AMENITY_COLORS[a.amenity] ?? "#94a3b8",
                   fillOpacity: 0.95,
+                  ...(a.hours == null
+                    ? { dashArray: "4 4", color: "#64748b" }
+                    : {}),
                 }}
               >
                 <Popup>
@@ -667,14 +678,30 @@ export default function SplitEndpointMap({
             <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
           </svg>
         </button>
-        {/* Find Nearby Stops — floating action button overlaid on canvas */}
+        {/* Find Nearby — FAB overlaid on canvas */}
         <button
           type="button"
           className="split-map-nearby-fab"
-          onClick={showNearby ? () => setShowNearby(false) : handleFindNearby}
-          title={showNearby ? "Hide nearby stops" : "Find nearby stops"}
+          onClick={
+            amenities !== null && !showNearby
+              ? () => setShowNearby(true)
+              : showNearby
+                ? () => setShowNearby(false)
+                : () => setModalOpen(true)
+          }
+          title={
+            amenities !== null && !showNearby
+              ? "Show nearby results"
+              : showNearby
+                ? "Hide nearby results"
+                : "Find nearby stops"
+          }
         >
-          {showNearby ? "✕ Hide" : "🔍 Find Nearby"}
+          {amenities !== null && !showNearby
+            ? "📍 Show Results"
+            : showNearby
+              ? "✕ Hide"
+              : "🔍 Find Nearby"}
         </button>
       </div>
       {/* end canvas */}
@@ -682,6 +709,29 @@ export default function SplitEndpointMap({
       {/* Amenity list — shown when nearby search has results */}
       {showNearby && amenities && amenities.length > 0 && (
         <div className="split-map-amenity-list">
+          <div className="split-map-amenity-header">
+            <span className="split-map-amenity-count">
+              {amenities.length} stop{amenities.length !== 1 ? "s" : ""} found
+            </span>
+            <div className="split-map-amenity-header-actions">
+              <button
+                type="button"
+                className="split-map-amenity-action-btn"
+                onClick={() => setModalOpen(true)}
+                title="Update search criteria"
+              >
+                ⚙️ Update
+              </button>
+              <button
+                type="button"
+                className="split-map-amenity-action-btn split-map-amenity-action-btn--close"
+                onClick={() => setShowNearby(false)}
+                title="Hide results"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
           {amenities.map((a) => (
             <div key={a.id} className="split-map-amenity-row">
               <span className="split-map-amenity-icon">
@@ -694,6 +744,11 @@ export default function SplitEndpointMap({
                   {fmtDist(a.distanceM, unitSystem)}
                   {a.rawHours && <> · {a.rawHours}</>}
                 </span>
+                {!a.hours && (
+                  <span className="split-map-amenity-no-hours">
+                    ⏰ Hours unknown
+                  </span>
+                )}
                 {a.address && (
                   <span className="split-map-amenity-addr">{a.address}</span>
                 )}
@@ -708,6 +763,15 @@ export default function SplitEndpointMap({
             </div>
           ))}
         </div>
+      )}
+      {modalOpen && (
+        <FindNearbyModal
+          lat={endLat}
+          lon={endLon}
+          radiusM={SEARCH_RADIUS_M}
+          onResults={handleModalResults}
+          onClose={() => setModalOpen(false)}
+        />
       )}
     </div>
   );

@@ -1,27 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { RestStopForm, UnitSystem } from "../types";
-import { queryNearbyAmenities } from "../calculator/overpass";
+import {
+  queryNearbyAmenities,
+  AMENITY_ICONS,
+  AMENITY_LABELS,
+} from "../calculator/overpass";
 import type { NearbyAmenity } from "../calculator/overpass";
-
-const AMENITY_ICONS: Record<string, string> = {
-  fuel: "⛽",
-  supermarket: "🛒",
-  convenience: "🏪",
-  pharmacy: "💊",
-  fast_food: "🍔",
-  cafe: "☕",
-  restaurant: "🍽️",
-};
-
-const AMENITY_LABELS: Record<string, string> = {
-  fuel: "Gas Station",
-  supermarket: "Grocery",
-  convenience: "Convenience",
-  pharmacy: "Pharmacy",
-  fast_food: "Fast Food",
-  cafe: "Café",
-  restaurant: "Restaurant",
-};
 
 function fmtDist(m: number, unitSystem: UnitSystem): string {
   if (unitSystem === "imperial") {

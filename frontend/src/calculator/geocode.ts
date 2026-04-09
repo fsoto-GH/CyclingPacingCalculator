@@ -20,6 +20,8 @@ function cacheKey(lat: number, lon: number): string {
 
 interface NominatimResponse {
   address?: {
+    house_number?: string;
+    road?: string;
     city?: string;
     town?: string;
     village?: string;
@@ -88,4 +90,55 @@ export function getCachedGeocode(lat: number, lon: number): string | undefined {
 /** Clear the in-memory cache (e.g. for testing). */
 export function clearGeocodeCache(): void {
   cache.clear();
+}
+
+// Separate cache for street-level address lookups (zoom=18)
+const addressCache = new Map<string, string>();
+
+/**
+ * Reverse-geocode a coordinate to a full street address.
+ * Returns a formatted string like "123 Main St, Milwaukee, Wisconsin" or null on failure.
+ * Uses zoom=18 for street-level granularity. Results are cached by coordinate.
+ */
+export async function reverseGeocodeAddress(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const key = cacheKey(lat, lon);
+  if (addressCache.has(key)) return addressCache.get(key)!;
+
+  const url = new URL(NOMINATIM_URL);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("lat", lat.toFixed(6));
+  url.searchParams.set("lon", lon.toFixed(6));
+  url.searchParams.set("zoom", "18"); // street-level granularity
+  url.searchParams.set("accept-language", "en");
+  url.searchParams.set("addressdetails", "1");
+
+  let data: NominatimResponse;
+  try {
+    const resp = await fetch(url.toString(), {
+      method: "GET",
+      headers: { "User-Agent": USER_AGENT },
+      signal,
+    });
+    if (!resp.ok) return null;
+    data = (await resp.json()) as NominatimResponse;
+  } catch {
+    return null;
+  }
+
+  if (data.error || !data.address) return null;
+
+  const addr = data.address;
+  const street = [addr.house_number, addr.road].filter(Boolean).join(" ");
+  const locality =
+    addr.city ?? addr.town ?? addr.village ?? addr.hamlet ?? addr.county ?? "";
+  const parts = [street, locality, addr.state].filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const label = parts.join(", ");
+  addressCache.set(key, label);
+  return label;
 }

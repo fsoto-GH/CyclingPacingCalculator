@@ -24,13 +24,17 @@ export interface NearbyAmenity {
   lat: number;
   lon: number;
   address: string;
+  /** "123 Main St" when addr:housenumber + addr:street are present, otherwise "". */
+  streetLine: string;
+  /** True when at least addr:city is present in OSM tags. */
+  hasLocality: boolean;
   /** Parsed open hours per day (Mon=0 … Sun=6). null if not in OSM. */
   hours: WeekHours | null;
   /** Raw OSM opening_hours string, for display/debugging */
   rawHours: string | null;
 }
 
-const AMENITY_TYPES = [
+export const AMENITY_LIST = [
   "fuel",
   "supermarket",
   "convenience",
@@ -38,7 +42,62 @@ const AMENITY_TYPES = [
   "fast_food",
   "cafe",
   "restaurant",
-].join("|");
+  "drinking_water",
+  "vending_machine",
+  "bench",
+  "ice_cream",
+  "food_court",
+] as const;
+
+export const AMENITY_ICONS: Record<string, string> = {
+  fuel: "⛽",
+  supermarket: "🛒",
+  convenience: "🏪",
+  pharmacy: "💊",
+  fast_food: "🍔",
+  cafe: "☕",
+  restaurant: "🍽️",
+  drinking_water: "💧",
+  vending_machine: "🏧",
+  bench: "🪑",
+  ice_cream: "🍦",
+  food_court: "🍱",
+};
+
+export const AMENITY_LABELS: Record<string, string> = {
+  fuel: "Gas Station",
+  supermarket: "Grocery",
+  convenience: "Convenience",
+  pharmacy: "Pharmacy",
+  fast_food: "Fast Food",
+  cafe: "Café",
+  restaurant: "Restaurant",
+  drinking_water: "Water",
+  vending_machine: "Vending Machine",
+  bench: "Bench",
+  ice_cream: "Ice Cream",
+  food_court: "Food Court",
+};
+
+export const AMENITY_COLORS: Record<string, string> = {
+  fuel: "#fb923c",
+  supermarket: "#60a5fa",
+  convenience: "#818cf8",
+  pharmacy: "#4ade80",
+  fast_food: "#fbbf24",
+  cafe: "#fbbf24",
+  restaurant: "#fbbf24",
+  drinking_water: "#38bdf8",
+  vending_machine: "#a78bfa",
+  bench: "#94a3b8",
+  ice_cream: "#f9a8d4",
+  food_court: "#fbbf24",
+};
+
+/** Strip any character that isn't a valid OSM tag character to prevent query injection. */
+function sanitizeAmenityType(t: string): string {
+  return t.replace(/[^a-zA-Z0-9_]/g, "");
+}
 
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -79,10 +138,6 @@ const DAY_INDEX: Record<OsmDay, number> = {
   Su: 6,
 };
 
-function makeDefault(): DayHoursEntry {
-  return { mode: "hours", opens: "06:00", closes: "22:00" };
-}
-
 /**
  * Very lightweight OSM opening_hours parser.
  * Handles the most common patterns seen in US/EU stores:
@@ -99,14 +154,21 @@ function makeDefault(): DayHoursEntry {
 export function parseOsmHours(raw: string): WeekHours | null {
   if (!raw) return null;
 
+  // Days not mentioned in the hours string are implicitly closed
+  const makeClosed = (): DayHoursEntry => ({
+    mode: "closed",
+    opens: "00:00",
+    closes: "00:00",
+  });
+
   const result: WeekHours = [
-    makeDefault(),
-    makeDefault(),
-    makeDefault(),
-    makeDefault(),
-    makeDefault(),
-    makeDefault(),
-    makeDefault(),
+    makeClosed(),
+    makeClosed(),
+    makeClosed(),
+    makeClosed(),
+    makeClosed(),
+    makeClosed(),
+    makeClosed(),
   ];
 
   const trimmed = raw.trim();
@@ -209,11 +271,17 @@ export async function queryNearbyAmenities(
   lon: number,
   radiusM = 1610,
   signal?: AbortSignal,
+  amenityFilter?: string[],
 ): Promise<NearbyAmenity[]> {
+  const types =
+    amenityFilter && amenityFilter.length > 0
+      ? amenityFilter.map(sanitizeAmenityType).filter(Boolean)
+      : (AMENITY_LIST as readonly string[]).slice();
+  const typeStr = types.join("|");
   // Nodes only (no way) + maxsize cap to keep queries light.
   const query = `
 [out:json][timeout:10][maxsize:1048576];
-node(around:${radiusM},${lat},${lon})[amenity~"${AMENITY_TYPES}"][name];
+node(around:${radiusM},${lat},${lon})[amenity~"${typeStr}"][name];
 out;
 `.trim();
 
@@ -242,14 +310,15 @@ out;
           const hours = rawHours ? parseOsmHours(rawHours) : null;
 
           // Build a best-effort address from OSM addr:* tags
+          const hasHouseAndStreet = !!(tags["addr:housenumber"] && tags["addr:street"]);
+          const streetLine = hasHouseAndStreet
+            ? `${tags["addr:housenumber"]} ${tags["addr:street"]}`
+            : "";
+          const hasLocality = !!(tags["addr:city"] || tags["addr:state"]);
+
           const addrParts: string[] = [];
-          if (tags["addr:housenumber"] && tags["addr:street"]) {
-            addrParts.push(
-              `${tags["addr:housenumber"]} ${tags["addr:street"]}`,
-            );
-          } else if (tags["addr:street"]) {
-            addrParts.push(tags["addr:street"]);
-          }
+          if (streetLine) addrParts.push(streetLine);
+          else if (tags["addr:street"]) addrParts.push(tags["addr:street"]);
           if (tags["addr:city"]) addrParts.push(tags["addr:city"]);
           if (tags["addr:state"]) addrParts.push(tags["addr:state"]);
 
@@ -261,6 +330,8 @@ out;
             lat: elLat,
             lon: elLon,
             address: addrParts.join(", "),
+            streetLine,
+            hasLocality,
             hours,
             rawHours,
           };

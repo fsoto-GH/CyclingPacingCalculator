@@ -173,7 +173,10 @@ export default function SplitFormComponent({
 
   const elevUnit = unitSystem === "imperial" ? "ft" : "m";
   const toElevUnit = (m: number) =>
-    unitSystem === "imperial" ? Math.round(m * 3.28084) : m;
+    (unitSystem === "imperial"
+      ? Math.round(m * 3.28084)
+      : Math.round(m)
+    ).toLocaleString();
 
   const downHms = minutesToHms(value.down_time);
   const adjHms = minutesToHms(value.adjustment_time);
@@ -264,7 +267,7 @@ export default function SplitFormComponent({
             <div className="split-header-meta">
               {splitDistUser != null && (
                 <span className="split-header-meta-item" title="Split distance">
-                  {splitDistUser.toFixed(1)} {dLabel}
+                  {splitDistUser.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {dLabel}
                 </span>
               )}
               {tzBadgeAbbr && (
@@ -342,7 +345,7 @@ export default function SplitFormComponent({
                     className="split-header-dist"
                     style={{ color: distColor }}
                   >
-                    {cumulativeDist.toFixed(1)} {dLabel}
+                    {cumulativeDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {dLabel}
                   </span>
                   <span className="split-header-city">
                     {nearbyCity_fetching && (
@@ -354,8 +357,8 @@ export default function SplitFormComponent({
                     {sign === "exact"
                       ? "✓ matches GPX"
                       : sign === "under"
-                        ? `${absDiff.toFixed(1)} ${dLabel} left`
-                        : `${absDiff.toFixed(1)} ${dLabel} over`}
+                        ? `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} left`
+                        : `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} over`}
                   </span>
                 </>
               );

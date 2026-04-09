@@ -1326,6 +1326,30 @@ h4 {
   background: #f4f4f4;
 }
 
+.map-markers-btn {
+  position: absolute;
+  top: 82px;
+  right: 10px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: #fff;
+  color: #333;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.map-markers-btn:hover {
+  background: #f4f4f4;
+}
+
 @media (max-width: 640px) {
   .course-map-container {
     aspect-ratio: 1;
@@ -1942,6 +1966,39 @@ dialog {
   font-size: 0.88rem;
   line-height: 1.55;
   color-scheme: dark;
+}
+
+/* Footer row used by FindNearbyModal */
+.legend-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  border-top: 1px solid #3a3a3a;
+  flex-shrink: 0;
+}
+
+/* Find-nearby modal: narrower than the default 680px guide/example width */
+.find-nearby-modal {
+  max-width: 420px;
+}
+
+/* "Search Nearby" filled variant of ghost-btn */
+.fnm-search-btn {
+  background: #4361ee;
+  color: #fff;
+  border-color: #4361ee;
+}
+
+.fnm-search-btn:hover:not(:disabled) {
+  background: #3451d1;
+  border-color: #3451d1;
+  color: #fff;
+}
+
+.fnm-search-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .legend-intro {
@@ -3073,6 +3130,12 @@ dialog {
   text-overflow: ellipsis;
 }
 
+.split-map-amenity-no-hours {
+  font-size: 0.72rem;
+  color: #4b5563;
+  font-style: italic;
+}
+
 .split-map-amenity-addr {
   font-size: 0.72rem;
   color: #64748b;
@@ -3155,3 +3218,324 @@ dialog {
 .input-address-loading::placeholder {
   animation: address-placeholder-pulse 1.2s ease-in-out infinite;
 }
+
+/* ── Course-map outer wrapper (holds map canvas + legend) ── */
+.course-map-outer {
+  margin-top: 1.25rem;
+}
+
+.course-map-outer .course-map-container {
+  margin-top: 0;
+}
+
+/* ── Course-map legend ── */
+.course-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1.25rem;
+  padding: 0.45rem 0.6rem;
+  background: #141420;
+  border: 1px solid #2e2e3e;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  font-size: 0.75rem;
+}
+
+.cml-segments,
+.cml-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.9rem;
+}
+
+.cml-segments {
+  border-right: 1px solid #2e2e3e;
+  padding-right: 1.25rem;
+}
+
+.cml-nodes:empty {
+  display: none;
+}
+
+.cml-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  color: #94a3b8;
+}
+
+.cml-line {
+  display: inline-block;
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.cml-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+
+.cml-label {
+  font-size: 0.73rem;
+  color: #94a3b8;
+}
+
+/* ── Amenity list header (count + actions) ── */
+.split-map-amenity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.6rem;
+  background: #131f30;
+  border-bottom: 1px solid #1e293b;
+}
+
+.split-map-amenity-count {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.split-map-amenity-header-actions {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.split-map-amenity-action-btn {
+  background: transparent;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.split-map-amenity-action-btn:hover {
+  color: #e2e8f0;
+  border-color: #64748b;
+}
+
+.split-map-amenity-action-btn--close:hover {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+/* ── Find Nearby Modal ── */
+.fnm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.fnm-dialog {
+  background: #1a1a2e;
+  border: 1px solid #2e2e4e;
+  border-radius: 10px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.fnm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #2e2e4e;
+  flex-shrink: 0;
+}
+
+.fnm-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.fnm-close {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  line-height: 1;
+  border-radius: 3px;
+  transition: color 0.1s;
+}
+
+.fnm-close:hover {
+  color: #f87171;
+}
+
+.fnm-body {
+  padding: 0.85rem 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fnm-desc {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.fnm-checks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem 0.5rem;
+}
+
+.fnm-check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.fnm-check-label:hover {
+  background: #1e2a3a;
+}
+
+.fnm-check-label input[type="checkbox"] {
+  accent-color: #4361ee;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.fnm-check-label input:disabled ~ * {
+  opacity: 0.5;
+}
+
+.fnm-check-icon {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.fnm-check-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fnm-custom-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.fnm-custom-label {
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.fnm-custom-hint {
+  font-size: 0.72rem;
+  color: #4b5563;
+}
+
+.fnm-custom-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.6rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+}
+
+.fnm-custom-input:focus {
+  outline: none;
+  border-color: #4361ee;
+}
+
+.fnm-custom-input:disabled {
+  opacity: 0.5;
+}
+
+.fnm-error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+}
+
+.fnm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid #2e2e4e;
+  flex-shrink: 0;
+}
+
+.fnm-btn-secondary {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+  background: transparent;
+  border: 1px solid #334155;
+  border-radius: 5px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s;
+}
+
+.fnm-btn-secondary:hover:not(:disabled) {
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+
+.fnm-btn-primary {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: #4361ee;
+  border: none;
+  border-radius: 5px;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+  min-width: 110px;
+}
+
+.fnm-btn-primary:hover:not(:disabled) {
+  background: #3451d1;
+}
+
+.fnm-btn-primary:disabled,
+.fnm-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

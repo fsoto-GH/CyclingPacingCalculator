@@ -1072,8 +1072,8 @@ export default function CourseForm() {
               <span className="gpx-file-name">{gpxFileName}</span>
               <span className="gpx-file-stats">
                 {form.unitSystem === "imperial"
-                  ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toFixed(1)} mi`
-                  : `${gpxTrack[gpxTrack.length - 1].cumDist.toFixed(1)} km`}
+                  ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
+                  : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
                 {" · "}
                 {form.unitSystem === "imperial"
                   ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
@@ -1143,7 +1143,7 @@ export default function CourseForm() {
                 className={form.mode === "distance" ? "active" : ""}
                 onClick={() => update({ mode: "distance" })}
               >
-                Distance
+                Split Distance
               </button>
               <button
                 type="button"
@@ -1155,8 +1155,8 @@ export default function CourseForm() {
             </div>
             <span className="hint">
               {form.mode === "distance"
-                ? "Split distances are chunks that add up to the total."
-                : "Split distances are cumulative markers along the route."}
+                ? "Distance values will define the length of each split."
+                : "Distance values will define course mile-markers."}
             </span>
           </div>
         </div>

@@ -131,34 +131,56 @@ function ZoomableMarkers({
 }) {
   const map = useMap();
   const [zoom, setZoom] = useState(() => map.getZoom());
+  const [viewport, setViewport] = useState(() => {
+    const b = map.getBounds();
+    return { s: b.getSouth(), n: b.getNorth(), w: b.getWest(), e: b.getEast() };
+  });
 
   useEffect(() => {
-    const onZoom = () => setZoom(map.getZoom());
-    map.on("zoomend", onZoom);
+    const update = () => {
+      setZoom(map.getZoom());
+      const b = map.getBounds();
+      setViewport({
+        s: b.getSouth(),
+        n: b.getNorth(),
+        w: b.getWest(),
+        e: b.getEast(),
+      });
+    };
+    map.on("zoomend moveend", update);
     return () => {
-      map.off("zoomend", onZoom);
+      map.off("zoomend moveend", update);
     };
   }, [map]);
 
-  const { distMarkers, arrowMarkers } = useMemo(() => {
-    if (gpxTrack.length < 2) return { distMarkers: [], arrowMarkers: [] };
-
+  // Stage 1: precompute ALL positions for current interval — reruns only on zoom/unit change
+  const allMarkers = useMemo(() => {
+    if (gpxTrack.length < 2)
+      return {
+        dist: [] as Array<{
+          km: number;
+          lat: number;
+          lon: number;
+          label: string;
+        }>,
+        arrow: [] as Array<{
+          km: number;
+          lat: number;
+          lon: number;
+          bearing: number;
+        }>,
+      };
     const intervalKm = getIntervalKm(zoom, unitSystem);
     const totalKm = gpxTrack[gpxTrack.length - 1].cumDist;
     const dLabel = unitSystem === "imperial" ? "mi" : "km";
 
-    // Distance labels at every intervalKm (skip 0 — start circle marker is already there)
-    const distMarkers: Array<{
-      km: number;
-      lat: number;
-      lon: number;
-      label: string;
-    }> = [];
+    const dist: Array<{ km: number; lat: number; lon: number; label: string }> =
+      [];
     for (let km = intervalKm; km < totalKm; km += intervalKm) {
       const pt = interpolateLatLon(gpxTrack, km);
       if (!pt) continue;
       const userDist = unitSystem === "imperial" ? km / 1.60934 : km;
-      distMarkers.push({
+      dist.push({
         km,
         lat: pt.lat,
         lon: pt.lon,
@@ -166,8 +188,7 @@ function ZoomableMarkers({
       });
     }
 
-    // Direction arrows midway between labels (offset by intervalKm / 2)
-    const arrowMarkers: Array<{
+    const arrow: Array<{
       km: number;
       lat: number;
       lon: number;
@@ -177,7 +198,7 @@ function ZoomableMarkers({
       const pt = interpolateLatLon(gpxTrack, km);
       const ptAhead = interpolateLatLon(gpxTrack, km + 0.3);
       if (!pt || !ptAhead) continue;
-      arrowMarkers.push({
+      arrow.push({
         km,
         lat: pt.lat,
         lon: pt.lon,
@@ -185,8 +206,20 @@ function ZoomableMarkers({
       });
     }
 
-    return { distMarkers, arrowMarkers };
+    return { dist, arrow };
   }, [gpxTrack, zoom, unitSystem]);
+
+  // Stage 2: cheap viewport filter — O(n) bounds check, no interpolation — reruns on pan
+  const { distMarkers, arrowMarkers } = useMemo(() => {
+    const pad = 0.02; // ~2 km buffer so markers preload just before entering view
+    const { s, n, w, e } = viewport;
+    const inView = (lat: number, lon: number) =>
+      lat >= s - pad && lat <= n + pad && lon >= w - pad && lon <= e + pad;
+    return {
+      distMarkers: allMarkers.dist.filter((m) => inView(m.lat, m.lon)),
+      arrowMarkers: allMarkers.arrow.filter((m) => inView(m.lat, m.lon)),
+    };
+  }, [allMarkers, viewport]);
 
   return (
     <>
@@ -196,7 +229,7 @@ function ZoomableMarkers({
           position={[m.lat, m.lon]}
           icon={makeTickIcon(m.label)}
           interactive={false}
-          pane="route-underlayer"
+          pane="route-labels"
         />
       ))}
       {arrowMarkers.map((m) => (
@@ -205,7 +238,7 @@ function ZoomableMarkers({
           position={[m.lat, m.lon]}
           icon={makeArrowIcon(m.bearing)}
           interactive={false}
-          pane="route-underlayer"
+          pane="route-labels"
         />
       ))}
     </>
@@ -312,7 +345,7 @@ export default function CourseMap({
             : `Split ${splitNum}`;
         const label = splitName || defaultName;
         const distUser = toUserDist(endKm);
-        const distanceStr = `${distUser.toFixed(1)} ${dLabel}`;
+        const distanceStr = `${distUser.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`;
 
         markerCount++;
         result.push({
@@ -346,7 +379,7 @@ export default function CourseMap({
             lat: coord.lat,
             lon: coord.lon,
             label: `🛑 ${rs.name}`,
-            distanceStr: `${toUserDist(endKm).toFixed(1)} ${dLabel}`,
+            distanceStr: `${toUserDist(endKm).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`,
             segIdx: si,
             role: "stop",
           });
@@ -361,6 +394,7 @@ export default function CourseMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showMarkers, setShowMarkers] = useState(true);
 
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -378,85 +412,151 @@ export default function CourseMap({
 
   if (polyline.length < 2) return null;
 
+  const legendSegments = formSegments.map((seg, si) => ({
+    color: SEGMENT_COLORS[si % SEGMENT_COLORS.length],
+    name:
+      seg.name?.trim() ||
+      (formSegments.length > 1 ? `Segment ${si + 1}` : "Route"),
+  }));
+  const hasRestStops = markers.some((m) => m.role === "stop");
+  const finishMarker = markers.find((m) => m.role === "finish");
+  const finishColor = finishMarker
+    ? SEGMENT_COLORS[finishMarker.segIdx % SEGMENT_COLORS.length]
+    : null;
+
   return (
-    <div className="course-map-container" ref={containerRef}>
-      <button
-        className="map-reset-btn"
-        onClick={() => mapRef.current?.fitBounds(bounds, { padding: [24, 24] })}
-        title="Reset view"
-        aria-label="Reset map view"
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-          <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
-        </svg>
-      </button>
-      <button
-        className="map-fullscreen-btn"
-        onClick={toggleFullscreen}
-        title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        aria-label={isFullscreen ? "Exit fullscreen" : "View map fullscreen"}
-      >
-        {isFullscreen ? (
-          // compress icon
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+    <div className="course-map-outer">
+      <div className="course-map-container" ref={containerRef}>
+        <button
+          className="map-markers-btn"
+          onClick={() => setShowMarkers((v) => !v)}
+          title={showMarkers ? "Hide mile markers" : "Show mile markers"}
+          aria-label={showMarkers ? "Hide mile markers" : "Show mile markers"}
+          style={{ opacity: showMarkers ? 1 : 0.5 }}
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
           </svg>
-        ) : (
-          // expand icon
+        </button>
+        <button
+          className="map-reset-btn"
+          onClick={() =>
+            mapRef.current?.fitBounds(bounds, { padding: [24, 24] })
+          }
+          title="Reset view"
+          aria-label="Reset map view"
+        >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+            <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
           </svg>
-        )}
-      </button>
-      <MapContainer
-        ref={mapRef}
-        bounds={bounds}
-        boundsOptions={{ padding: [24, 24] }}
-        scrollWheelZoom={true}
-        style={{ height: "100%", width: "100%" }}
-      >
-        <Pane name="route-underlayer" style={{ zIndex: 390 }} />
-        <ScrollWheelActivator />
-        <ZoomableMarkers gpxTrack={gpxTrack} unitSystem={unitSystem} />
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          maxZoom={19}
-        />
-        {segmentPolylines.map(({ positions, segIdx }) => (
-          <Polyline
-            key={segIdx}
-            positions={positions as LatLngExpression[]}
-            pathOptions={{
-              color: SEGMENT_COLORS[segIdx % SEGMENT_COLORS.length],
-              weight: 3,
-              opacity: 0.85,
-            }}
+        </button>
+        <button
+          className="map-fullscreen-btn"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          aria-label={isFullscreen ? "Exit fullscreen" : "View map fullscreen"}
+        >
+          {isFullscreen ? (
+            // compress icon
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+            </svg>
+          ) : (
+            // expand icon
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+            </svg>
+          )}
+        </button>
+        <MapContainer
+          ref={mapRef}
+          bounds={bounds}
+          boundsOptions={{ padding: [24, 24] }}
+          scrollWheelZoom={true}
+          style={{ height: "100%", width: "100%" }}
+        >
+          <Pane name="route-lines" style={{ zIndex: 393 }} />
+          <Pane name="route-labels" style={{ zIndex: 397 }} />
+          <ScrollWheelActivator />
+          {showMarkers && (
+            <ZoomableMarkers gpxTrack={gpxTrack} unitSystem={unitSystem} />
+          )}
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            maxZoom={19}
           />
-        ))}
-        {markers.map((m, i) => (
-          <CircleMarker
-            key={i}
-            center={[m.lat, m.lon]}
-            radius={m.role === "start" || m.role === "finish" ? 9 : 7}
-            pathOptions={{
-              color: "#1a1a2e",
-              weight: 2,
-              fillColor:
-                m.role === "split" || m.role === "finish"
-                  ? SEGMENT_COLORS[m.segIdx % SEGMENT_COLORS.length]
-                  : MARKER_COLORS[m.role],
-              fillOpacity: 1,
-            }}
-          >
-            <Popup>
-              <strong>{m.label}</strong>
-              <br />
-              {m.distanceStr}
-            </Popup>
-          </CircleMarker>
-        ))}
-      </MapContainer>
+          {segmentPolylines.map(({ positions, segIdx }) => (
+            <Polyline
+              key={segIdx}
+              positions={positions as LatLngExpression[]}
+              pathOptions={{
+                color: SEGMENT_COLORS[segIdx % SEGMENT_COLORS.length],
+                weight: 3,
+                opacity: 0.85,
+              }}
+              pane="route-lines"
+            />
+          ))}
+          {markers.map((m, i) => (
+            <CircleMarker
+              key={i}
+              center={[m.lat, m.lon]}
+              radius={m.role === "start" || m.role === "finish" ? 9 : 7}
+              pathOptions={{
+                color: "#1a1a2e",
+                weight: 2,
+                fillColor:
+                  m.role === "split" || m.role === "finish"
+                    ? SEGMENT_COLORS[m.segIdx % SEGMENT_COLORS.length]
+                    : MARKER_COLORS[m.role],
+                fillOpacity: 1,
+              }}
+            >
+              <Popup>
+                <strong>{m.label}</strong>
+                <br />
+                {m.distanceStr}
+              </Popup>
+            </CircleMarker>
+          ))}
+        </MapContainer>
+      </div>
+      {/* ── Legend ── */}
+      <div className="course-map-legend">
+        <div className="cml-segments">
+          {legendSegments.map((seg, i) => (
+            <div key={i} className="cml-item">
+              <span className="cml-line" style={{ background: seg.color }} />
+              <span className="cml-label">{seg.name}</span>
+            </div>
+          ))}
+        </div>
+        <div className="cml-nodes">
+          <div className="cml-item">
+            <span
+              className="cml-dot"
+              style={{ background: MARKER_COLORS.start }}
+            />
+            <span className="cml-label">Start</span>
+          </div>
+          {finishColor && (
+            <div className="cml-item">
+              <span className="cml-dot" style={{ background: finishColor }} />
+              <span className="cml-label">Finish</span>
+            </div>
+          )}
+          {hasRestStops && (
+            <div className="cml-item">
+              <span
+                className="cml-dot"
+                style={{ background: MARKER_COLORS.stop }}
+              />
+              <span className="cml-label">Rest Stop</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

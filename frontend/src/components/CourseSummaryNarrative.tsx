@@ -183,7 +183,7 @@ export default function CourseSummaryNarrative({
   const paragraphs: React.ReactNode[] = [];
 
   // Opening sentence
-  const totalDist = result.distance.toFixed(1);
+  const totalDist = result.distance.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const startTime = fmtTime(result.start_time, courseTz);
 
   if (segCount === 1) {
@@ -227,7 +227,7 @@ export default function CourseSummaryNarrative({
     const seg = result.segment_details[i];
     const formSeg = formSegments[i];
     const stops = segStops[i];
-    const dist = seg.distance.toFixed(1);
+    const dist = seg.distance.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
     // Timezone shift note for this segment
     const splitEndTimes = seg.split_details.map((s) => s.end_time);
