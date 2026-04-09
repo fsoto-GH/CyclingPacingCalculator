@@ -4,9 +4,12 @@ import {
   TileLayer,
   Polyline,
   CircleMarker,
+  Marker,
+  Pane,
   Popup,
   useMap,
 } from "react-leaflet";
+import { divIcon } from "leaflet";
 import type {
   LatLngBoundsExpression,
   LatLngExpression,
@@ -58,6 +61,156 @@ const MARKER_COLORS: Record<RouteMarker["role"], string> = {
   finish: "#f87171", // red
   stop: "#a855f7", // purple — rest stops
 };
+
+/** Forward azimuth in degrees (0 = north, clockwise). */
+function computeBearing(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function makeArrowIcon(bearingDeg: number) {
+  return divIcon({
+    html: `<svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${bearingDeg}deg);transform-origin:50% 50%;display:block;overflow:visible"><polygon points="12,2 20,20 12,15 4,20" fill="rgba(255,255,255,0.70)" stroke="rgba(0,0,0,0.40)" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
+    className: "",
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+function makeTickIcon(label: string) {
+  return divIcon({
+    html: `<div class="split-map-tick-label">${label}</div>`,
+    className: "",
+    iconSize: [56, 18],
+    iconAnchor: [28, 9],
+  });
+}
+
+/**
+ * Interval between markers in km, chosen so markers stay readable at
+ * the given Leaflet zoom level. Floor is 1 mi (imperial) or 1 km (metric).
+ */
+function getIntervalKm(zoom: number, unitSystem: UnitSystem): number {
+  if (unitSystem === "imperial") {
+    const MI = 1.60934;
+    if (zoom >= 14) return 1 * MI;
+    if (zoom >= 13) return 2 * MI;
+    if (zoom >= 12) return 5 * MI;
+    if (zoom >= 11) return 10 * MI;
+    if (zoom >= 10) return 20 * MI;
+    return 50 * MI;
+  }
+  if (zoom >= 14) return 1;
+  if (zoom >= 13) return 2;
+  if (zoom >= 12) return 5;
+  if (zoom >= 11) return 10;
+  if (zoom >= 10) return 25;
+  return 50;
+}
+
+/**
+ * Renders zoom-adaptive distance labels and direction arrows along the track.
+ * Lives inside MapContainer so it can call useMap().
+ */
+function ZoomableMarkers({
+  gpxTrack,
+  unitSystem,
+}: {
+  gpxTrack: GpxTrackPoint[];
+  unitSystem: UnitSystem;
+}) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+
+  useEffect(() => {
+    const onZoom = () => setZoom(map.getZoom());
+    map.on("zoomend", onZoom);
+    return () => {
+      map.off("zoomend", onZoom);
+    };
+  }, [map]);
+
+  const { distMarkers, arrowMarkers } = useMemo(() => {
+    if (gpxTrack.length < 2) return { distMarkers: [], arrowMarkers: [] };
+
+    const intervalKm = getIntervalKm(zoom, unitSystem);
+    const totalKm = gpxTrack[gpxTrack.length - 1].cumDist;
+    const dLabel = unitSystem === "imperial" ? "mi" : "km";
+
+    // Distance labels at every intervalKm (skip 0 — start circle marker is already there)
+    const distMarkers: Array<{
+      km: number;
+      lat: number;
+      lon: number;
+      label: string;
+    }> = [];
+    for (let km = intervalKm; km < totalKm; km += intervalKm) {
+      const pt = interpolateLatLon(gpxTrack, km);
+      if (!pt) continue;
+      const userDist = unitSystem === "imperial" ? km / 1.60934 : km;
+      distMarkers.push({
+        km,
+        lat: pt.lat,
+        lon: pt.lon,
+        label: `${Math.round(userDist)} ${dLabel}`,
+      });
+    }
+
+    // Direction arrows midway between labels (offset by intervalKm / 2)
+    const arrowMarkers: Array<{
+      km: number;
+      lat: number;
+      lon: number;
+      bearing: number;
+    }> = [];
+    for (let km = intervalKm / 2; km < totalKm; km += intervalKm) {
+      const pt = interpolateLatLon(gpxTrack, km);
+      const ptAhead = interpolateLatLon(gpxTrack, km + 0.3);
+      if (!pt || !ptAhead) continue;
+      arrowMarkers.push({
+        km,
+        lat: pt.lat,
+        lon: pt.lon,
+        bearing: computeBearing(pt.lat, pt.lon, ptAhead.lat, ptAhead.lon),
+      });
+    }
+
+    return { distMarkers, arrowMarkers };
+  }, [gpxTrack, zoom, unitSystem]);
+
+  return (
+    <>
+      {distMarkers.map((m) => (
+        <Marker
+          key={`tick-${m.km}`}
+          position={[m.lat, m.lon]}
+          icon={makeTickIcon(m.label)}
+          interactive={false}
+          pane="route-underlayer"
+        />
+      ))}
+      {arrowMarkers.map((m) => (
+        <Marker
+          key={`arrow-${m.km}`}
+          position={[m.lat, m.lon]}
+          icon={makeArrowIcon(m.bearing)}
+          interactive={false}
+          pane="route-underlayer"
+        />
+      ))}
+    </>
+  );
+}
 
 // Scroll wheel zoom is disabled until the user clicks inside the map,
 // re-disabled when the mouse leaves — prevents accidental zoom while scrolling.
@@ -262,7 +415,9 @@ export default function CourseMap({
         scrollWheelZoom={true}
         style={{ height: "100%", width: "100%" }}
       >
+        <Pane name="route-underlayer" style={{ zIndex: 390 }} />
         <ScrollWheelActivator />
+        <ZoomableMarkers gpxTrack={gpxTrack} unitSystem={unitSystem} />
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
