@@ -50,6 +50,11 @@ export default function FindNearbyModal({
     setSelectedTypes(next);
   }
 
+  function handleSelectAll() {
+    const allSelected = AMENITY_LIST.every((t) => selectedTypes.has(t));
+    setSelectedTypes(allSelected ? new Set() : new Set(AMENITY_LIST));
+  }
+
   async function handleSearch() {
     const custom = customTypes
       .split(",")
@@ -122,6 +127,18 @@ export default function FindNearbyModal({
           Search within {fmtRadius(radiusM)} of the split endpoint.
         </p>
 
+        <div className="fnm-checks-header">
+          <button
+            type="button"
+            className="fnm-select-all-btn"
+            onClick={handleSelectAll}
+            disabled={loading}
+          >
+            {AMENITY_LIST.every((t) => selectedTypes.has(t))
+              ? "Deselect All"
+              : "Select All"}
+          </button>
+        </div>
         <div className="fnm-checks">
           {AMENITY_LIST.map((type) => (
             <label key={type} className="fnm-check-label">

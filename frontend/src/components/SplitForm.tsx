@@ -253,13 +253,24 @@ export default function SplitFormComponent({
             )}
             {collapsed && (downHms || adjHms || value.distance) && (
               <span className="split-header-summary">
-                {[
-                  value.distance ? `${value.distance} ${dLabel}` : null,
-                  downHms ? `↓${downHms}` : null,
-                  adjHms ? `±${adjHms}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || "(no distance)"}
+                {((): string => {
+                  // this value comes directly from the distance input, so it may be invalid/empty — handle that gracefully
+                  const num = parseFloat(value.distance);
+                  const distStr = value.distance
+                    ? isFinite(num)
+                      ? `${num.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`
+                      : `${value.distance} ${dLabel}`
+                    : null;
+                  return (
+                    [
+                      distStr,
+                      downHms ? `↓${downHms}` : null,
+                      adjHms ? `±${adjHms}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "(no distance)"
+                  );
+                })()}
               </span>
             )}
           </div>
@@ -267,7 +278,11 @@ export default function SplitFormComponent({
             <div className="split-header-meta">
               {splitDistUser != null && (
                 <span className="split-header-meta-item" title="Split distance">
-                  {splitDistUser.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {dLabel}
+                  {splitDistUser.toLocaleString(undefined, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}{" "}
+                  {dLabel}
                 </span>
               )}
               {tzBadgeAbbr && (
@@ -345,7 +360,11 @@ export default function SplitFormComponent({
                     className="split-header-dist"
                     style={{ color: distColor }}
                   >
-                    {cumulativeDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {dLabel}
+                    {cumulativeDist.toLocaleString(undefined, {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    {dLabel}
                   </span>
                   <span className="split-header-city">
                     {nearbyCity_fetching && (

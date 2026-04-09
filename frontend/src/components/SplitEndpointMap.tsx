@@ -59,9 +59,13 @@ function decimateTrack(track: GpxTrackPoint[]): [number, number][] {
 function fmtDist(m: number, unitSystem: UnitSystem): string {
   if (unitSystem === "imperial") {
     const mi = m / 1609.34;
-    return mi < 0.1 ? `${Math.round(m * 3.28084)} ft` : `${mi.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
+    return mi < 0.1
+      ? `${Math.round(m * 3.28084)} ft`
+      : `${mi.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
   }
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`;
+  return m < 1000
+    ? `${Math.round(m)} m`
+    : `${(m / 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`;
 }
 
 /** Forward azimuth in degrees (0 = north, clockwise). */
@@ -99,8 +103,8 @@ function makeTickIcon(label: string) {
   return divIcon({
     html: `<div class="split-map-tick-label">${label}</div>`,
     className: "",
-    iconSize: [48, 18],
-    iconAnchor: [24, 9],
+    iconSize: [0, 0],
+    iconAnchor: [0, 9],
   });
 }
 

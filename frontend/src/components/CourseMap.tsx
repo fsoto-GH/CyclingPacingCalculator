@@ -91,8 +91,8 @@ function makeTickIcon(label: string) {
   return divIcon({
     html: `<div class="split-map-tick-label">${label}</div>`,
     className: "",
-    iconSize: [56, 18],
-    iconAnchor: [28, 9],
+    iconSize: [0, 0],
+    iconAnchor: [0, 9],
   });
 }
 
@@ -184,7 +184,7 @@ function ZoomableMarkers({
         km,
         lat: pt.lat,
         lon: pt.lon,
-        label: `${Math.round(userDist)} ${dLabel}`,
+        label: `${Math.round(userDist).toLocaleString()} ${dLabel}`,
       });
     }
 

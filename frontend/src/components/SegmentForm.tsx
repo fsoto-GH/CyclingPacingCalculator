@@ -117,7 +117,10 @@ export default function SegmentFormComponent({
 
   const elevUnit = unitSystem === "imperial" ? "ft" : "m";
   const toElevUnit = (m: number) =>
-    (unitSystem === "imperial" ? Math.round(m * 3.28084) : Math.round(m)).toLocaleString();
+    (unitSystem === "imperial"
+      ? Math.round(m * 3.28084)
+      : Math.round(m)
+    ).toLocaleString();
 
   const lastSplitIdx = value.splits.length - 1;
   const segCumulativeDist = cumulativeDists?.[lastSplitIdx] ?? null;
@@ -159,7 +162,9 @@ export default function SegmentFormComponent({
 
   const collapsedSummaryParts = [
     `${value.splits.length} split${value.splits.length !== 1 ? "s" : ""}`,
-    totalDist > 0 ? `${totalDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}` : null,
+    totalDist > 0
+      ? `${totalDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`
+      : null,
     !aggGpx && sleepHms ? `💤 ${sleepHms}` : null,
   ].filter(Boolean) as string[];
 
@@ -228,7 +233,11 @@ export default function SegmentFormComponent({
                   className="split-header-meta-item"
                   title="Segment distance"
                 >
-                  {totalDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {dLabel}
+                  {totalDist.toLocaleString(undefined, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}{" "}
+                  {dLabel}
                 </span>
               )}
               <span className="split-header-meta-item" title="Elevation gain">
@@ -259,7 +268,11 @@ export default function SegmentFormComponent({
             onClick={(e) => e.stopPropagation()}
           >
             <span className="split-header-dist">
-              {segCumulativeDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} {dLabel}
+              {segCumulativeDist.toLocaleString(undefined, {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              })}{" "}
+              {dLabel}
             </span>
             {aggGpx &&
               (segEndCityFetching ||

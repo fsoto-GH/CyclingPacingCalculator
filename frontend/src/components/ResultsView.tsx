@@ -220,7 +220,11 @@ export default function ResultsView({
           <div>
             <dt>Total Distance</dt>
             <dd>
-              {result.distance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {dLabel}
+              {result.distance.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{" "}
+              {dLabel}
             </dd>
           </div>
           <div>
@@ -364,8 +368,11 @@ function SegmentSection({
         <span className="collapse-icon">{collapsed ? "▶" : "▼"}</span>
         <h3>
           {segment.name ?? `Segment ${index + 1}`} —{" "}
-          {segment.distance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {dLabel},{" "}
-          {formatHours(segment.elapsed_time_hours)}
+          {segment.distance.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}{" "}
+          {dLabel}, {formatHours(segment.elapsed_time_hours)}
         </h3>
       </div>
       {!collapsed && (
@@ -375,13 +382,25 @@ function SegmentSection({
             <div>
               <dt>Distance</dt>
               <dd>
-                {segment.distance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {dLabel}
+                {segment.distance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                {dLabel}
               </dd>
             </div>
             <div>
               <dt>Span</dt>
               <dd>
-                {segment.span[0].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} – {segment.span[1].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
+                {segment.span[0].toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                –{" "}
+                {segment.span[1].toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
                 {dLabel}
               </dd>
             </div>
@@ -615,8 +634,21 @@ function SplitRow({
           {split.name && (
             <span className="split-name-label">{split.name} — </span>
           )}
-          {split.distance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({split.span[0].toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} –{" "}
-          {split.span[1].toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })})
+          {split.distance.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}{" "}
+          (
+          {split.span[0].toLocaleString(undefined, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}{" "}
+          –{" "}
+          {split.span[1].toLocaleString(undefined, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}
+          )
         </td>
         <td className="time-span-cell">{timeSpan}</td>
         <td>{split.pace.toFixed(2)}</td>
@@ -811,8 +843,21 @@ function SubSplitRow({ sub, index }: { sub: SubSplitDetail; index: number }) {
     <tr>
       <td className="num-col">{index}</td>
       <td>
-        {sub.distance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({sub.span[0].toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} – 
-        {sub.span[1].toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })})
+        {sub.distance.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}{" "}
+        (
+        {sub.span[0].toLocaleString(undefined, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })}{" "}
+        –
+        {sub.span[1].toLocaleString(undefined, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })}
+        )
       </td>
       <td title={formatHours(sub.moving_time_hours, "full")}>
         {formatHours(sub.moving_time_hours)}

@@ -3176,6 +3176,8 @@ dialog {
   pointer-events: none;
   user-select: none;
   line-height: 1.4;
+  transform: translateX(-50%);
+  display: inline-block;
 }
 
 .split-map-place-badge {
@@ -3399,6 +3401,32 @@ dialog {
   font-size: 0.8rem;
   color: #6b7280;
   margin: 0;
+}
+
+.fnm-checks-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.35rem;
+}
+
+.fnm-select-all-btn {
+  background: none;
+  border: none;
+  color: var(--accent, #6b8aff);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.fnm-select-all-btn:hover {
+  color: #93a8ff;
+}
+
+.fnm-select-all-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .fnm-checks {

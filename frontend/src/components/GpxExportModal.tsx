@@ -91,7 +91,10 @@ export default function GpxExportModal({
 
   const elevUnit = unitSystem === "imperial" ? "ft" : "m";
   const toElevUnit = (m: number) =>
-    (unitSystem === "imperial" ? Math.round(m * 3.28084) : Math.round(m)).toLocaleString();
+    (unitSystem === "imperial"
+      ? Math.round(m * 3.28084)
+      : Math.round(m)
+    ).toLocaleString();
   const toDistUnit = (km: number) =>
     unitSystem === "imperial" ? km / 1.60934 : km;
   const dLabel = distanceLabel(unitSystem);
@@ -253,7 +256,11 @@ export default function GpxExportModal({
           {anyChecked ? (
             <span className="gpx-export-aggregates">
               <span>
-                {toDistUnit(aggregates.distKmTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {dLabel}
+                {toDistUnit(aggregates.distKmTotal).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                {dLabel}
               </span>
               <span className="gpx-export-gain">
                 ↑ {toElevUnit(aggregates.gainMTotal)} {elevUnit}
