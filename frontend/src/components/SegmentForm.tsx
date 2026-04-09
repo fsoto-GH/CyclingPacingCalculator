@@ -57,7 +57,7 @@ export default function SegmentFormComponent({
   gpxTotalDist,
   segmentStartCity,
 }: SegmentFormProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const hasOptionalValues =
     !!value.down_time_ratio ||
     !!value.split_decay ||
