@@ -5,6 +5,7 @@ import type {
   UnitSystem,
   Mode,
   SplitGpxProfile,
+  GpxTrackPoint,
 } from "../types";
 import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import { makeDefaultSplit } from "../defaults";
@@ -19,10 +20,15 @@ interface SegmentFormProps {
   unitSystem: UnitSystem;
   mode: Mode;
   gpxProfiles?: SplitGpxProfile[] | null;
+  gpxTrack?: GpxTrackPoint[] | null;
   courseTz: string;
   splitStatuses?: ("over" | "under-last" | null)[];
   cityLabels?: (string | null)[];
   cityFetching?: boolean[];
+  /** Cumulative course distance at end of each split, in user units */
+  cumulativeDists?: (number | null)[];
+  /** Total GPX track length in user units */
+  gpxTotalDist?: number | null;
 }
 
 export default function SegmentFormComponent({
@@ -32,10 +38,13 @@ export default function SegmentFormComponent({
   unitSystem,
   mode,
   gpxProfiles,
+  gpxTrack,
   courseTz,
   splitStatuses,
   cityLabels,
   cityFetching,
+  cumulativeDists,
+  gpxTotalDist,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(false);
   const hasOptionalValues =
@@ -251,10 +260,13 @@ export default function SegmentFormComponent({
                 isLast={j === value.splits.length - 1}
                 includeEndDownTime={value.include_end_down_time}
                 gpxProfile={gpxProfiles?.[j] ?? null}
+                gpxTrack={gpxTrack ?? null}
                 courseTz={courseTz}
                 gpxDistStatus={splitStatuses?.[j] ?? null}
                 nearbyCity={cityLabels?.[j] ?? null}
                 nearbyCity_fetching={cityFetching?.[j] ?? false}
+                cumulativeDist={cumulativeDists?.[j] ?? null}
+                gpxTotalDist={gpxTotalDist ?? null}
               />
             ))}
           </div>

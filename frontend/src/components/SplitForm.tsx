@@ -1,11 +1,16 @@
 import { useState, useEffect } from "react";
-import type { SplitForm, UnitSystem, SplitGpxProfile } from "../types";
+import type {
+  SplitForm,
+  UnitSystem,
+  SplitGpxProfile,
+  GpxTrackPoint,
+} from "../types";
 import { speedLabel, distanceLabel, minutesToHms } from "../utils";
 import TimeInput from "./TimeInput";
 import RestStopFormComponent from "./RestStopForm";
 import TimezoneSelect from "./TimezoneSelect";
 import { FieldError } from "./FieldError";
-import NearbyStopsPanel from "./NearbyStopsPanel";
+import SplitEndpointMap from "./SplitEndpointMap";
 
 interface SplitFormProps {
   segIndex: number;
@@ -16,10 +21,15 @@ interface SplitFormProps {
   isLast?: boolean;
   includeEndDownTime?: boolean;
   gpxProfile?: SplitGpxProfile | null;
+  gpxTrack?: GpxTrackPoint[] | null;
   courseTz: string;
   gpxDistStatus?: "over" | "under-last" | null;
   nearbyCity?: string | null;
   nearbyCity_fetching?: boolean;
+  /** Cumulative course distance at the END of this split, in user units */
+  cumulativeDist?: number | null;
+  /** Total GPX track length in user units */
+  gpxTotalDist?: number | null;
 }
 
 export default function SplitFormComponent({
@@ -31,15 +41,17 @@ export default function SplitFormComponent({
   isLast,
   includeEndDownTime,
   gpxProfile,
+  gpxTrack,
   courseTz,
   gpxDistStatus,
   nearbyCity,
   nearbyCity_fetching,
+  cumulativeDist,
+  gpxTotalDist,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
-
-  const [showNearby, setShowNearby] = useState(false);
+  const [addressLoading, setAddressLoading] = useState(false);
 
   // Auto-detect timezone from GPX endpoint. Runs whenever the detected tz
   // or the course tz changes; leaves any *manually* set timezone alone once
@@ -171,6 +183,32 @@ export default function SplitFormComponent({
                 onChange={(e) => update({ distance: e.target.value })}
               />
               <FieldError fieldId={`${prefix}-distance`} />
+              {cumulativeDist != null &&
+                gpxTotalDist != null &&
+                (() => {
+                  const diff = cumulativeDist - gpxTotalDist;
+                  const absDiff = Math.abs(diff);
+                  const sign =
+                    diff > 0.05 ? "over" : diff < -0.05 ? "under" : "exact";
+                  const color =
+                    sign === "exact"
+                      ? "#4ade80"
+                      : sign === "under"
+                        ? "#facc15"
+                        : "#f87171";
+                  const label =
+                    sign === "exact"
+                      ? "✓ matches GPX"
+                      : sign === "under"
+                        ? `${absDiff.toFixed(1)} ${dLabel} left`
+                        : `${absDiff.toFixed(1)} ${dLabel} over`;
+                  return (
+                    <span className="split-nearby-city" style={{ color }}>
+                      {cumulativeDist.toFixed(1)} of {gpxTotalDist.toFixed(1)}{" "}
+                      {dLabel} ({label})
+                    </span>
+                  );
+                })()}
               {nearbyCity_fetching && (
                 <span className="split-nearby-city split-nearby-city--loading">
                   (finding nearest city...)
@@ -370,57 +408,28 @@ export default function SplitFormComponent({
               )}
             </div>
           )}
-
-          {/* OSM endpoint map — shown when GPX is loaded and distance is set */}
-          {gpxProfile?.endLat != null && value.distance && (
-            <div className="split-map">
-              <iframe
-                title={`Split ${splitIndex + 1} endpoint`}
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${gpxProfile.endLon - 0.02},${gpxProfile.endLat - 0.015},${gpxProfile.endLon + 0.02},${gpxProfile.endLat + 0.015}&layer=mapnik&marker=${gpxProfile.endLat},${gpxProfile.endLon}`}
-                className="split-map-iframe"
-                loading="lazy"
-              />
-              <a
-                href={`https://www.openstreetmap.org/?mlat=${gpxProfile.endLat}&mlon=${gpxProfile.endLon}#map=14/${gpxProfile.endLat}/${gpxProfile.endLon}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="split-map-link"
-              >
-                Open in OSM ↗
-              </a>
-            </div>
-          )}
           <RestStopFormComponent
             prefix={`${prefix}-rs`}
             value={value.rest_stop}
             onChange={(rs) => update({ rest_stop: rs })}
+            addressLoading={addressLoading}
           />
-          {gpxProfile?.endLat != null && (
-            <div className="nearby-stops-section">
-              {!showNearby && (
-                <button
-                  type="button"
-                  className="nearby-find-btn"
-                  onClick={() => setShowNearby(true)}
-                >
-                  🔍 Find Nearby Stops
-                </button>
-              )}
-              {showNearby && (
-                <NearbyStopsPanel
-                  key={`${gpxProfile.endLat},${gpxProfile.endLon}`}
-                  lat={gpxProfile.endLat}
-                  lon={gpxProfile.endLon}
-                  unitSystem={unitSystem}
-                  onClose={() => setShowNearby(false)}
-                  onSelect={(patch) =>
-                    update({
-                      rest_stop: { ...value.rest_stop, ...patch },
-                    })
-                  }
-                />
-              )}
-            </div>
+
+          {/* Split endpoint map — shown when GPX is loaded and distance is set */}
+          {gpxTrack && gpxProfile?.endLat != null && value.distance && (
+            <SplitEndpointMap
+              gpxTrack={gpxTrack}
+              startKm={gpxProfile.startKm}
+              endKm={gpxProfile.endKm}
+              endLat={gpxProfile.endLat}
+              endLon={gpxProfile.endLon}
+              unitSystem={unitSystem}
+              restStop={value.rest_stop}
+              onSelectStop={(patch) =>
+                update({ rest_stop: { ...value.rest_stop, ...patch } })
+              }
+              onAddressLoading={setAddressLoading}
+            />
           )}
         </div>
       )}

@@ -23,6 +23,7 @@ import {
 import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
+import CourseMap from "./CourseMap";
 import ResultsView from "./ResultsView";
 import LegendModal from "./LegendModal";
 import ExampleModal from "./ExampleModal";
@@ -411,6 +412,42 @@ export default function CourseForm() {
     () => (gpxTrack ? computeElevGainLoss(gpxTrack).gainM : 0),
     [gpxTrack],
   );
+
+  // Per-split cumulative distances in user units (null when no GPX).
+  // Used by SplitForm to show "X of Y mi (Z mi left/over)" label.
+  const splitCumulativeDists = useMemo<(number | null)[][] | null>(() => {
+    if (!gpxTrack) return null;
+    let offset = 0;
+    return form.segments.map((seg) => {
+      const segCums: number[] = [];
+      if (form.mode === "target_distance") {
+        for (const split of seg.splits) {
+          const d = parseFloat(split.distance);
+          segCums.push(isNaN(d) ? 0 : d);
+        }
+        const lastD = parseFloat(
+          seg.splits[seg.splits.length - 1]?.distance ?? "0",
+        );
+        offset = isNaN(lastD) ? offset : lastD;
+      } else {
+        for (const split of seg.splits) {
+          const d = parseFloat(split.distance);
+          offset += isNaN(d) ? 0 : d;
+          segCums.push(offset);
+        }
+      }
+      return segCums;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpxTrack, form.unitSystem, form.mode, splitDistancesKey]);
+
+  const gpxTotalDistUser = useMemo<number | null>(() => {
+    if (!gpxTrack) return null;
+    const km = gpxTrack[gpxTrack.length - 1].cumDist;
+    return form.unitSystem === "imperial"
+      ? Math.round((km / 1.60934) * 10) / 10
+      : Math.round(km * 10) / 10;
+  }, [gpxTrack, form.unitSystem]);
 
   // Per-split distance status relative to the GPX total.
   // "over"       → this split's cumulative distance exceeds the GPX total (red)
@@ -1038,6 +1075,7 @@ export default function CourseForm() {
             </button>
           </div>
         )}
+
         {gpxMissingWarning && (
           <div className="gpx-missing-warning">
             <span>⚠ {gpxMissingWarning}</span>
@@ -1222,10 +1260,13 @@ export default function CourseForm() {
               unitSystem={form.unitSystem}
               mode={form.mode}
               gpxProfiles={gpxProfiles?.[i] ?? null}
+              gpxTrack={gpxTrack}
               courseTz={form.timezone}
               splitStatuses={splitGpxStatuses[i]}
               cityLabels={cityLabels[i]}
               cityFetching={cityFetching[i]}
+              cumulativeDists={splitCumulativeDists?.[i] ?? undefined}
+              gpxTotalDist={gpxTotalDistUser}
             />
           ))}
         </div>
@@ -1265,7 +1306,17 @@ export default function CourseForm() {
         </div>
       </div>
 
-      {/* Results â€” outside course-form to avoid re-layout on form state changes */}
+      {/* Live course map — shown as soon as a GPX and at least one distance are set */}
+      {gpxTrack && splitBoundariesKm && (
+        <CourseMap
+          gpxTrack={gpxTrack}
+          splitBoundariesKm={splitBoundariesKm}
+          formSegments={form.segments}
+          unitSystem={form.unitSystem}
+        />
+      )}
+
+      {/* Results — outside course-form to avoid re-layout on form state changes */}
       {result && (
         <ResultsView
           result={result}

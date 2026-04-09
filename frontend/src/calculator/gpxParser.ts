@@ -289,6 +289,8 @@ export function computeSplitProfile(
       endLat: closest.lat,
       endLon: closest.lon,
       endTimezone: tzlookup(closest.lat, closest.lon),
+      startKm,
+      endKm,
     };
   }
 
@@ -322,6 +324,8 @@ export function computeSplitProfile(
     endLat: endPt.lat,
     endLon: endPt.lon,
     endTimezone: tzlookup(endPt.lat, endPt.lon),
+    startKm,
+    endKm,
   };
 }
 

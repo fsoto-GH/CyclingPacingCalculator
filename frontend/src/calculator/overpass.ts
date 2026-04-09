@@ -207,7 +207,7 @@ interface OverpassResponse {
 export async function queryNearbyAmenities(
   lat: number,
   lon: number,
-  radiusM = 1000,
+  radiusM = 1610,
   signal?: AbortSignal,
 ): Promise<NearbyAmenity[]> {
   // Nodes only (no way) + maxsize cap to keep queries light.

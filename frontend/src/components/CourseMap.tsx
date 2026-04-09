@@ -6,9 +6,13 @@ import {
   CircleMarker,
   Popup,
 } from "react-leaflet";
-import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
-import type { GpxTrackPoint, UnitSystem } from "../types";
-import type { SegmentForm } from "../types";
+import type {
+  LatLngBoundsExpression,
+  LatLngExpression,
+  Map as LeafletMap,
+} from "leaflet";
+import type { GpxTrackPoint, UnitSystem, SegmentForm } from "../types";
+import type { RestStopForm } from "../types";
 import { interpolateLatLon } from "../calculator/gpxParser";
 import { distanceLabel } from "../utils";
 
@@ -17,7 +21,7 @@ interface RouteMarker {
   lon: number;
   label: string;
   distanceStr: string;
-  role: "start" | "split" | "finish";
+  role: "start" | "split" | "finish" | "stop";
 }
 
 interface CourseMapProps {
@@ -25,6 +29,7 @@ interface CourseMapProps {
   splitBoundariesKm: [number, number][][];
   formSegments: SegmentForm[];
   unitSystem: UnitSystem;
+  showRestStops?: boolean;
 }
 
 /** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2–3k. */
@@ -49,6 +54,7 @@ const MARKER_COLORS: Record<RouteMarker["role"], string> = {
   start: "#4ade80", // green
   split: "#60a5fa", // blue
   finish: "#f87171", // red
+  stop: "#a855f7", // purple — rest stops
 };
 
 export default function CourseMap({
@@ -56,6 +62,7 @@ export default function CourseMap({
   splitBoundariesKm,
   formSegments,
   unitSystem,
+  showRestStops = true,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
   const toUserDist =
@@ -131,11 +138,34 @@ export default function CourseMap({
       result[result.length - 1].role = "finish";
     }
 
+    // Rest stop markers — placed at split endpoints where a rest stop is enabled
+    if (showRestStops) {
+      for (let si = 0; si < splitBoundariesKm.length; si++) {
+        const segBounds = splitBoundariesKm[si];
+        for (let sj = 0; sj < segBounds.length; sj++) {
+          const rs: RestStopForm | undefined =
+            formSegments[si]?.splits[sj]?.rest_stop;
+          if (!rs?.enabled || !rs.name) continue;
+          const [, endKm] = segBounds[sj];
+          const coord = interpolateLatLon(gpxTrack, endKm);
+          if (!coord) continue;
+          result.push({
+            lat: coord.lat,
+            lon: coord.lon,
+            label: `🛑 ${rs.name}`,
+            distanceStr: `${toUserDist(endKm).toFixed(1)} ${dLabel}`,
+            role: "stop",
+          });
+        }
+      }
+    }
+
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, splitBoundariesKm, formSegments, unitSystem]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -157,6 +187,16 @@ export default function CourseMap({
   return (
     <div className="course-map-container" ref={containerRef}>
       <button
+        className="map-reset-btn"
+        onClick={() => mapRef.current?.fitBounds(bounds, { padding: [24, 24] })}
+        title="Reset view"
+        aria-label="Reset map view"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
+        </svg>
+      </button>
+      <button
         className="map-fullscreen-btn"
         onClick={toggleFullscreen}
         title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
@@ -175,6 +215,7 @@ export default function CourseMap({
         )}
       </button>
       <MapContainer
+        ref={mapRef}
         bounds={bounds}
         boundsOptions={{ padding: [24, 24] }}
         scrollWheelZoom={true}

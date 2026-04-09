@@ -14,11 +14,13 @@ export interface SplitGpxProfile {
   elevGainM: number;
   elevLossM: number;
   avgGradePct: number;
-  steepPct: number; // % of distance where instantaneous grade > 5%
+  steepPct: number; // % of distance with grade > 5%
   surface: string; // e.g. "paved" | "gravel" | "unknown"
   endLat: number;
   endLon: number;
   endTimezone: string; // IANA tz at endpoint
+  startKm: number;
+  endKm: number;
 }
 
 // ── API request types ──

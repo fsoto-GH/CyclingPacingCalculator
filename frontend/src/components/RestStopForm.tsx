@@ -6,6 +6,7 @@ interface RestStopFormProps {
   prefix: string;
   value: RestStopForm;
   onChange: (val: RestStopForm) => void;
+  addressLoading?: boolean;
 }
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -14,6 +15,7 @@ export default function RestStopFormComponent({
   prefix,
   value,
   onChange,
+  addressLoading,
 }: RestStopFormProps) {
   const update = (patch: Partial<RestStopForm>) =>
     onChange({ ...value, ...patch });
@@ -71,6 +73,10 @@ export default function RestStopFormComponent({
             type="text"
             value={value.address}
             onChange={(e) => update({ address: e.target.value })}
+            placeholder={
+              addressLoading ? "Looking up address\u2026" : undefined
+            }
+            className={addressLoading ? "input-address-loading" : undefined}
           />
           <FieldError fieldId={`${prefix}-address`} />
         </div>

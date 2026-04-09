@@ -13,7 +13,6 @@ import type {
 import { speedLabel, distanceLabel, formatHours } from "../utils";
 import CourseSummaryNarrative from "./CourseSummaryNarrative";
 import GpxExportModal from "./GpxExportModal";
-import CourseMap from "./CourseMap";
 
 /** Convert HH:MM to minutes since midnight. */
 function timeToMin(t: string): number {
@@ -213,15 +212,6 @@ export default function ResultsView({
         unitSystem={unitSystem}
         courseName={courseName}
       />
-
-      {gpxTrack && splitBoundariesKm && (
-        <CourseMap
-          gpxTrack={gpxTrack}
-          splitBoundariesKm={splitBoundariesKm}
-          formSegments={formSegments}
-          unitSystem={unitSystem}
-        />
-      )}
 
       {/* Course Summary */}
       <div className="course-summary">
