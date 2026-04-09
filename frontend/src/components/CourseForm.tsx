@@ -144,6 +144,9 @@ export default function CourseForm() {
   const [gpxLoading, setGpxLoading] = useState(false);
   const gpxFileRef = useRef<HTMLInputElement>(null);
 
+  // City of the GPX track's very first point (start of the whole course).
+  const [gpxStartCity, setGpxStartCity] = useState<string | null>(null);
+
   // City label state — resolved city name per [segIdx][splitIdx].
   // null = not yet fetched or fetch failed; undefined cell = no GPX.
   const [cityLabels, setCityLabels] = useState<(string | null)[][]>([]);
@@ -594,8 +597,20 @@ export default function CourseForm() {
       cityQueueRef.current = [];
       setCityLabels([]);
       setCityFetching([]);
+      setGpxStartCity(null);
       lastFetchedKmRef.current = [];
       return;
+    }
+
+    // Fetch the start-of-course city once from the first track point.
+    const startPoint = gpxTrack[0];
+    const cachedStart = getCachedGeocode(startPoint.lat, startPoint.lon);
+    if (cachedStart !== undefined) {
+      setGpxStartCity(cachedStart);
+    } else {
+      reverseGeocode(startPoint.lat, startPoint.lon).then((label) => {
+        setGpxStartCity(label);
+      });
     }
 
     const timer = setTimeout(() => {
@@ -1262,11 +1277,19 @@ export default function CourseForm() {
               gpxProfiles={gpxProfiles?.[i] ?? null}
               gpxTrack={gpxTrack}
               courseTz={form.timezone}
+              isLastSeg={i === form.segments.length - 1}
               splitStatuses={splitGpxStatuses[i]}
               cityLabels={cityLabels[i]}
               cityFetching={cityFetching[i]}
               cumulativeDists={splitCumulativeDists?.[i] ?? undefined}
               gpxTotalDist={gpxTotalDistUser}
+              segmentStartCity={
+                i === 0
+                  ? gpxStartCity
+                  : (cityLabels[i - 1]?.[
+                      form.segments[i - 1].splits.length - 1
+                    ] ?? null)
+              }
             />
           ))}
         </div>

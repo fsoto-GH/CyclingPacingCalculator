@@ -17,7 +17,6 @@ export default function TimeInput({
   label,
   value,
   onChange,
-  optional,
   allowNegative,
   disabled,
   disabledTitle,
@@ -27,8 +26,6 @@ export default function TimeInput({
     <div className="field">
       <label htmlFor={id} title={disabled ? disabledTitle : undefined}>
         {label} (min)
-        {optional && <span className="optional"> — optional</span>}
-        {hms && !disabled && <span className="time-aside"> = {hms}</span>}
       </label>
       <input
         id={id}
@@ -42,6 +39,7 @@ export default function TimeInput({
         title={disabled ? disabledTitle : undefined}
       />
       <FieldError fieldId={id} />
+      {hms && !disabled && <span className="time-aside">{hms}</span>}
     </div>
   );
 }

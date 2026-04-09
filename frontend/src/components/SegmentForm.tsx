@@ -25,10 +25,14 @@ interface SegmentFormProps {
   splitStatuses?: ("over" | "under-last" | null)[];
   cityLabels?: (string | null)[];
   cityFetching?: boolean[];
+  /** Whether this segment is the last segment in the course */
+  isLastSeg?: boolean;
   /** Cumulative course distance at end of each split, in user units */
   cumulativeDists?: (number | null)[];
   /** Total GPX track length in user units */
   gpxTotalDist?: number | null;
+  /** City label at the start of this segment (end of prev segment's last split) */
+  segmentStartCity?: string | null;
 }
 
 export default function SegmentFormComponent({
@@ -43,8 +47,10 @@ export default function SegmentFormComponent({
   splitStatuses,
   cityLabels,
   cityFetching,
+  isLastSeg,
   cumulativeDists,
   gpxTotalDist,
+  segmentStartCity,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(false);
   const hasOptionalValues =
@@ -98,35 +104,146 @@ export default function SegmentFormComponent({
   })();
 
   const sleepHms = minutesToHms(value.sleep_time);
-  const summaryParts: string[] = [
-    `${value.splits.length} split${value.splits.length !== 1 ? "s" : ""}`,
-  ];
-  if (totalDist > 0) summaryParts.push(`${totalDist.toFixed(1)} ${dLabel}`);
-  if (sleepHms) summaryParts.push(`💤 ${sleepHms}`);
   const displayName = value.name?.trim() || null;
-  const summary = displayName
-    ? `${displayName} — ${summaryParts.join(" · ")}`
-    : `Segment ${segIndex + 1}: ${summaryParts.join(" · ")}`;
+  const headerTitle = displayName || `Segment ${segIndex + 1}`;
+
+  const elevUnit = unitSystem === "imperial" ? "ft" : "m";
+  const toElevUnit = (m: number) =>
+    unitSystem === "imperial" ? Math.round(m * 3.28084) : m;
+
+  const lastSplitIdx = value.splits.length - 1;
+  const segCumulativeDist = cumulativeDists?.[lastSplitIdx] ?? null;
+  const segEndCity = cityLabels?.[lastSplitIdx] ?? null;
+  const segEndCityFetching = cityFetching?.[lastSplitIdx] ?? false;
+
+  // Aggregate GPX stats across all splits
+  const validProfiles = (gpxProfiles ?? []).filter(
+    (p): p is SplitGpxProfile => p != null,
+  );
+  const aggGpx =
+    validProfiles.length > 0
+      ? (() => {
+          const elevGainM = validProfiles.reduce((s, p) => s + p.elevGainM, 0);
+          const elevLossM = validProfiles.reduce((s, p) => s + p.elevLossM, 0);
+          const totalDistKm =
+            validProfiles[validProfiles.length - 1].endKm -
+            validProfiles[0].startKm;
+          const avgGradePct =
+            totalDistKm > 0
+              ? ((elevGainM - elevLossM) / (totalDistKm * 1000)) * 100
+              : 0;
+          const totalSteepKm = validProfiles.reduce((s, p) => {
+            const splitDistKm = p.endKm - p.startKm;
+            return s + (p.steepPct / 100) * splitDistKm;
+          }, 0);
+          const steepPct =
+            totalDistKm > 0
+              ? Math.round((totalSteepKm / totalDistKm) * 100)
+              : 0;
+          return {
+            elevGainM: Math.round(elevGainM),
+            elevLossM: Math.round(elevLossM),
+            avgGradePct,
+            steepPct,
+          };
+        })()
+      : null;
+
+  const collapsedSummaryParts = [
+    `${value.splits.length} split${value.splits.length !== 1 ? "s" : ""}`,
+    totalDist > 0 ? `${totalDist.toFixed(1)} ${dLabel}` : null,
+    !aggGpx && sleepHms ? `💤 ${sleepHms}` : null,
+  ].filter(Boolean) as string[];
 
   return (
     <div className="segment-form">
       <div className="segment-header" onClick={() => setCollapsed(!collapsed)}>
         <span className="collapse-icon">{collapsed ? "▶" : "▼"}</span>
-        <h3>
-          {summary}
-          {splitStatuses?.some((s) => s === "over") && (
-            <span className="gpx-dist-asterisk gpx-dist-asterisk--over">
-              {" "}
-              *
+        <div className="split-header-left">
+          <div className="split-header-titlerow">
+            <span
+              className="split-header-title"
+              style={{ fontSize: "0.95rem" }}
+            >
+              {headerTitle}
+              {splitStatuses?.some((s) => s === "over") && (
+                <span className="gpx-dist-asterisk gpx-dist-asterisk--over">
+                  {" "}
+                  *
+                </span>
+              )}
+              {splitStatuses?.some((s) => s === "under-last") && (
+                <span className="gpx-dist-asterisk gpx-dist-asterisk--under">
+                  {" "}
+                  *
+                </span>
+              )}
             </span>
+            {collapsed && collapsedSummaryParts.length > 0 && (
+              <span className="split-header-summary">
+                {collapsedSummaryParts.join(" · ")}
+              </span>
+            )}
+          </div>
+          {aggGpx && (
+            <div className="split-header-meta">
+              {totalDist > 0 && (
+                <span
+                  className="split-header-meta-item"
+                  title="Segment distance"
+                >
+                  {totalDist.toFixed(1)} {dLabel}
+                </span>
+              )}
+              <span className="split-header-meta-item" title="Elevation gain">
+                ⬆ {toElevUnit(aggGpx.elevGainM)}
+                {elevUnit}
+              </span>
+              <span className="split-header-meta-item" title="Elevation loss">
+                ⬇ {toElevUnit(aggGpx.elevLossM)}
+                {elevUnit}
+              </span>
+              <span className="split-header-meta-item" title="Average grade">
+                {aggGpx.avgGradePct.toFixed(1)}% avg
+              </span>
+              {aggGpx.steepPct > 0 && (
+                <span
+                  className="split-header-meta-item"
+                  title="% of distance with grade > 5%"
+                >
+                  ⚠ {aggGpx.steepPct}% steep
+                </span>
+              )}
+            </div>
           )}
-          {splitStatuses?.some((s) => s === "under-last") && (
-            <span className="gpx-dist-asterisk gpx-dist-asterisk--under">
-              {" "}
-              *
+        </div>
+        {segCumulativeDist != null && (
+          <div
+            className="split-header-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="split-header-dist">
+              {segCumulativeDist.toFixed(1)} {dLabel}
             </span>
-          )}
-        </h3>
+            {aggGpx &&
+              (segEndCityFetching ||
+                segEndCity ||
+                segmentStartCity ||
+                sleepHms) && (
+                <span className="split-header-city">
+                  {(() => {
+                    const cityPart = segEndCityFetching
+                      ? "(finding nearest city…)"
+                      : segmentStartCity && segEndCity
+                        ? `${segmentStartCity} — ${segEndCity}`
+                        : (segEndCity ?? null);
+                    const sleepPart = sleepHms ? `${sleepHms} 💤` : null;
+                    return [cityPart, sleepPart].filter(Boolean).join(" · ");
+                  })()}
+                </span>
+              )}
+          </div>
+        )}
       </div>
 
       {!collapsed && (
@@ -258,6 +375,14 @@ export default function SegmentFormComponent({
                 onChange={(s) => updateSplit(j, s)}
                 unitSystem={unitSystem}
                 isLast={j === value.splits.length - 1}
+                isLastOverall={isLastSeg && j === value.splits.length - 1}
+                splitDistUser={(() => {
+                  const cum = cumulativeDists?.[j] ?? null;
+                  const prev = j === 0 ? 0 : (cumulativeDists?.[j - 1] ?? 0);
+                  return cum != null
+                    ? Math.round((cum - prev) * 10) / 10
+                    : null;
+                })()}
                 includeEndDownTime={value.include_end_down_time}
                 gpxProfile={gpxProfiles?.[j] ?? null}
                 gpxTrack={gpxTrack ?? null}

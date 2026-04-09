@@ -64,7 +64,8 @@ h4 {
 
 .field input[type="number"],
 .field input[type="text"],
-.field input[type="datetime-local"] {
+.field input[type="datetime-local"],
+.field select {
   width: 100%;
   height: 30px;
   padding: 0 0.5rem;
@@ -74,6 +75,15 @@ h4 {
   box-sizing: border-box;
   background: #222222;
   color: #ffffff;
+}
+
+.field select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 1.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
 }
 
 .field input:focus {
@@ -117,8 +127,15 @@ h4 {
   gap: 0.5rem 1rem;
 }
 
+.fields-grid--2col {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 @media (max-width: 640px) {
   .fields-grid {
+    grid-template-columns: 1fr;
+  }
+  .fields-grid--2col {
     grid-template-columns: 1fr;
   }
 }
@@ -204,9 +221,10 @@ h4 {
 }
 
 .time-aside {
-  font-size: 0.78rem;
+  display: block;
+  font-size: 0.75rem;
   color: #888888;
-  white-space: nowrap;
+  margin-top: 0.1rem;
 }
 
 /* ── Segments & Splits ── */
@@ -223,7 +241,7 @@ h4 {
 
 .segment-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.6rem 1rem;
   cursor: pointer;
@@ -307,18 +325,31 @@ h4 {
 
 .split-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.4rem;
-  padding: 0.4rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
   user-select: none;
   background: #252525;
-  flex-wrap: wrap;
-  row-gap: 0.15rem;
 }
 
 .split-header:hover {
   background: #2a2a2a;
+}
+
+.split-header-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.split-header-titlerow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .split-header-title {
@@ -326,6 +357,86 @@ h4 {
   font-weight: 600;
   color: #ccc;
   flex-shrink: 0;
+}
+
+.split-header-elev-tags {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.split-elev-tag {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  background: #1e293b;
+  border: 1px solid #2d3f55;
+  border-radius: 10px;
+  padding: 0.08rem 0.4rem;
+  white-space: nowrap;
+}
+
+.split-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.split-header-dist {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.split-header-city {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  margin-top: 0.1rem;
+}
+
+/* Flat meta row — elev details + tz badge in header */
+.split-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 0.1rem;
+}
+
+.split-header-meta-item {
+  font-size: 0.72rem;
+  color: #8892a4;
+  white-space: nowrap;
+}
+
+/* Mobile-only detail block shown inside the form body */
+.split-mobile-meta {
+  display: none;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0 0.5rem;
+  border-bottom: 1px solid #2e2e2e;
+  margin-bottom: 0.5rem;
+}
+
+.split-mobile-meta-dist {
+  font-size: 0.78rem;
+  color: #e2e8f0;
+}
+
+@media (max-width: 600px) {
+  .split-header-meta,
+  .split-header-right {
+    display: none;
+  }
+
+  .split-mobile-meta {
+    display: flex;
+  }
 }
 
 .gpx-dist-asterisk {
@@ -375,6 +486,211 @@ h4 {
   flex: 1 1 auto;
 }
 
+/* ── Split form field row helpers ── */
+.split-row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.split-subsplit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.split-subsplit-row--3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* ── Split optional overrides accordion ── */
+.split-acc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #999;
+  background: #1e1e1e;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  user-select: none;
+  margin: 0.5rem 0 0;
+  transition: background 0.15s;
+}
+
+.split-acc-row:hover {
+  background: #242424;
+  color: #bbb;
+}
+
+.split-acc-chev {
+  font-size: 0.65rem;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+
+.split-acc-chev.open {
+  transform: rotate(90deg);
+}
+
+.split-acc-body {
+  background: #1a1a1a;
+  border: 1px solid #2e2e2e;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  padding: 0.6rem 0.75rem 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.split-optional-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.split-tz-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.split-tz-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #aaa;
+  cursor: pointer;
+}
+
+/* ── Rest stop block (toggle + collapsible body) ── */
+.split-stop-blk {
+  margin-top: 0.6rem;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.split-stop-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.75rem;
+  background: #1e1e1e;
+}
+
+.split-stop-hd-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #ccc;
+}
+
+.split-sdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7c6af7;
+  flex-shrink: 0;
+}
+
+.split-stop-body {
+  padding: 0.6rem 0.75rem 0.5rem;
+  background: #1a1a1a;
+  border-top: 1px solid #2e2e2e;
+}
+
+/* ── Toggle switch (rest stop, same-daily-hours) ── */
+.split-tsw {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.split-tsw input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.split-ttrack {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  background: #444;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.split-tsw input:checked + .split-ttrack {
+  background: #7c6af7;
+}
+
+.split-tthumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+  pointer-events: none;
+}
+
+.split-tsw input:checked ~ .split-tthumb {
+  transform: translateX(12px);
+}
+
+/* ── Rest stop form fields ── */
+.rest-stop-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rest-stop-hours {
+  margin-top: 0.1rem;
+}
+
+.rest-stop-hours-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.rest-stop-hours-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rest-hours-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.rest-hours-toggle-text {
+  font-size: 0.75rem;
+  color: #999;
+}
+
 .split-body {
   padding: 0.5rem 0.75rem;
 }
@@ -386,6 +702,129 @@ h4 {
   border: 1px dashed #3a3a3a;
   border-radius: 4px;
   background: #1e1e1e;
+}
+
+.rs-section {
+  margin-top: 0.5rem;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.rs-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.75rem;
+  background: #252525;
+  border-bottom: 1px solid transparent;
+  cursor: default;
+}
+
+.rs-toggle-row.open {
+  border-bottom-color: #2e2e2e;
+}
+
+.rs-toggle-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ccc;
+}
+
+.rs-section-body {
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rs-hours-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.35rem;
+}
+
+.rs-hours-header-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #aaa;
+  flex: 1;
+}
+
+.rs-hours-header-toggle-label {
+  font-size: 0.78rem;
+  color: #888;
+}
+
+/* ── Toggle switch ── */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  display: none;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  background: #444;
+  transition: background 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: #4361ee;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s;
+  pointer-events: none;
+}
+
+.toggle-switch input:checked ~ .toggle-thumb {
+  left: 18px;
+}
+
+/* ── Section action row (overrides toggle) ── */
+.section-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  cursor: pointer;
+  color: #888;
+  font-size: 0.78rem;
+  border: none;
+  background: none;
+  text-align: left;
+  user-select: none;
+}
+
+.section-action-row:hover {
+  color: #aaa;
+}
+
+.section-action-row .chevron {
+  font-size: 0.6rem;
+  transition: transform 0.15s;
+}
+
+.section-action-row .chevron.open {
+  transform: rotate(90deg);
 }
 
 .day-hours-grid {
@@ -1767,6 +2206,29 @@ dialog {
   border: 1px solid #2d5a8e;
 }
 
+/* ── Find-nearby floating action button (overlaid on map canvas) ── */
+.split-map-nearby-fab {
+  position: absolute;
+  bottom: 36px;
+  right: 8px;
+  z-index: 1000;
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: rgba(26, 26, 46, 0.9);
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+  backdrop-filter: blur(2px);
+}
+
+.split-map-nearby-fab:hover {
+  opacity: 1;
+}
+
 .split-tz-badge {
   font-size: 0.72rem;
   color: #c4b5fd;
@@ -2091,6 +2553,182 @@ dialog {
   font-size: 0.82rem;
   color: #9ca3af;
   margin: 0.5rem 0.75rem;
+}
+
+/* ── Split layout slider (Form | Both | Map) ── */
+
+.split-view-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: #252525;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.split-tri-slider {
+  position: relative;
+  width: 156px;
+  height: 26px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.split-tri-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 0.5px solid rgba(255, 255, 255, 0.15);
+}
+
+.split-tri-thumb {
+  position: absolute;
+  top: 2px;
+  height: 22px;
+  width: 50px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.30);
+  transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.split-tri-labels {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.split-tri-label {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: color 0.15s;
+  user-select: none;
+}
+
+.split-tri-label.active {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+}
+
+.split-view-bar-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.30);
+  white-space: nowrap;
+}
+
+/* ── Split two-pane shell (Both / Map modes) ── */
+
+.split-two-pane {
+  display: flex;
+  overflow: hidden;
+  height: 450px;
+}
+
+.split-form-col {
+  overflow-y: auto;
+  flex-shrink: 0;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.split-map-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.5rem 0.5rem 0;
+}
+
+/* In form-only mode, map col fills full width */
+.split-map-col--full {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.5rem;
+}
+
+/* Map fills its column container */
+/* .split-map-col itself must have a resolved height for Leaflet's height:100% to work */
+.split-map-col,
+.split-map-col--full {
+  overflow: hidden;
+}
+
+.split-map-col .split-endpoint-map,
+.split-map-col--full .split-endpoint-map {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.split-map-col .split-endpoint-map-canvas,
+.split-map-col--full .split-endpoint-map-canvas {
+  flex: 1;
+  aspect-ratio: unset;
+  min-height: 0;
+  height: 100%;
+}
+
+/* Hide the controls div when inside the two-pane (button is now a FAB on canvas) */
+.split-map-col .split-map-controls,
+.split-map-col--full .split-map-controls {
+  display: none;
+}
+
+.split-resize-handle {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.split-resize-handle:hover,
+.split-resize-handle.active {
+  background: #3a3a3a;
+}
+
+/* ── Mobile: stack vertically, hide resize handle ── */
+@media (max-width: 600px) {
+  .split-two-pane {
+    flex-direction: column;
+    min-height: unset;
+  }
+
+  .split-form-col {
+    width: 100% !important;
+  }
+
+  .split-map-col,
+  .split-map-col--full {
+    padding: 0 0.5rem 0.5rem;
+    min-height: 300px;
+  }
+
+  .split-resize-handle {
+    display: none;
+  }
+
+  .split-optional-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .split-subsplit-row,
+  .split-subsplit-row--3,
+  .split-row2 {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Split endpoint map ── */

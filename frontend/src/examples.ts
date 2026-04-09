@@ -391,7 +391,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           rest_stop: {
             enabled: true,
             name: "Mobil",
-            address: "100 1st St, Elk Rapids, MI 49629",
+            address: "100 First Street, Elk Rapids, MI",
             alt: "",
             sameHoursEveryDay: true,
             allDays: { mode: "hours", opens: "05:00", closes: "23:00" },
