@@ -2744,6 +2744,14 @@ dialog {
   height: 300px;
 }
 
+/* In the stacked layout the two-pane height is auto (indefinite), so
+   child height:100% chains collapse to 0. Give the canvas an explicit
+   pixel height so Leaflet always has something to measure. */
+.split-two-pane--stacked .split-map-col .split-endpoint-map-canvas {
+  height: 270px;
+  flex: none;
+}
+
 /* In form-only mode, map col fills full width */
 .split-map-col--full {
   flex: 1;
@@ -2835,6 +2843,16 @@ dialog {
     padding: 0 0.5rem 0.5rem;
     height: 300px;
     min-height: 300px;
+  }
+
+  /* At mobile, .split-two-pane changes to height:auto (indefinite flex main size),
+     which breaks the height:100% chain so the canvas collapses to 0px and Leaflet
+     renders blank. Fix by giving the canvas an explicit pixel height that doesn't
+     depend on percentage resolution. */
+  .split-map-col .split-endpoint-map-canvas,
+  .split-map-col--full .split-endpoint-map-canvas {
+    height: 280px;
+    flex: none;
   }
 
   .split-resize-handle {

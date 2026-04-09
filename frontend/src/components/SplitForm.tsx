@@ -105,11 +105,15 @@ export default function SplitFormComponent({
     () => typeof window !== "undefined" && window.innerWidth < 520,
   );
 
-  // Track container width to auto-stack the "both" layout when narrow
+  // Track container width to auto-stack the "both" layout when narrow.
+  // Skip the update while fullscreen is active — the page reflows when an
+  // element enters/exits fullscreen which can flip isNarrow, tear down the
+  // layout tree, unmount the fullscreen canvas, and immediately abort fullscreen.
   useEffect(() => {
     const el = splitFormRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
+      if (document.fullscreenElement) return;
       setIsNarrow(entry.contentRect.width < 520);
     });
     ro.observe(el);
