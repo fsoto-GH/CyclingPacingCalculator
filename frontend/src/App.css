@@ -389,6 +389,33 @@ h4 {
   flex-shrink: 0;
 }
 
+/* Click-to-edit variant — shows a pencil cursor and underline hint on hover */
+.split-header-title--editable {
+  cursor: text;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.split-header-title--editable:hover {
+  color: #e2e8f0;
+  border-bottom-color: #555;
+}
+
+/* Inline name input rendered in-place of the title text */
+.split-header-name-input {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: #1a1a1a;
+  border: 1px solid #4361ee;
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+  outline: none;
+  max-width: 220px;
+  flex-shrink: 1;
+  min-width: 80px;
+}
+
 .split-header-elev-tags {
   display: flex;
   gap: 0.3rem;

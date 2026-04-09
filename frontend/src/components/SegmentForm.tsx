@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type {
   SegmentForm,
   SplitForm as SplitFormType,
@@ -70,6 +70,8 @@ export default function SegmentFormComponent({
   const dLabel = distanceLabel(unitSystem);
   const prefix = `seg${segIndex}`;
   const segColor = SEGMENT_COLORS[segIndex % SEGMENT_COLORS.length];
+  const [isEditingName, setIsEditingName] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSplitCountChange = (raw: string) => {
     update({ splitCount: raw });
@@ -169,24 +171,50 @@ export default function SegmentFormComponent({
         </span>
         <div className="split-header-left">
           <div className="split-header-titlerow">
-            <span
-              className="split-header-title"
-              style={{ fontSize: "0.95rem" }}
-            >
-              {headerTitle}
-              {splitStatuses?.some((s) => s === "over") && (
-                <span className="gpx-dist-asterisk gpx-dist-asterisk--over">
-                  {" "}
-                  *
-                </span>
-              )}
-              {splitStatuses?.some((s) => s === "under-last") && (
-                <span className="gpx-dist-asterisk gpx-dist-asterisk--under">
-                  {" "}
-                  *
-                </span>
-              )}
-            </span>
+            {isEditingName ? (
+              <input
+                ref={nameInputRef}
+                className="split-header-name-input"
+                type="text"
+                value={value.name ?? ""}
+                placeholder={`Segment ${segIndex + 1}`}
+                style={{ fontSize: "0.95rem" }}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => update({ name: e.target.value })}
+                onBlur={() => setIsEditingName(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "Escape") {
+                    setIsEditingName(false);
+                    e.preventDefault();
+                  }
+                }}
+              />
+            ) : (
+              <span
+                className="split-header-title split-header-title--editable"
+                style={{ fontSize: "0.95rem" }}
+                title="Click to rename"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditingName(true);
+                  setTimeout(() => nameInputRef.current?.focus(), 0);
+                }}
+              >
+                {headerTitle}
+                {splitStatuses?.some((s) => s === "over") && (
+                  <span className="gpx-dist-asterisk gpx-dist-asterisk--over">
+                    {" "}
+                    *
+                  </span>
+                )}
+                {splitStatuses?.some((s) => s === "under-last") && (
+                  <span className="gpx-dist-asterisk gpx-dist-asterisk--under">
+                    {" "}
+                    *
+                  </span>
+                )}
+              </span>
+            )}
             {collapsed && collapsedSummaryParts.length > 0 && (
               <span className="split-header-summary">
                 {collapsedSummaryParts.join(" · ")}
@@ -256,15 +284,6 @@ export default function SegmentFormComponent({
 
       {!collapsed && (
         <div className="segment-body">
-          <div className="field segment-name-field">
-            <input
-              id={`${prefix}-name`}
-              type="text"
-              placeholder={`Segment ${segIndex + 1} name (optional)`}
-              value={value.name ?? ""}
-              onChange={(e) => update({ name: e.target.value })}
-            />
-          </div>
           <div className="fields-grid">
             <TimeInput
               id={`${prefix}-sleep-time`}

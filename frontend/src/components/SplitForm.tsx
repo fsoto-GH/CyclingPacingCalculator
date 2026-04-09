@@ -196,27 +196,54 @@ export default function SplitFormComponent({
         <span className="collapse-icon-sm">{collapsed ? "▶" : "▼"}</span>
         <div className="split-header-left">
           <div className="split-header-title-row">
-            <span className="split-header-title">
-              {headerTitle}
-              {gpxDistStatus === "over" && (
-                <span
-                  className="gpx-dist-asterisk gpx-dist-asterisk--over"
-                  title="Split distance exceeds GPX track total"
-                >
-                  {" "}
-                  *
-                </span>
-              )}
-              {gpxDistStatus === "under-last" && (
-                <span
-                  className="gpx-dist-asterisk gpx-dist-asterisk--under"
-                  title="Total distance has not reached GPX track total"
-                >
-                  {" "}
-                  *
-                </span>
-              )}
-            </span>
+            {isEditingName ? (
+              <input
+                ref={nameInputRef}
+                className="split-header-name-input"
+                type="text"
+                value={value.name ?? ""}
+                placeholder={`Split ${splitIndex + 1}`}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => update({ name: e.target.value })}
+                onBlur={() => setIsEditingName(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "Escape") {
+                    setIsEditingName(false);
+                    e.preventDefault();
+                  }
+                }}
+              />
+            ) : (
+              <span
+                className="split-header-title split-header-title--editable"
+                title="Click to rename"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditingName(true);
+                  setTimeout(() => nameInputRef.current?.focus(), 0);
+                }}
+              >
+                {headerTitle}
+                {gpxDistStatus === "over" && (
+                  <span
+                    className="gpx-dist-asterisk gpx-dist-asterisk--over"
+                    title="Split distance exceeds GPX track total"
+                  >
+                    {" "}
+                    *
+                  </span>
+                )}
+                {gpxDistStatus === "under-last" && (
+                  <span
+                    className="gpx-dist-asterisk gpx-dist-asterisk--under"
+                    title="Total distance has not reached GPX track total"
+                  >
+                    {" "}
+                    *
+                  </span>
+                )}
+              </span>
+            )}
             {collapsed && (downHms || adjHms || value.distance) && (
               <span className="split-header-summary">
                 {[
@@ -365,17 +392,6 @@ export default function SplitFormComponent({
           // ── Shared form content (distance, overrides, sub-splits, rest stop) ──
           const formContent = (
             <>
-              {/* Row 0: Split name */}
-              <div className="field segment-name-field split-name-field">
-                <input
-                  id={`${prefix}-name`}
-                  type="text"
-                  placeholder={`Split ${splitIndex + 1} name (optional)`}
-                  value={value.name ?? ""}
-                  onChange={(e) => update({ name: e.target.value })}
-                />
-              </div>
-
               {/* Row 1: Distance */}
               <div className="field">
                 <label htmlFor={`${prefix}-distance`}>
