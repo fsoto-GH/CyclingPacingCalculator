@@ -501,12 +501,7 @@ export default function SplitEndpointMap({
   return (
     <div className="split-endpoint-map">
       <div className="split-endpoint-map-canvas" ref={canvasRef}>
-        {/* Empty-result overlay */}
-        {showNearby && amenities !== null && amenities.length === 0 && (
-          <div className="split-map-status">
-            No stops found within {fmtDist(SEARCH_RADIUS_M, unitSystem)}.
-          </div>
-        )}
+        {/* Empty-result overlay removed — handled in the list panel below */}
 
         <MapContainer
           ref={mapRef}
@@ -710,8 +705,8 @@ export default function SplitEndpointMap({
       </div>
       {/* end canvas */}
 
-      {/* Amenity list — shown when nearby search has results */}
-      {showNearby && amenities && amenities.length > 0 && (
+      {/* Amenity list — shown whenever a search has been run and results are visible */}
+      {showNearby && amenities !== null && (
         <div className="split-map-amenity-list">
           <div className="split-map-amenity-header">
             <span className="split-map-amenity-count">
@@ -736,36 +731,43 @@ export default function SplitEndpointMap({
               </button>
             </div>
           </div>
-          {amenities.map((a) => (
-            <div key={a.id} className="split-map-amenity-row">
-              <span className="split-map-amenity-icon">
-                {AMENITY_ICONS[a.amenity] ?? "📍"}
-              </span>
-              <div className="split-map-amenity-info">
-                <span className="split-map-amenity-name">{a.name}</span>
-                <span className="split-map-amenity-meta">
-                  {AMENITY_LABELS[a.amenity] ?? a.amenity} ·{" "}
-                  {fmtDist(a.distanceM, unitSystem)}
-                  {a.rawHours && <> · {a.rawHours}</>}
-                </span>
-                {!a.hours && (
-                  <span className="split-map-amenity-no-hours">
-                    ⏰ Hours unknown
-                  </span>
-                )}
-                {a.address && (
-                  <span className="split-map-amenity-addr">{a.address}</span>
-                )}
-              </div>
-              <button
-                type="button"
-                className="split-map-amenity-use-btn"
-                onClick={() => handleSelect(a)}
-              >
-                Use
-              </button>
+          {amenities.length === 0 ? (
+            <div className="split-map-amenity-empty">
+              No stops found within {fmtDist(SEARCH_RADIUS_M, unitSystem)}. Try
+              updating your search criteria.
             </div>
-          ))}
+          ) : (
+            amenities.map((a) => (
+              <div key={a.id} className="split-map-amenity-row">
+                <span className="split-map-amenity-icon">
+                  {AMENITY_ICONS[a.amenity] ?? "📍"}
+                </span>
+                <div className="split-map-amenity-info">
+                  <span className="split-map-amenity-name">{a.name}</span>
+                  <span className="split-map-amenity-meta">
+                    {AMENITY_LABELS[a.amenity] ?? a.amenity} ·{" "}
+                    {fmtDist(a.distanceM, unitSystem)}
+                    {a.rawHours && <> · {a.rawHours}</>}
+                  </span>
+                  {!a.hours && (
+                    <span className="split-map-amenity-no-hours">
+                      ⏰ Hours unknown
+                    </span>
+                  )}
+                  {a.address && (
+                    <span className="split-map-amenity-addr">{a.address}</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="split-map-amenity-use-btn"
+                  onClick={() => handleSelect(a)}
+                >
+                  Use
+                </button>
+              </div>
+            ))
+          )}
         </div>
       )}
       {modalOpen && (

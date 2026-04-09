@@ -3130,6 +3130,14 @@ dialog {
   text-overflow: ellipsis;
 }
 
+.split-map-amenity-empty {
+  padding: 0.75rem 1rem;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-style: italic;
+  text-align: center;
+}
+
 .split-map-amenity-no-hours {
   font-size: 0.72rem;
   color: #4b5563;
