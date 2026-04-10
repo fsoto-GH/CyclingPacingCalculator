@@ -20,6 +20,7 @@ import {
   extractSurfaceFromXml,
   interpolateLatLon,
 } from "../calculator/gpxParser";
+import tzlookup from "tz-lookup";
 import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
@@ -362,6 +363,9 @@ export default function CourseForm() {
             setGpxTrack(track);
             setGpxSurface(extractSurfaceFromXml(xml));
             setGpxMissingWarning(null);
+            // Auto-detect timezone from the track's first point.
+            const detectedTz = tzlookup(track[0].lat, track[0].lon);
+            if (detectedTz) update({ timezone: detectedTz });
             // Persist to IDB so the GPX survives a page reload.
             saveGpx(displayName, xml).catch(() => {
               /* IDB unavailable */
@@ -749,6 +753,7 @@ export default function CourseForm() {
       const initSpeed = parseFloat(f.init_moving_speed);
       const minSpeed = parseFloat(f.min_moving_speed);
       const dtr = parseFloat(f.down_time_ratio);
+      const splitDecay = parseFloat(f.split_decay);
 
       if (
         f.init_moving_speed.trim() === "" ||
@@ -762,6 +767,8 @@ export default function CourseForm() {
         e["course-init-speed"] = "Must be ≥ Overall Min Speed";
       if (f.down_time_ratio.trim() === "" || isNaN(dtr) || dtr < 0 || dtr > 1)
         e["course-dtr"] = "Must be between 0 and 1";
+      if (f.split_decay.trim() === "" || isNaN(splitDecay))
+        e["course-split-decay"] = "Must be a number";
 
       const segCount = parseInt(f.segmentCount, 10);
       if (isNaN(segCount) || segCount < 1)
@@ -960,6 +967,7 @@ export default function CourseForm() {
             );
           }
         } else {
+          console.log(err);
           setApiError("Network error - is the API running?");
         }
       }
@@ -1226,6 +1234,7 @@ export default function CourseForm() {
               value={form.split_decay}
               onChange={(e) => update({ split_decay: e.target.value })}
             />
+            <FieldError fieldId="course-split-decay" />
             <span className="hint">
               Per-split speed change; negative = faster
             </span>

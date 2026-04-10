@@ -2418,14 +2418,6 @@ dialog {
   background: rgba(15, 15, 30, 0.96);
 }
 
-.split-map-nearby-fab {
-  /* inherits shared stack style */
-}
-
-.split-map-nearby-fab:hover {
-  /* handled by shared .split-map-right-stack > *:hover */
-}
-
 .split-tz-badge {
   font-size: 0.72rem;
   color: #c4b5fd;
@@ -3054,14 +3046,6 @@ dialog {
 
 .split-map-links {
   display: contents;
-}
-
-.split-map-link {
-  /* inherits shared stack style */
-}
-
-.split-map-link:hover {
-  /* handled by shared .split-map-right-stack > *:hover */
 }
 
 .split-map-reset-btn {
