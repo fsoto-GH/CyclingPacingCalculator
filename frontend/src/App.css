@@ -481,6 +481,14 @@ h4 {
   white-space: nowrap;
 }
 
+.split-header-meta-item--dist     { color: #60a5fa; } /* blue  — distance */
+.split-header-meta-item--tz       { color: #c4b5fd; } /* purple — timezone */
+.split-header-meta-item--gain     { color: #4ade80; } /* green  — elevation gain */
+.split-header-meta-item--loss     { color: #f87171; } /* red    — elevation loss */
+.split-header-meta-item--grade    { color: #94a3b8; } /* slate  — avg grade */
+.split-header-meta-item--steep    { color: #fbbf24; } /* amber  — steep warning */
+.split-header-meta-item--surface  { color: #94a3b8; } /* slate  — surface */
+
 /* Mobile-only detail block shown inside the form body */
 .split-mobile-meta {
   display: none;

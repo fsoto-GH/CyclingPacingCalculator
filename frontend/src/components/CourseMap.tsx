@@ -281,11 +281,9 @@ export default function CourseMap({
 
   // Per-segment sliced + decimated polylines for colour coding.
   // splitBoundariesKm[si] = [[startKm, endKm], ...] for each split in segment si.
+  // When there are no boundaries yet the ghost handles display; return empty.
   const segmentPolylines = useMemo(() => {
-    if (splitBoundariesKm.length === 0) {
-      // No boundaries yet — render whole track in segment-0 colour
-      return [{ positions: polyline, segIdx: 0 }];
-    }
+    if (splitBoundariesKm.length === 0) return [];
     return splitBoundariesKm.map((segBounds, si) => {
       const startKm = segBounds[0]?.[0] ?? 0;
       const endKm =
@@ -294,7 +292,7 @@ export default function CourseMap({
       const slice = sliceTrackPoints(gpxTrack, startKm, endKm);
       return { positions: decimateTrack(slice), segIdx: si };
     });
-  }, [gpxTrack, splitBoundariesKm, polyline]);
+  }, [gpxTrack, splitBoundariesKm]);
 
   const bounds = useMemo<LatLngBoundsExpression>(() => {
     let minLat = Infinity,
@@ -486,6 +484,13 @@ export default function CourseMap({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             maxZoom={19}
           />
+          {/* Ghost track — always visible; covers sections with no splits assigned */}
+          <Polyline
+            positions={polyline as LatLngExpression[]}
+            pathOptions={{ color: "#64748b", weight: 3, opacity: 0.6 }}
+            pane="route-lines"
+          />
+          {/* Colored segment overlays — paint over the ghost where splits are defined */}
           {segmentPolylines.map(({ positions, segIdx }) => (
             <Polyline
               key={segIdx}

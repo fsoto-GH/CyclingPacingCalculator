@@ -106,6 +106,16 @@ function makeArrowIcon(bearingDeg: number) {
   });
 }
 
+/** Dashed-circle icon shown when the split distance is undefined. */
+function makeUndefinedEndpointIcon() {
+  return divIcon({
+    html: `<div style="width:22px;height:22px;border-radius:50%;border:2px dashed #94a3b8;background:rgba(30,30,46,0.75);display:flex;align-items:center;justify-content:center;box-sizing:border-box;"><span style="color:#94a3b8;font-size:13px;font-weight:700;line-height:1">?</span></div>`,
+    className: "",
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
+
 /** Small distance label pinned to the route. */
 function makeTickIcon(label: string) {
   return divIcon({
@@ -317,6 +327,7 @@ interface SplitEndpointMapProps {
   endKm: number;
   endLat: number;
   endLon: number;
+  endpointDefined?: boolean;
   unitSystem: UnitSystem;
   restStop?: RestStopForm | null;
   onSelectStop: (patch: Partial<RestStopForm>) => void;
@@ -328,6 +339,7 @@ export default function SplitEndpointMap({
   endKm,
   endLat,
   endLon,
+  endpointDefined = true,
   unitSystem,
   restStop,
   onSelectStop,
@@ -565,7 +577,18 @@ export default function SplitEndpointMap({
           )}
 
           {/* Direction arrow at endpoint */}
-          {arrowIcon ? (
+          {!endpointDefined ? (
+            <Marker
+              position={[endLat, endLon]}
+              icon={makeUndefinedEndpointIcon()}
+            >
+              <Popup>
+                <strong>Split endpoint</strong>
+                <br />
+                Distance not yet defined
+              </Popup>
+            </Marker>
+          ) : arrowIcon ? (
             <Marker position={[endLat, endLon]} icon={arrowIcon}>
               <Popup>
                 <strong>Split endpoint</strong>

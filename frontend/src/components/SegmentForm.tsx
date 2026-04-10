@@ -230,7 +230,7 @@ export default function SegmentFormComponent({
             <div className="split-header-meta">
               {totalDist > 0 && (
                 <span
-                  className="split-header-meta-item"
+                  className="split-header-meta-item split-header-meta-item--dist"
                   title="Segment distance"
                 >
                   {totalDist.toLocaleString(undefined, {
@@ -240,20 +240,29 @@ export default function SegmentFormComponent({
                   {dLabel}
                 </span>
               )}
-              <span className="split-header-meta-item" title="Elevation gain">
+              <span
+                className="split-header-meta-item split-header-meta-item--gain"
+                title="Elevation gain"
+              >
                 ⬆ {toElevUnit(aggGpx.elevGainM)}
                 {elevUnit}
               </span>
-              <span className="split-header-meta-item" title="Elevation loss">
+              <span
+                className="split-header-meta-item split-header-meta-item--loss"
+                title="Elevation loss"
+              >
                 ⬇ {toElevUnit(aggGpx.elevLossM)}
                 {elevUnit}
               </span>
-              <span className="split-header-meta-item" title="Average grade">
+              <span
+                className="split-header-meta-item split-header-meta-item--grade"
+                title="Average grade"
+              >
                 {aggGpx.avgGradePct.toFixed(1)}% avg
               </span>
               {aggGpx.steepPct > 0 && (
                 <span
-                  className="split-header-meta-item"
+                  className="split-header-meta-item split-header-meta-item--steep"
                   title="% of distance with grade > 5%"
                 >
                   ⚠ {aggGpx.steepPct}% steep

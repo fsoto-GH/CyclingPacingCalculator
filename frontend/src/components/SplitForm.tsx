@@ -121,8 +121,32 @@ export default function SplitFormComponent({
   }, []);
 
   // Condition that unlocks the slider UI
-  const mapAvailable =
-    !!gpxTrack && gpxProfile?.endLat != null && !!value.distance;
+  // Keep the last valid profile so the map stays mounted while distance is being edited
+  const lastValidProfileRef = useRef<SplitGpxProfile | null>(null);
+  if (gpxProfile != null) lastValidProfileRef.current = gpxProfile;
+
+  // Display profile: current if valid, else last known, else track start
+  const displayProfile: SplitGpxProfile | null =
+    gpxProfile ??
+    lastValidProfileRef.current ??
+    (gpxTrack
+      ? {
+          elevGainM: 0,
+          elevLossM: 0,
+          avgGradePct: 0,
+          steepPct: 0,
+          surface: "unknown",
+          endLat: gpxTrack[0].lat,
+          endLon: gpxTrack[0].lon,
+          endTimezone: "",
+          startKm: 0,
+          endKm: 0,
+        }
+      : null);
+
+  const mapAvailable = !!gpxTrack && displayProfile != null;
+  // Whether the endpoint coords reflect a real defined distance
+  const endpointDefined = gpxProfile != null;
 
   // Reset to "form" when the map becomes unavailable mid-session
   useEffect(() => {
@@ -277,7 +301,10 @@ export default function SplitFormComponent({
           {(gpxProfile || tzBadgeAbbr || splitDistUser != null) && (
             <div className="split-header-meta">
               {splitDistUser != null && (
-                <span className="split-header-meta-item" title="Split distance">
+                <span
+                  className="split-header-meta-item split-header-meta-item--dist"
+                  title="Split distance"
+                >
                   {splitDistUser.toLocaleString(undefined, {
                     minimumFractionDigits: 1,
                     maximumFractionDigits: 1,
@@ -287,7 +314,7 @@ export default function SplitFormComponent({
               )}
               {tzBadgeAbbr && (
                 <span
-                  className="split-header-meta-item"
+                  className="split-header-meta-item split-header-meta-item--tz"
                   title={`Split timezone: ${activeTz}`}
                 >
                   🕐 {tzBadgeAbbr}
@@ -296,28 +323,28 @@ export default function SplitFormComponent({
               {gpxProfile && (
                 <>
                   <span
-                    className="split-header-meta-item"
+                    className="split-header-meta-item split-header-meta-item--gain"
                     title="Elevation gain"
                   >
                     ⬆ {toElevUnit(gpxProfile.elevGainM)}
                     {elevUnit}
                   </span>
                   <span
-                    className="split-header-meta-item"
+                    className="split-header-meta-item split-header-meta-item--loss"
                     title="Elevation loss"
                   >
                     ⬇ {toElevUnit(gpxProfile.elevLossM)}
                     {elevUnit}
                   </span>
                   <span
-                    className="split-header-meta-item"
+                    className="split-header-meta-item split-header-meta-item--grade"
                     title="Average grade"
                   >
                     {gpxProfile.avgGradePct.toFixed(1)}% avg
                   </span>
                   {gpxProfile.steepPct > 0 && (
                     <span
-                      className="split-header-meta-item"
+                      className="split-header-meta-item split-header-meta-item--steep"
                       title="% of distance with grade > 5%"
                     >
                       ⚠ {gpxProfile.steepPct}% steep
@@ -325,7 +352,7 @@ export default function SplitFormComponent({
                   )}
                   {gpxProfile.surface !== "unknown" && (
                     <span
-                      className="split-header-meta-item"
+                      className="split-header-meta-item split-header-meta-item--surface"
                       title="Dominant surface"
                     >
                       {gpxProfile.surface}
@@ -607,10 +634,11 @@ export default function SplitFormComponent({
           const mapContent = mapAvailable ? (
             <SplitEndpointMap
               gpxTrack={gpxTrack!}
-              startKm={gpxProfile!.startKm}
-              endKm={gpxProfile!.endKm}
-              endLat={gpxProfile!.endLat}
-              endLon={gpxProfile!.endLon}
+              startKm={displayProfile!.startKm}
+              endKm={displayProfile!.endKm}
+              endLat={displayProfile!.endLat}
+              endLon={displayProfile!.endLon}
+              endpointDefined={endpointDefined}
               unitSystem={unitSystem}
               restStop={value.rest_stop}
               onSelectStop={(patch) =>
