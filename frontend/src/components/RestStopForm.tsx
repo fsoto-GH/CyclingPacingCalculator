@@ -83,6 +83,25 @@ export default function RestStopFormComponent({
               className={addressLoading ? "input-address-loading" : undefined}
             />
             <FieldError fieldId={`${prefix}-address`} />
+            {value.address.trim() && (
+              <a
+                className="rs-open-in-google"
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.address.trim())}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="12"
+                  height="12"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
+                </svg>
+                Open in Google Maps
+              </a>
+            )}
           </div>
 
           {/* Hours section */}

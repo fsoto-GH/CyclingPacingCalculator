@@ -371,6 +371,18 @@ export default function CourseForm() {
     [],
   );
 
+  // Auto-load an example on first mount when ?example_name=<url_name> is present.
+  // Runs once; the ESLint disable is intentional — handleLoadExample is stable.
+  useEffect(() => {
+    const name = new URLSearchParams(window.location.search).get(
+      "example_name",
+    );
+    if (!name) return;
+    const entry = EXAMPLES.find((e) => e.url_name === name);
+    if (entry) handleLoadExample(entry.form, entry.gpxUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = useCallback(() => {
@@ -1405,6 +1417,13 @@ export default function CourseForm() {
               cityLabels={cityLabels[i]}
               cityFetching={cityFetching[i]}
               cumulativeDists={splitCumulativeDists?.[i] ?? undefined}
+              segmentStartDist={
+                i === 0
+                  ? 0
+                  : (splitCumulativeDists?.[i - 1]?.[
+                      form.segments[i - 1].splits.length - 1
+                    ] ?? null)
+              }
               gpxTotalDist={gpxTotalDistUser}
               segmentStartCity={
                 i === 0

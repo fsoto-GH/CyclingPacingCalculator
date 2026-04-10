@@ -198,135 +198,145 @@ export default function ResultsView({
 }: ResultsViewProps) {
   const [showJson, setShowJson] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
 
   return (
-    <div className="results-view">
-      <h2>Results</h2>
+    <div className={`results-view${expanded ? " results-view--expanded" : ""}`}>
+      <div className="results-view-inner">
+        <h2>Results</h2>
 
-      <CourseSummaryNarrative
-        result={result}
-        formSegments={formSegments}
-        courseTz={courseTz}
-        unitSystem={unitSystem}
-        courseName={courseName}
-      />
-
-      {/* Course Summary */}
-      <div className="course-summary">
-        <h3>Course Summary</h3>
-        <dl className="summary-grid">
-          <div>
-            <dt>Total Distance</dt>
-            <dd>
-              {result.distance.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{" "}
-              {dLabel}
-            </dd>
-          </div>
-          <div>
-            <dt>Start Time</dt>
-            <dd>
-              {new Date(result.start_time).toLocaleString(undefined, {
-                weekday: "short",
-                month: "numeric",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-                timeZone: courseTz,
-                timeZoneName: "short",
-              })}
-            </dd>
-          </div>
-          <div>
-            <dt>End Time</dt>
-            <dd>
-              {new Date(result.end_time).toLocaleString(undefined, {
-                weekday: "short",
-                month: "numeric",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-                timeZone: courseTz,
-                timeZoneName: "short",
-              })}
-            </dd>
-          </div>
-          <div>
-            <dt>Elapsed Time</dt>
-            <dd title={formatHours(result.elapsed_time_hours, "full")}>
-              {formatHours(result.elapsed_time_hours)}
-            </dd>
-          </div>
-          <div>
-            <dt>Moving Time</dt>
-            <dd title={formatHours(result.moving_time_hours, "full")}>
-              {formatHours(result.moving_time_hours)}
-            </dd>
-          </div>
-          <div>
-            <dt>Down Time</dt>
-            <dd title={formatHours(result.down_time_hours, "full")}>
-              {formatHours(result.down_time_hours)}
-            </dd>
-          </div>
-          <div>
-            <dt>Sleep Time</dt>
-            <dd title={formatHours(result.sleep_time_hours, "full")}>
-              {formatHours(result.sleep_time_hours)}
-            </dd>
-          </div>
-          <div>
-            <dt>Adjustment Time</dt>
-            <dd title={formatHours(result.adjustment_time_hours, "full")}>
-              {formatHours(result.adjustment_time_hours)}
-            </dd>
-          </div>
-        </dl>
-      </div>
-
-      {/* Segments */}
-      {result.segment_details.map((seg, i) => (
-        <SegmentSection
-          key={i}
-          segment={seg}
-          index={i}
-          sLabel={sLabel}
-          dLabel={dLabel}
+        <CourseSummaryNarrative
+          result={result}
           formSegments={formSegments}
           courseTz={courseTz}
-          cityLabels={cityLabels?.[i]}
-          gpxTrack={gpxTrack}
-          splitBoundariesKm={splitBoundariesKm}
-          gpxProfiles={gpxProfiles}
           unitSystem={unitSystem}
+          courseName={courseName}
         />
-      ))}
 
-      {/* Raw JSON */}
-      <div className="json-section">
-        <div className="json-controls">
-          <button type="button" onClick={() => setShowJson(!showJson)}>
-            {showJson ? "Hide" : "Show"} Raw JSON
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
-          >
-            {copied ? "Copied!" : "Copy JSON"}
-          </button>
+        {/* Course Summary */}
+        <div className="course-summary">
+          <h3>Course Summary</h3>
+          <dl className="summary-grid">
+            <div>
+              <dt>Total Distance</dt>
+              <dd>
+                {result.distance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                {dLabel}
+              </dd>
+            </div>
+            <div>
+              <dt>Start Time</dt>
+              <dd>
+                {new Date(result.start_time).toLocaleString(undefined, {
+                  weekday: "short",
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  timeZone: courseTz,
+                  timeZoneName: "short",
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt>End Time</dt>
+              <dd>
+                {new Date(result.end_time).toLocaleString(undefined, {
+                  weekday: "short",
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  timeZone: courseTz,
+                  timeZoneName: "short",
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt>Elapsed Time</dt>
+              <dd title={formatHours(result.elapsed_time_hours, "full")}>
+                {formatHours(result.elapsed_time_hours)}
+              </dd>
+            </div>
+            <div>
+              <dt>Moving Time</dt>
+              <dd title={formatHours(result.moving_time_hours, "full")}>
+                {formatHours(result.moving_time_hours)}
+              </dd>
+            </div>
+            <div>
+              <dt>Down Time</dt>
+              <dd title={formatHours(result.down_time_hours, "full")}>
+                {formatHours(result.down_time_hours)}
+              </dd>
+            </div>
+            <div>
+              <dt>Sleep Time</dt>
+              <dd title={formatHours(result.sleep_time_hours, "full")}>
+                {formatHours(result.sleep_time_hours)}
+              </dd>
+            </div>
+            <div>
+              <dt>Adjustment Time</dt>
+              <dd title={formatHours(result.adjustment_time_hours, "full")}>
+                {formatHours(result.adjustment_time_hours)}
+              </dd>
+            </div>
+          </dl>
         </div>
-        {showJson && (
-          <pre className="json-block">{JSON.stringify(result, null, 2)}</pre>
-        )}
+
+        {/* Segments */}
+        {result.segment_details.map((seg, i) => (
+          <SegmentSection
+            key={i}
+            segment={seg}
+            index={i}
+            sLabel={sLabel}
+            dLabel={dLabel}
+            formSegments={formSegments}
+            courseTz={courseTz}
+            cityLabels={cityLabels?.[i]}
+            gpxTrack={gpxTrack}
+            splitBoundariesKm={splitBoundariesKm}
+            gpxProfiles={gpxProfiles}
+            unitSystem={unitSystem}
+          />
+        ))}
+
+        {/* Raw JSON */}
+        <div className="json-section">
+          <div className="json-controls">
+            <button type="button" onClick={() => setShowJson(!showJson)}>
+              {showJson ? "Hide" : "Show"} Raw JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "Copied!" : "Copy JSON"}
+            </button>
+          </div>
+          {showJson && (
+            <pre className="json-block">{JSON.stringify(result, null, 2)}</pre>
+          )}
+        </div>
       </div>
+      <button
+        type="button"
+        className="results-expand-btn"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {expanded ? "▲ Show less" : "▼ Show more"}
+      </button>
     </div>
   );
 }
@@ -830,6 +840,14 @@ function SplitRow({
                 )}
               </div>
             </div>
+            {formSegments[segIdx]?.splits[splitIdx]?.notes?.trim() && (
+              <div className="split-notes-result">
+                <h4>Notes</h4>
+                <p className="split-notes-result-text">
+                  {formSegments[segIdx].splits[splitIdx].notes!.trim()}
+                </p>
+              </div>
+            )}
           </td>
         </tr>
       )}

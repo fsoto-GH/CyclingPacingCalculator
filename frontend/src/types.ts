@@ -115,6 +115,7 @@ export interface SplitForm {
   adjustment_time: string; // minutes
   differentTimezone: boolean;
   timezone: string; // IANA timezone override
+  notes?: string; // freeform rider notes, displayed in results
 }
 
 export interface SegmentForm {

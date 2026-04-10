@@ -43,6 +43,7 @@ export const DEFAULT_SPLIT: SplitForm = {
   adjustment_time: "",
   differentTimezone: false,
   timezone: browserTimezone,
+  notes: "",
 };
 
 export function makeDefaultSplit(): SplitForm {

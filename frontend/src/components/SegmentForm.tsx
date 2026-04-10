@@ -36,6 +36,8 @@ interface SegmentFormProps {
   cumulativeDists?: (number | null)[];
   /** Total GPX track length in user units */
   gpxTotalDist?: number | null;
+  /** Cumulative course distance at the START of this segment (end of prev segment), in user units */
+  segmentStartDist?: number | null;
   /** City label at the start of this segment (end of prev segment's last split) */
   segmentStartCity?: string | null;
 }
@@ -55,6 +57,7 @@ export default function SegmentFormComponent({
   isLastSeg,
   cumulativeDists,
   gpxTotalDist,
+  segmentStartDist,
   segmentStartCity,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
@@ -127,6 +130,30 @@ export default function SegmentFormComponent({
   const segEndCity = cityLabels?.[lastSplitIdx] ?? null;
   const segEndCityFetching = cityFetching?.[lastSplitIdx] ?? false;
 
+  // Unique TZ abbreviations from splits that override the course timezone.
+  // Deduplicated by abbreviation (not IANA name) — two zones with the same
+  // abbreviation at any given moment share the same offset, so one badge suffices.
+  const uniqueSegTzAbbrs = (() => {
+    const seen = new Set<string>();
+    const result: { tz: string; abbr: string }[] = [];
+    for (const split of value.splits) {
+      if (split.differentTimezone && split.timezone) {
+        const abbr =
+          new Intl.DateTimeFormat("en-US", {
+            timeZone: split.timezone,
+            timeZoneName: "short",
+          })
+            .formatToParts(new Date())
+            .find((p) => p.type === "timeZoneName")?.value ?? split.timezone;
+        if (!seen.has(abbr)) {
+          seen.add(abbr);
+          result.push({ tz: split.timezone, abbr });
+        }
+      }
+    }
+    return result;
+  })();
+
   // Aggregate GPX stats across all splits
   const validProfiles = (gpxProfiles ?? []).filter(
     (p): p is SplitGpxProfile => p != null,
@@ -159,14 +186,6 @@ export default function SegmentFormComponent({
           };
         })()
       : null;
-
-  const collapsedSummaryParts = [
-    `${value.splits.length} split${value.splits.length !== 1 ? "s" : ""}`,
-    totalDist > 0
-      ? `${totalDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`
-      : null,
-    !aggGpx && sleepHms ? `💤 ${sleepHms}` : null,
-  ].filter(Boolean) as string[];
 
   return (
     <div className="segment-form">
@@ -220,11 +239,6 @@ export default function SegmentFormComponent({
                 )}
               </span>
             )}
-            {collapsed && collapsedSummaryParts.length > 0 && (
-              <span className="split-header-summary">
-                {collapsedSummaryParts.join(" · ")}
-              </span>
-            )}
           </div>
           {aggGpx && (
             <div className="split-header-meta">
@@ -271,19 +285,33 @@ export default function SegmentFormComponent({
             </div>
           )}
         </div>
-        {segCumulativeDist != null && (
+        {(uniqueSegTzAbbrs.length > 0 || segCumulativeDist != null) && (
           <div
             className="split-header-right"
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="split-header-dist">
-              {segCumulativeDist.toLocaleString(undefined, {
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 1,
-              })}{" "}
-              {dLabel}
-            </span>
-            {aggGpx &&
+            <div className="split-header-dist-row">
+              {uniqueSegTzAbbrs.map(({ tz, abbr }) => (
+                <span
+                  key={tz}
+                  className="split-header-meta-item split-header-meta-item--tz"
+                  title={`Timezone: ${tz}`}
+                >
+                  🕐 {abbr}
+                </span>
+              ))}
+              {segCumulativeDist != null && (
+                <span className="split-header-dist">
+                  {segCumulativeDist.toLocaleString(undefined, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}{" "}
+                  {dLabel}
+                </span>
+              )}
+            </div>
+            {segCumulativeDist != null &&
+              aggGpx &&
               (segEndCityFetching ||
                 segEndCity ||
                 segmentStartCity ||
@@ -452,7 +480,10 @@ export default function SegmentFormComponent({
                 isLastOverall={isLastSeg && j === value.splits.length - 1}
                 splitDistUser={(() => {
                   const cum = cumulativeDists?.[j] ?? null;
-                  const prev = j === 0 ? 0 : (cumulativeDists?.[j - 1] ?? 0);
+                  const prev =
+                    j === 0
+                      ? (segmentStartDist ?? 0)
+                      : (cumulativeDists?.[j - 1] ?? 0);
                   return cum != null
                     ? Math.round((cum - prev) * 10) / 10
                     : null;

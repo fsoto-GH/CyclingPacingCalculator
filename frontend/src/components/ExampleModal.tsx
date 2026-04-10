@@ -7,6 +7,7 @@ export interface ExampleEntry {
   form: CourseFormState;
   /** URL of a bundled GPX file to load alongside this example (relative to app root). */
   gpxUrl?: string;
+  url_name: string; // if supplied via url query param, this example will be auto-loaded on app start
 }
 
 interface ExampleModalProps {

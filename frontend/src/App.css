@@ -98,6 +98,14 @@ h4 {
   color: #ffffff;
 }
 
+/* Enlarge native number-input spin buttons for easier clicking */
+.field input[type="number"]::-webkit-outer-spin-button,
+.field input[type="number"]::-webkit-inner-spin-button {
+  opacity: 1;
+  width: 1.6rem;
+  cursor: pointer;
+}
+
 .field select {
   appearance: none;
   cursor: pointer;
@@ -451,6 +459,12 @@ h4 {
   text-align: right;
   flex-shrink: 0;
   margin-left: auto;
+}
+
+.split-header-dist-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .split-header-dist {
@@ -813,6 +827,53 @@ h4 {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+}
+
+/* ── Split notes ── */
+.split-notes-field {
+  margin-top: 0.5rem;
+}
+
+.split-notes-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5rem;
+  padding: 0.45rem 0.65rem;
+  background: #1a1a2e;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  font-family: inherit;
+  line-height: 1.5;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.split-notes-textarea:focus {
+  outline: none;
+  border-color: #4361ee;
+}
+
+/* Notes in result detail */
+.split-notes-result {
+  padding: 0.55rem 1rem 0.75rem;
+  background: #1a1a2e;
+  border-top: 1px solid #2e2e3e;
+}
+
+.split-notes-result h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  color: #6b8aff;
+}
+
+.split-notes-result-text {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  line-height: 1.55;
 }
 
 .rs-hours-header {
@@ -1279,6 +1340,37 @@ h4 {
   margin-top: 2rem;
   border-top: 2px solid #4361ee;
   padding-top: 1.5rem;
+  position: relative;
+}
+
+.results-view-inner {
+  max-height: 300px;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.results-view--expanded .results-view-inner {
+  max-height: none;
+}
+
+.results-expand-btn {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.35rem 0;
+  background: #1a1a2e;
+  border: 1px solid #3a3a3a;
+  border-radius: 0 0 6px 6px;
+  color: #6b8aff;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.results-expand-btn:hover {
+  background: #23234a;
+  color: #93c5fd;
 }
 
 .course-map-container {
@@ -1511,6 +1603,28 @@ h4 {
   gap: 1rem;
   padding: 0.75rem 1rem;
   background: #1a1a2e;
+}
+
+/* ── Open in Google Maps link ── */
+.rs-open-in-google {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1.4;
+}
+
+.rs-open-in-google:hover {
+  background: rgba(96, 165, 250, 0.18);
+  color: #93c5fd;
 }
 
 @media (max-width: 860px) {
@@ -1946,6 +2060,14 @@ dialog {
   overflow: hidden;
 }
 
+/* Apply flex column only while the dialog is open so the browser can still
+   toggle display:none to show/hide it — overriding display unconditionally
+   prevents the native close from working. */
+.legend-modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+
 .legend-modal::backdrop {
   background: rgba(0, 0, 0, 0.6);
 }
@@ -1983,7 +2105,7 @@ dialog {
 .legend-body {
   padding: 1rem 1.25rem 1.5rem;
   overflow-y: auto;
-  max-height: calc(85vh - 60px);
+  flex: 1 1 auto;
   font-size: 0.88rem;
   line-height: 1.55;
   color-scheme: dark;

@@ -6,7 +6,7 @@ import type {
   SplitGpxProfile,
   GpxTrackPoint,
 } from "../types";
-import { speedLabel, distanceLabel, minutesToHms } from "../utils";
+import { speedLabel, distanceLabel } from "../utils";
 import TimeInput from "./TimeInput";
 import RestStopFormComponent from "./RestStopForm";
 import TimezoneSelect from "./TimezoneSelect";
@@ -202,8 +202,6 @@ export default function SplitFormComponent({
       : Math.round(m)
     ).toLocaleString();
 
-  const downHms = minutesToHms(value.down_time);
-  const adjHms = minutesToHms(value.adjustment_time);
   const displayName = value.name?.trim() || null;
   const headerTitle = displayName ? displayName : `Split ${splitIndex + 1}`;
   const [isEditingName, setIsEditingName] = useState(false);
@@ -275,30 +273,8 @@ export default function SplitFormComponent({
                 )}
               </span>
             )}
-            {collapsed && (downHms || adjHms || value.distance) && (
-              <span className="split-header-summary">
-                {((): string => {
-                  // this value comes directly from the distance input, so it may be invalid/empty — handle that gracefully
-                  const num = parseFloat(value.distance);
-                  const distStr = value.distance
-                    ? isFinite(num)
-                      ? `${num.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`
-                      : `${value.distance} ${dLabel}`
-                    : null;
-                  return (
-                    [
-                      distStr,
-                      downHms ? `↓${downHms}` : null,
-                      adjHms ? `±${adjHms}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") || "(no distance)"
-                  );
-                })()}
-              </span>
-            )}
           </div>
-          {(gpxProfile || tzBadgeAbbr || splitDistUser != null) && (
+          {(gpxProfile || splitDistUser != null) && (
             <div className="split-header-meta">
               {splitDistUser != null && (
                 <span
@@ -310,14 +286,6 @@ export default function SplitFormComponent({
                     maximumFractionDigits: 1,
                   })}{" "}
                   {dLabel}
-                </span>
-              )}
-              {tzBadgeAbbr && (
-                <span
-                  className="split-header-meta-item split-header-meta-item--tz"
-                  title={`Split timezone: ${activeTz}`}
-                >
-                  🕐 {tzBadgeAbbr}
                 </span>
               )}
               {gpxProfile && (
@@ -363,18 +331,20 @@ export default function SplitFormComponent({
             </div>
           )}
         </div>
-        {cumulativeDist != null && gpxTotalDist != null && (
+        {(tzBadgeAbbr || (cumulativeDist != null && gpxTotalDist != null)) && (
           <div
             className="split-header-right"
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
-              const diff = cumulativeDist - gpxTotalDist;
+              const hasDist = cumulativeDist != null && gpxTotalDist != null;
+              const diff = hasDist ? cumulativeDist! - gpxTotalDist! : 0;
               const absDiff = Math.abs(diff);
               const sign =
                 diff > 0.05 ? "over" : diff < -0.05 ? "under" : "exact";
-              const distColor =
-                sign === "exact"
+              const distColor = !hasDist
+                ? undefined
+                : sign === "exact"
                   ? "#4ade80"
                   : sign === "over"
                     ? "#f87171"
@@ -383,29 +353,43 @@ export default function SplitFormComponent({
                       : undefined;
               return (
                 <>
-                  <span
-                    className="split-header-dist"
-                    style={{ color: distColor }}
-                  >
-                    {cumulativeDist.toLocaleString(undefined, {
-                      minimumFractionDigits: 1,
-                      maximumFractionDigits: 1,
-                    })}{" "}
-                    {dLabel}
-                  </span>
-                  <span className="split-header-city">
-                    {nearbyCity_fetching && (
-                      <span className="split-nearby-city--loading">
-                        (finding nearest city…) ·{" "}
+                  <div className="split-header-dist-row">
+                    {tzBadgeAbbr && (
+                      <span
+                        className="split-header-meta-item split-header-meta-item--tz"
+                        title={`Split timezone: ${activeTz}`}
+                      >
+                        🕐 {tzBadgeAbbr}
                       </span>
                     )}
-                    {!nearbyCity_fetching && nearbyCity && `${nearbyCity} · `}
-                    {sign === "exact"
-                      ? "✓ matches GPX"
-                      : sign === "under"
-                        ? `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} left`
-                        : `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} over`}
-                  </span>
+                    {hasDist && (
+                      <span
+                        className="split-header-dist"
+                        style={{ color: distColor }}
+                      >
+                        {cumulativeDist!.toLocaleString(undefined, {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                        })}{" "}
+                        {dLabel}
+                      </span>
+                    )}
+                  </div>
+                  {hasDist && (
+                    <span className="split-header-city">
+                      {nearbyCity_fetching && (
+                        <span className="split-nearby-city--loading">
+                          (finding nearest city…) ·{" "}
+                        </span>
+                      )}
+                      {!nearbyCity_fetching && nearbyCity && `${nearbyCity} · `}
+                      {sign === "exact"
+                        ? "✓ matches GPX"
+                        : sign === "under"
+                          ? `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} left`
+                          : `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} over`}
+                    </span>
+                  )}
                 </>
               );
             })()}
@@ -627,6 +611,19 @@ export default function SplitFormComponent({
                 onChange={(rs) => update({ rest_stop: rs })}
                 addressLoading={addressLoading}
               />
+
+              {/* Notes */}
+              <div className="field split-notes-field">
+                <label htmlFor={`${prefix}-notes`}>Notes</label>
+                <textarea
+                  id={`${prefix}-notes`}
+                  className="split-notes-textarea"
+                  rows={3}
+                  placeholder="Optional rider notes for this split…"
+                  value={value.notes ?? ""}
+                  onChange={(e) => update({ notes: e.target.value })}
+                />
+              </div>
             </>
           );
 

@@ -541,12 +541,14 @@ export const EXAMPLES: ExampleEntry[] = [
     description:
       "Single segment, 2 splits (even + fixed sub-splits), one rest stop with open hours.",
     form: SIMPLE_EXAMPLE_FORM,
+    url_name: "simple",
   },
   {
     name: "Complex — 198 mi Multi-Day",
     description:
       "2 segments with sleep, 4 splits, timezone overrides, multiple rest stops with per-day hours, even + fixed sub-split modes.",
     form: COMPLEX_EXAMPLE_FORM,
+    url_name: "complex",
   },
   {
     name: "Mishigami 2025 — 1115.2 mi Around Lake Michigan",
@@ -554,5 +556,6 @@ export const EXAMPLES: ExampleEntry[] = [
       "2 segments (Chicago ↔ St Ignace), 10 splits with rest stops, imperial, fixed 50 mi sub-splits, 4h sleep at turnaround.",
     form: MISHIGAMI_EXAMPLE_FORM,
     gpxUrl: "./examples/Mishigami-2025_Official.gpx",
+    url_name: "mishigami-2025",
   },
 ];
