@@ -134,6 +134,17 @@ export default function CourseForm() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [autoNameDialog, setAutoNameDialog] = useState<{
+    open: boolean;
+    namedItems: string[];
+  }>({ open: false, namedItems: [] });
+  const autoNameDialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const el = autoNameDialogRef.current;
+    if (!el) return;
+    if (autoNameDialog.open && !el.open) el.showModal();
+    else if (!autoNameDialog.open && el.open) el.close();
+  }, [autoNameDialog.open]);
   const [gpxMissingWarning, setGpxMissingWarning] = useState<string | null>(
     null,
   );
@@ -215,6 +226,73 @@ export default function CourseForm() {
     setGpxMissingWarning(null);
     clearGpx().catch(() => {});
   }, []);
+
+  const applyAutoName = useCallback(
+    (overwriteAll: boolean) => {
+      const cityShort = (label: string) => label.split(",")[0].trim();
+      setForm((prev) => {
+        const newSegs = prev.segments.map((seg, si) => {
+          const newSplits = seg.splits.map((split, sj) => {
+            if (!overwriteAll && split.name?.trim()) return split;
+            const endCity = cityLabels[si]?.[sj];
+            if (!endCity) return split;
+            const startCity =
+              si === 0 && sj === 0
+                ? gpxStartCity
+                : sj > 0
+                  ? cityLabels[si]?.[sj - 1]
+                  : cityLabels[si - 1]?.[
+                      prev.segments[si - 1].splits.length - 1
+                    ];
+            if (!startCity) return split;
+            return {
+              ...split,
+              name: `${cityShort(startCity)} → ${cityShort(endCity)}`,
+            };
+          });
+
+          const segStartCity =
+            si === 0
+              ? gpxStartCity
+              : cityLabels[si - 1]?.[prev.segments[si - 1].splits.length - 1];
+          const segEndCity = cityLabels[si]?.[seg.splits.length - 1];
+          const canNameSeg = segStartCity && segEndCity;
+          return {
+            ...seg,
+            splits: newSplits,
+            ...(canNameSeg && (overwriteAll || !seg.name?.trim())
+              ? {
+                  name: `${cityShort(segStartCity!)} → ${cityShort(segEndCity!)}`,
+                }
+              : {}),
+          };
+        });
+        return { ...prev, segments: newSegs };
+      });
+    },
+    [cityLabels, gpxStartCity],
+  );
+
+  const handleAutoName = useCallback(() => {
+    // Collect already-named segments and splits.
+    const namedItems: string[] = [];
+    form.segments.forEach((seg, si) => {
+      if (seg.name?.trim())
+        namedItems.push(`Segment ${si + 1}: "${seg.name.trim()}"`);
+      seg.splits.forEach((split, sj) => {
+        if (split.name?.trim())
+          namedItems.push(
+            `Segment ${si + 1} / Split ${sj + 1}: "${split.name.trim()}"`,
+          );
+      });
+    });
+
+    if (namedItems.length === 0) {
+      applyAutoName(true);
+    } else {
+      setAutoNameDialog({ open: true, namedItems });
+    }
+  }, [form.segments, applyAutoName]);
 
   const handleLoadExample = useCallback(
     (example: CourseFormState, gpxUrl?: string) => {
@@ -712,6 +790,7 @@ export default function CourseForm() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, splitBoundariesKm]);
+
   // â”€â”€ Handlers â”€â”€
   const handleSegmentCountChange = (raw: string) => {
     update({ segmentCount: raw });
@@ -1328,6 +1407,16 @@ export default function CourseForm() {
           >
             Export
           </button>
+          {gpxStartCity && (
+            <button
+              type="button"
+              className="action-btn"
+              onClick={handleAutoName}
+              title="Name all splits and segments using their nearest cities"
+            >
+              Auto-Name by Cities
+            </button>
+          )}
           <button
             className="action-btn action-btn-reset"
             type="button"
@@ -1337,6 +1426,66 @@ export default function CourseForm() {
           </button>
         </div>
       </div>
+
+      {/* Auto-name confirmation dialog */}
+      <dialog
+        ref={autoNameDialogRef}
+        className="legend-modal"
+        onClose={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
+      >
+        <div className="legend-header">
+          <h2>Auto-Name by Cities</h2>
+          <button
+            className="legend-close"
+            onClick={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="legend-body">
+          <p style={{ marginTop: 0 }}>
+            The following segments and splits already have names. How would you
+            like to proceed?
+          </p>
+          <ul style={{ paddingLeft: "1.25rem", margin: "0 0 0.5rem" }}>
+            {autoNameDialog.namedItems.map((item) => (
+              <li key={item} style={{ marginBottom: "0.25rem" }}>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="legend-footer">
+          <button
+            type="button"
+            className="action-btn"
+            onClick={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="action-btn"
+            onClick={() => {
+              setAutoNameDialog((d) => ({ ...d, open: false }));
+              applyAutoName(false);
+            }}
+          >
+            Rename Unnamed Only
+          </button>
+          <button
+            type="button"
+            className="action-btn action-btn-export"
+            onClick={() => {
+              setAutoNameDialog((d) => ({ ...d, open: false }));
+              applyAutoName(true);
+            }}
+          >
+            Rename All
+          </button>
+        </div>
+      </dialog>
 
       {/* Live course map — shown as soon as a GPX and at least one distance are set */}
       {gpxTrack && splitBoundariesKm && (
