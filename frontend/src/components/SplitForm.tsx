@@ -35,6 +35,11 @@ interface SplitFormProps {
   cumulativeDist?: number | null;
   /** Total GPX track length in user units */
   gpxTotalDist?: number | null;
+  /**
+   * Increment this number to programmatically expand this split and scroll
+   * it into view (passed down from a CourseMap popup navigation).
+   */
+  expandSignal?: number;
 }
 
 export default function SplitFormComponent({
@@ -55,6 +60,7 @@ export default function SplitFormComponent({
   nearbyCity_fetching,
   cumulativeDist,
   gpxTotalDist,
+  expandSignal,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
@@ -88,6 +94,18 @@ export default function SplitFormComponent({
     value.differentTimezone;
   const [showOptional, setShowOptional] = useState(hasOptionalValues);
   const [collapsed, setCollapsed] = useState(true);
+
+  // Expand + scroll when CourseMap popup navigates here
+  useEffect(() => {
+    if (!expandSignal) return;
+    setCollapsed(false);
+    requestAnimationFrame(() => {
+      splitFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [expandSignal]);
 
   // ── Three-state layout slider (Form | Both | Map) ──────────────────────────
   // Only active when GPX is loaded + endpoint coords are available + distance set.

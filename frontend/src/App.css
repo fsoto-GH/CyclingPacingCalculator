@@ -1463,6 +1463,23 @@ h4 {
   background: #f4f4f4;
 }
 
+.map-popup-nav-btn {
+  display: block;
+  margin-top: 6px;
+  padding: 3px 8px;
+  width: 100%;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: center;
+}
+.map-popup-nav-btn:hover {
+  background: #1d4ed8;
+}
+
 @media (max-width: 640px) {
   .course-map-container {
     aspect-ratio: 1;

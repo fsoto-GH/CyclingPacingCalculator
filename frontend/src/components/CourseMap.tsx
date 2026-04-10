@@ -27,6 +27,7 @@ interface RouteMarker {
   distanceStr: string;
   role: "start" | "split" | "finish" | "stop";
   segIdx: number;
+  splitIdx: number;
 }
 
 interface CourseMapProps {
@@ -35,6 +36,8 @@ interface CourseMapProps {
   formSegments: SegmentForm[];
   unitSystem: UnitSystem;
   showRestStops?: boolean;
+  /** Called when the user clicks the "Go to split" button in a popup */
+  onMarkerClick?: (segIdx: number, splitIdx: number) => void;
 }
 
 /** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2–3k. */
@@ -245,6 +248,51 @@ function ZoomableMarkers({
   );
 }
 
+function SplitMarker({
+  m,
+  color,
+  onMarkerClick,
+}: {
+  m: RouteMarker;
+  color: string;
+  onMarkerClick?: (segIdx: number, splitIdx: number) => void;
+}) {
+  const map = useMap();
+  const canNav = onMarkerClick != null && m.splitIdx >= 0;
+  return (
+    <CircleMarker
+      center={[m.lat, m.lon]}
+      radius={m.role === "start" || m.role === "finish" ? 9 : 7}
+      pathOptions={{
+        color: "#1a1a2e",
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 1,
+      }}
+    >
+      <Popup>
+        <strong>{m.label}</strong>
+        <br />
+        {m.distanceStr}
+        {canNav && (
+          <>
+            <br />
+            <button
+              className="map-popup-nav-btn"
+              onClick={() => {
+                map.closePopup();
+                onMarkerClick(m.segIdx, m.splitIdx);
+              }}
+            >
+              ↓ Go to split
+            </button>
+          </>
+        )}
+      </Popup>
+    </CircleMarker>
+  );
+}
+
 // Scroll wheel zoom is disabled until the user clicks inside the map,
 // re-disabled when the mouse leaves — prevents accidental zoom while scrolling.
 function ScrollWheelActivator() {
@@ -270,6 +318,7 @@ export default function CourseMap({
   formSegments,
   unitSystem,
   showRestStops = true,
+  onMarkerClick,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
   const toUserDist =
@@ -322,6 +371,7 @@ export default function CourseMap({
       label: "Start",
       distanceStr: `0 ${dLabel}`,
       segIdx: 0,
+      splitIdx: -1,
       role: "start",
     });
 
@@ -352,6 +402,7 @@ export default function CourseMap({
           label,
           distanceStr,
           segIdx: si,
+          splitIdx: sj,
           role: "split",
         });
       }
@@ -379,6 +430,7 @@ export default function CourseMap({
             label: `🛑 ${rs.name}`,
             distanceStr: `${toUserDist(endKm).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`,
             segIdx: si,
+            splitIdx: sj,
             role: "stop",
           });
         }
@@ -529,26 +581,16 @@ export default function CourseMap({
             />
           ))}
           {markers.map((m, i) => (
-            <CircleMarker
+            <SplitMarker
               key={i}
-              center={[m.lat, m.lon]}
-              radius={m.role === "start" || m.role === "finish" ? 9 : 7}
-              pathOptions={{
-                color: "#1a1a2e",
-                weight: 2,
-                fillColor:
-                  m.role === "split" || m.role === "finish"
-                    ? SEGMENT_COLORS[m.segIdx % SEGMENT_COLORS.length]
-                    : MARKER_COLORS[m.role],
-                fillOpacity: 1,
-              }}
-            >
-              <Popup>
-                <strong>{m.label}</strong>
-                <br />
-                {m.distanceStr}
-              </Popup>
-            </CircleMarker>
+              m={m}
+              color={
+                m.role === "split" || m.role === "finish"
+                  ? SEGMENT_COLORS[m.segIdx % SEGMENT_COLORS.length]
+                  : MARKER_COLORS[m.role]
+              }
+              onMarkerClick={onMarkerClick}
+            />
           ))}
         </MapContainer>
       </div>

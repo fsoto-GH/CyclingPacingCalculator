@@ -201,6 +201,19 @@ export default function CourseForm() {
   const gpxTrackRef = useRef<GpxTrackPoint[] | null>(null);
   gpxTrackRef.current = gpxTrack;
 
+  // Map popup navigation — incrementing the counter for a given seg/split
+  // triggers that SegmentForm/SplitForm to expand and scroll into view.
+  const [mapNavSignals, setMapNavSignals] = useState<Record<string, number>>(
+    {},
+  );
+  const handleMapMarkerClick = useCallback(
+    (segIdx: number, splitIdx: number) => {
+      const key = `${segIdx}-${splitIdx}`;
+      setMapNavSignals((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+    },
+    [],
+  );
+
   // Restore GPX from IndexedDB on mount (large files don't fit in localStorage).
   useEffect(() => {
     loadGpx()
@@ -1432,6 +1445,28 @@ export default function CourseForm() {
                       form.segments[i - 1].splits.length - 1
                     ] ?? null)
               }
+              expandSignal={(() => {
+                // Any nav signal targeting a split in this segment should expand it
+                return (
+                  form.segments[i].splits.reduce((max, _, j) => {
+                    const k = `${i}-${j}`;
+                    return Math.max(max, mapNavSignals[k] ?? 0);
+                  }, 0) || undefined
+                );
+              })()}
+              expandSplitIdx={(() => {
+                // Find which split has the most recent signal for this segment
+                let best = -1;
+                let bestVal = 0;
+                form.segments[i].splits.forEach((_, j) => {
+                  const v = mapNavSignals[`${i}-${j}`] ?? 0;
+                  if (v > bestVal) {
+                    bestVal = v;
+                    best = j;
+                  }
+                });
+                return best;
+              })()}
             />
           ))}
         </div>
@@ -1744,6 +1779,7 @@ export default function CourseForm() {
           splitBoundariesKm={splitBoundariesKm}
           formSegments={form.segments}
           unitSystem={form.unitSystem}
+          onMarkerClick={handleMapMarkerClick}
         />
       )}
 

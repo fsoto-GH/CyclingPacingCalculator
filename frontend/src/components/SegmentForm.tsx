@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import type {
   SegmentForm,
   SplitForm as SplitFormType,
@@ -40,6 +40,13 @@ interface SegmentFormProps {
   segmentStartDist?: number | null;
   /** City label at the start of this segment (end of prev segment's last split) */
   segmentStartCity?: string | null;
+  /**
+   * Increment this number to programmatically expand this segment and scroll
+   * it into view. Use with a paired splitExpandSignal to also open a split.
+   */
+  expandSignal?: number;
+  /** Which split index should be expanded when expandSignal fires (-1 = none) */
+  expandSplitIdx?: number;
 }
 
 export default function SegmentFormComponent({
@@ -59,8 +66,11 @@ export default function SegmentFormComponent({
   gpxTotalDist,
   segmentStartDist,
   segmentStartCity,
+  expandSignal,
+  expandSplitIdx = -1,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
+  const segRootRef = useRef<HTMLDivElement | null>(null);
   const hasOptionalValues =
     !!value.down_time_ratio ||
     !!value.split_decay ||
@@ -75,6 +85,19 @@ export default function SegmentFormComponent({
   const segColor = SEGMENT_COLORS[segIndex % SEGMENT_COLORS.length];
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Expand + scroll when CourseMap popup navigates here
+  useEffect(() => {
+    if (!expandSignal) return;
+    setCollapsed(false);
+    // Scroll after the DOM has expanded
+    requestAnimationFrame(() => {
+      segRootRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [expandSignal]);
 
   const handleSplitCountChange = (raw: string) => {
     update({ splitCount: raw });
@@ -188,7 +211,7 @@ export default function SegmentFormComponent({
       : null;
 
   return (
-    <div className="segment-form">
+    <div className="segment-form" ref={segRootRef}>
       <div className="segment-header" onClick={() => setCollapsed(!collapsed)}>
         <span className="collapse-icon" style={{ color: segColor }}>
           {collapsed ? "▶" : "▼"}
@@ -497,6 +520,7 @@ export default function SegmentFormComponent({
                 nearbyCity_fetching={cityFetching?.[j] ?? false}
                 cumulativeDist={cumulativeDists?.[j] ?? null}
                 gpxTotalDist={gpxTotalDist ?? null}
+                expandSignal={expandSplitIdx === j ? expandSignal : undefined}
               />
             ))}
           </div>
