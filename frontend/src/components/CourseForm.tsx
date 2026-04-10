@@ -214,6 +214,10 @@ export default function CourseForm() {
     [],
   );
 
+  // Collapse/expand all segments and splits
+  const [collapseAllSignal, setCollapseAllSignal] = useState(0);
+  const [expandAllSignal, setExpandAllSignal] = useState(0);
+
   // Restore GPX from IndexedDB on mount (large files don't fit in localStorage).
   useEffect(() => {
     loadGpx()
@@ -339,7 +343,15 @@ export default function CourseForm() {
       setApiError(null);
       setTouched(new Set());
 
-      if (!gpxUrl) return;
+      if (!gpxUrl) {
+        setGpxTrack(null);
+        setGpxFileName(null);
+        setGpxSurface(null);
+        setGpxMissingWarning(null);
+        clearGpx().catch(() => {});
+        if (gpxFileRef.current) gpxFileRef.current.value = "";
+        return;
+      }
 
       // Derive the display filename from the URL (strip path and extension)
       const displayName =
@@ -387,9 +399,7 @@ export default function CourseForm() {
   // Auto-load an example on first mount when ?example_name=<url_name> is present.
   // Runs once; the ESLint disable is intentional — handleLoadExample is stable.
   useEffect(() => {
-    const name = new URLSearchParams(window.location.search).get(
-      "example_name",
-    );
+    const name = new URLSearchParams(window.location.search).get("example");
     if (!name) return;
     const entry = EXAMPLES.find((e) => e.url_name === name);
     if (entry) handleLoadExample(entry.form, entry.gpxUrl);
@@ -1129,55 +1139,66 @@ export default function CourseForm() {
             <span className="app-version">v{__APP_VERSION__}</span>
           </h1>
           <div className="title-nav-buttons">
-            <button
-              type="button"
-              className="nav-btn"
-              onClick={() => setExamplesOpen(true)}
-            >
-              Examples
-            </button>
-            <button
-              type="button"
-              className="nav-btn"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Import
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              style={{ display: "none" }}
-              onChange={handleImport}
-            />
-            <button
-              type="button"
-              className={`nav-btn${gpxLoading ? " nav-btn-loading" : ""}`}
-              onClick={() => !gpxLoading && gpxFileRef.current?.click()}
-              disabled={gpxLoading}
-              title="Load a GPX track file for elevation profiles and nearby stops"
-            >
-              {gpxLoading ? (
-                <>
-                  <span className="btn-spinner" /> Parsing…
-                </>
-              ) : (
-                "Load GPX"
-              )}
-            </button>
-            <input
-              ref={gpxFileRef}
-              type="file"
-              accept=".gpx"
-              style={{ display: "none" }}
-              onChange={handleGpxLoad}
-            />
+            <div className="nav-btn-group">
+              <button
+                type="button"
+                className="nav-btn"
+                onClick={() => setExamplesOpen(true)}
+                title="Load a pre-built example course"
+              >
+                <span className="nav-btn-icon">🧪</span>
+                <span className="nav-btn-label">Examples</span>
+              </button>
+              <button
+                type="button"
+                className="nav-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Import a previously exported JSON course"
+              >
+                <span className="nav-btn-icon">📥</span>
+                <span className="nav-btn-label">Import JSON</span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                style={{ display: "none" }}
+                onChange={handleImport}
+              />
+              <button
+                type="button"
+                className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
+                onClick={() => !gpxLoading && gpxFileRef.current?.click()}
+                disabled={gpxLoading}
+                title="Load a GPX track file for elevation profiles and nearby stops"
+              >
+                {gpxLoading ? (
+                  <>
+                    <span className="btn-spinner btn-spinner-sm" /> Parsing…
+                  </>
+                ) : (
+                  <>
+                    <span className="nav-btn-icon">🗺️</span>
+                    <span className="nav-btn-label">Load GPX</span>
+                  </>
+                )}
+              </button>
+              <input
+                ref={gpxFileRef}
+                type="file"
+                accept=".gpx"
+                style={{ display: "none" }}
+                onChange={handleGpxLoad}
+              />
+            </div>
             <button
               type="button"
               className="nav-btn nav-btn-legend"
               onClick={() => setLegendOpen(true)}
+              title="Open the guide"
             >
-              Guide
+              <span className="nav-btn-icon">❓</span>
+              <span className="nav-btn-label">Guide</span>
             </button>
           </div>
         </div>
@@ -1413,6 +1434,66 @@ export default function CourseForm() {
         </div>
 
         {/* Segments */}
+        <div className="segments-toolbar">
+          <div className="segments-toolbar-left">
+            <button
+              className="segments-toggle-btn"
+              onClick={() => setCollapseAllSignal((s) => s + 1)}
+              title="Collapse all segments and their splits"
+            >
+              ▶ Collapse
+            </button>
+            <button
+              className="segments-toggle-btn"
+              onClick={() => setExpandAllSignal((s) => s + 1)}
+              title="Expand all segments"
+            >
+              ▼ Expand
+            </button>
+            <span className="segments-toolbar-sep" />
+            <button
+              type="button"
+              className="segments-toggle-btn"
+              onClick={() => setQuickSetup((q) => ({ ...q, open: true }))}
+              title="Quickly build or append segments with uniform split distances"
+            >
+              ⚡ Quick Setup
+            </button>
+            {gpxStartCity && (
+              <button
+                type="button"
+                className="segments-toggle-btn"
+                onClick={handleAutoName}
+                title="Name all splits and segments using their nearest cities"
+              >
+                🏷️ Auto-Name
+              </button>
+            )}
+          </div>
+          <div className="segments-toolbar-right">
+            <button
+              type="button"
+              className="segments-toggle-btn segments-toggle-btn--export"
+              onClick={handleExport}
+              disabled={Object.keys(allErrors).length > 0}
+              title={
+                Object.keys(allErrors).length > 0
+                  ? "Fix validation errors before exporting"
+                  : "Export course configuration as JSON"
+              }
+            >
+              📁 Export
+            </button>
+            <button
+              className="segments-toggle-btn segments-toggle-btn--reset"
+              type="button"
+              onClick={handleReset}
+              title="Reset all form fields to defaults"
+            >
+              ↺ Reset
+            </button>
+          </div>
+        </div>
         <div className="segments-container">
           {form.segments.map((seg, i) => (
             <SegmentFormComponent
@@ -1467,6 +1548,8 @@ export default function CourseForm() {
                 });
                 return best;
               })()}
+              collapseSignal={collapseAllSignal || undefined}
+              expandAllSignal={expandAllSignal || undefined}
             />
           ))}
         </div>
@@ -1480,48 +1563,6 @@ export default function CourseForm() {
             <pre>{apiError}</pre>
           </div>
         )}
-
-        {/* Action buttons */}
-        <div className="button-row">
-          <button
-            type="button"
-            className="action-btn action-btn-export"
-            onClick={handleExport}
-            disabled={Object.keys(allErrors).length > 0}
-            title={
-              Object.keys(allErrors).length > 0
-                ? "Fix validation errors before exporting"
-                : undefined
-            }
-          >
-            Export
-          </button>
-          {gpxStartCity && (
-            <button
-              type="button"
-              className="action-btn"
-              onClick={handleAutoName}
-              title="Name all splits and segments using their nearest cities"
-            >
-              Auto-Name by Cities
-            </button>
-          )}
-          <button
-            type="button"
-            className="action-btn"
-            onClick={() => setQuickSetup((q) => ({ ...q, open: true }))}
-            title="Quickly build or append segments with uniform split distances"
-          >
-            Quick Setup
-          </button>
-          <button
-            className="action-btn action-btn-reset"
-            type="button"
-            onClick={handleReset}
-          >
-            Reset
-          </button>
-        </div>
       </div>
 
       {/* Quick-setup dialog */}

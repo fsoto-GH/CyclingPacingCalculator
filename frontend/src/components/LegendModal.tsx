@@ -132,6 +132,66 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
           </p>
         </Section>
 
+        <Section title="Color-Coded Segments & Course Map">
+          <p>
+            Each segment is assigned a color that appears on the collapse toggle
+            icon, the course map track, and the distance/elevation badges in the
+            segment header. Portions of the course not yet covered by any split
+            are shown in a light gray on the map.
+          </p>
+          <ul>
+            <li>
+              The <strong>course map legend</strong> is clickable — each legend
+              entry zooms the map to that segment's portion of the track.
+            </li>
+            <li>
+              Rest stop markers appear in{" "}
+              <span style={{ color: "#a855f7" }}>purple (#a855f7)</span>. Use
+              the map to quickly see which split endpoints don't have a rest
+              stop configured, and to get a broader view of nearby cities beyond
+              what the split form shows.
+            </li>
+            <li>
+              Clicking a split endpoint marker on the map opens a popup with the
+              split name and distance. Click <strong>↓ Go to split</strong> in
+              the popup to jump directly to that split's form.
+            </li>
+          </ul>
+        </Section>
+
+        <Section title="Auto-Name from City Labels">
+          <p>
+            Once city labels have loaded for all splits, you can automatically
+            update segment and split names to describe their start and end
+            cities — useful for quickly labeling a course after routing.
+          </p>
+        </Section>
+
+        {/* ── Disclaimers ── */}
+        <h3 className="legend-subheading">Disclaimers</h3>
+
+        <Section title="Data Accuracy">
+          <p>
+            Rest stop data, addresses, and open hours are supplied by{" "}
+            <strong>OpenStreetMap</strong> volunteers. Accuracy varies —{" "}
+            <strong>verify addresses and hours independently</strong> before
+            relying on them for race or event planning.
+          </p>
+        </Section>
+
+        <Section title="Address Resolution">
+          <p>
+            The integrated nearby-stop search attempts to fix missing or broken
+            addresses using reverse geocoding. When a clean address cannot be
+            resolved, the raw coordinates are displayed instead.
+          </p>
+          <p>
+            Overpass API queries automatically cascade through several public
+            mirrors if the primary endpoint is slow or unresponsive, improving
+            reliability without any manual action.
+          </p>
+        </Section>
+
         {/* ── Information ── */}
         <h3 className="legend-subheading">Information</h3>
 
@@ -182,6 +242,44 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
             Changing a split distance by more than 5 miles re-fetches the label
             for that split.
           </p>
+          <p>
+            The <strong>segment header</strong> shows{" "}
+            <em>Starting City — Endpoint City</em> spanning the whole segment.
+            Each <strong>split header</strong> shows the endpoint city for that
+            split.
+          </p>
+        </Section>
+
+        <Section title="Split & Segment Header Stats">
+          <p>
+            When a GPX file is loaded, each segment and split header displays
+            several computed statistics:
+          </p>
+          <ul>
+            <li>
+              <span style={{ color: "#60a5fa" }}>Blue</span> — distance covered
+              by the segment or split.
+            </li>
+            <li>
+              <span style={{ color: "#4ade80" }}>Green</span> — elevation gain.
+            </li>
+            <li>
+              <span style={{ color: "#f87171" }}>Red</span> — elevation loss.
+            </li>
+            <li>
+              <span style={{ color: "#94a3b8" }}>Gray</span> — average grade.
+            </li>
+            <li>
+              <span style={{ color: "#fbbf24" }}>Yellow</span> — steepness: the
+              percentage of the distance where grade exceeds 5%.
+            </li>
+            <li>
+              A <span style={{ color: "#c4b5fd" }}>timezone badge</span> appears
+              on a split when its endpoint is in a different timezone than the
+              course-level timezone. Unique timezone abbreviations are also
+              summarized in the segment header.
+            </li>
+          </ul>
         </Section>
 
         {/* ── Key Terms ── */}

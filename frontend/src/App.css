@@ -266,6 +266,89 @@ h4 {
   margin-top: 1rem;
 }
 
+.segments-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.4rem 0.6rem;
+  background: #1a1a2e;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+
+.segments-toolbar-left,
+.segments-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.segments-toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: #3a3a3a;
+  margin: 0 0.15rem;
+}
+
+.segments-toggle-btn {
+  background: none;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.segments-toggle-btn:hover {
+  background: #2e2e2e;
+  border-color: #60a5fa;
+  color: #e2e8f0;
+}
+
+.segments-toggle-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.segments-toggle-btn--export {
+  color: #6ee7b7;
+  border-color: #2d6a4f;
+}
+
+.segments-toggle-btn--export:hover:not(:disabled) {
+  background: #2d6a4f;
+  border-color: #6ee7b7;
+  color: #fff;
+}
+
+.segments-toggle-btn--reset {
+  color: #94a3b8;
+}
+
+.segments-toggle-btn--reset:hover {
+  color: #f87171;
+  border-color: #f87171;
+  background: #2e2e2e;
+}
+
+@media (max-width: 640px) {
+  .segments-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .segments-toolbar-left,
+  .segments-toolbar-right {
+    justify-content: center;
+  }
+}
+
 .segment-form {
   border: 1px solid #2e2e2e;
   border-radius: 6px;
@@ -1344,12 +1427,17 @@ h4 {
 }
 
 .results-view-inner {
-  max-height: 300px;
-  overflow: hidden;
-  transition: max-height 0.3s ease;
+  overflow: visible;
 }
 
-.results-view--expanded .results-view-inner {
+.narrative-section {
+  max-height: 200px;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+  position: relative;
+}
+
+.narrative-section--expanded {
   max-height: none;
 }
 
@@ -1847,9 +1935,44 @@ h4 {
 
 .title-nav-buttons {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
   align-items: center;
   flex-shrink: 0;
+}
+
+/* ── Button group (connected border) ── */
+.nav-btn-group {
+  display: flex;
+  align-items: center;
+}
+
+.nav-btn-group .nav-btn {
+  border-radius: 0;
+  border-right-width: 0;
+}
+
+.nav-btn-group .nav-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.nav-btn-group .nav-btn:last-of-type {
+  border-radius: 0 4px 4px 0;
+  border-right-width: 1px;
+}
+
+@media (max-width: 878px) {
+  .title-nav-buttons {
+    width: 100%;
+  }
+
+  .nav-btn-group {
+    flex: 1;
+  }
+
+  .nav-btn-group .nav-btn {
+    flex: 1;
+    justify-content: center;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1857,16 +1980,17 @@ h4 {
     gap: 0.4rem;
   }
 
-  .title-nav-buttons {
-    width: 100%;
+  /* Hide text labels on mobile, keep emoji icons */
+  .nav-btn-label {
+    display: none;
   }
 
-  .title-nav-buttons .nav-btn {
-    flex: 1;
-    text-align: center;
+  .nav-btn {
+    padding: 0.3rem 0.55rem;
   }
 }
 
+/* ── Nav button base ── */
 .nav-btn {
   padding: 0.3rem 0.85rem;
   background: transparent;
@@ -1877,6 +2001,9 @@ h4 {
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .nav-btn:hover {
@@ -1885,6 +2012,24 @@ h4 {
   border-color: #888;
 }
 
+.nav-btn-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+/* ── GPX button – blue accent ── */
+.nav-btn-gpx {
+  color: #60a5fa;
+  border-color: #3b82f6;
+}
+
+.nav-btn-gpx:hover:not(:disabled) {
+  background: #1e3a5f;
+  color: #93c5fd;
+  border-color: #60a5fa;
+}
+
+/* ── Guide button – gold accent ── */
 .nav-btn-legend {
   color: #d4a017;
   border-color: #d4a017;
@@ -1932,16 +2077,18 @@ h4 {
   align-items: center;
   gap: 1rem;
   margin: 1.25rem 0 0.75rem;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid #2e2e2e;
+  padding: 0.45rem 0.6rem;
+  background: #1a1a2e;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
 }
 
 .course-section-title {
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.74rem;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #555;
+  color: #6b8aff;
   white-space: nowrap;
   margin: 0;
 }

@@ -198,22 +198,33 @@ export default function ResultsView({
 }: ResultsViewProps) {
   const [showJson, setShowJson] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [narrativeExpanded, setNarrativeExpanded] = useState(false);
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
 
   return (
-    <div className={`results-view${expanded ? " results-view--expanded" : ""}`}>
+    <div className="results-view">
       <div className="results-view-inner">
         <h2>Results</h2>
 
-        <CourseSummaryNarrative
-          result={result}
-          formSegments={formSegments}
-          courseTz={courseTz}
-          unitSystem={unitSystem}
-          courseName={courseName}
-        />
+        <div
+          className={`narrative-section${narrativeExpanded ? " narrative-section--expanded" : ""}`}
+        >
+          <CourseSummaryNarrative
+            result={result}
+            formSegments={formSegments}
+            courseTz={courseTz}
+            unitSystem={unitSystem}
+            courseName={courseName}
+          />
+          <button
+            type="button"
+            className="results-expand-btn"
+            onClick={() => setNarrativeExpanded((v) => !v)}
+          >
+            {narrativeExpanded ? "▲ Show less" : "▼ Show more"}
+          </button>
+        </div>
 
         {/* Course Summary */}
         <div className="course-summary">
@@ -330,13 +341,6 @@ export default function ResultsView({
           )}
         </div>
       </div>
-      <button
-        type="button"
-        className="results-expand-btn"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {expanded ? "▲ Show less" : "▼ Show more"}
-      </button>
     </div>
   );
 }
@@ -366,7 +370,7 @@ function SegmentSection({
   splitBoundariesKm?: [number, number][][] | null;
   gpxProfiles?: SplitGpxProfile[][] | null;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [showExportModal, setShowExportModal] = useState(false);
 
   return (

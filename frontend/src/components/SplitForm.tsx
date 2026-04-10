@@ -40,6 +40,10 @@ interface SplitFormProps {
    * it into view (passed down from a CourseMap popup navigation).
    */
   expandSignal?: number;
+  /** Increment to collapse this split (from collapse-all). */
+  collapseSignal?: number;
+  /** Increment to expand this split without scrolling (from expand-all). */
+  expandAllSignal?: number;
 }
 
 export default function SplitFormComponent({
@@ -61,6 +65,8 @@ export default function SplitFormComponent({
   cumulativeDist,
   gpxTotalDist,
   expandSignal,
+  collapseSignal,
+  expandAllSignal,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
@@ -106,6 +112,16 @@ export default function SplitFormComponent({
       });
     });
   }, [expandSignal]);
+
+  useEffect(() => {
+    if (!collapseSignal) return;
+    setCollapsed(true);
+  }, [collapseSignal]);
+
+  useEffect(() => {
+    if (!expandAllSignal) return;
+    setCollapsed(false);
+  }, [expandAllSignal]);
 
   // ── Three-state layout slider (Form | Both | Map) ──────────────────────────
   // Only active when GPX is loaded + endpoint coords are available + distance set.
@@ -225,16 +241,21 @@ export default function SplitFormComponent({
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Timezone badge — shown whenever a split timezone override is active
-  const activeTz =
-    value.differentTimezone && value.timezone ? value.timezone : null;
-  const tzBadgeAbbr = activeTz
+  // Timezone badge — shown whenever a split timezone override is active,
+  // OR when the GPX profile detects a different tz (before onChange fires).
+  const effectiveTz =
+    value.differentTimezone && value.timezone
+      ? value.timezone
+      : gpxProfile?.endTimezone && gpxProfile.endTimezone !== courseTz
+        ? gpxProfile.endTimezone
+        : null;
+  const tzBadgeAbbr = effectiveTz
     ? (new Intl.DateTimeFormat("en-US", {
-        timeZone: activeTz,
+        timeZone: effectiveTz,
         timeZoneName: "short",
       })
         .formatToParts(new Date())
-        .find((p) => p.type === "timeZoneName")?.value ?? activeTz)
+        .find((p) => p.type === "timeZoneName")?.value ?? effectiveTz)
     : null;
 
   return (
@@ -375,7 +396,7 @@ export default function SplitFormComponent({
                     {tzBadgeAbbr && (
                       <span
                         className="split-header-meta-item split-header-meta-item--tz"
-                        title={`Split timezone: ${activeTz}`}
+                        title={`Split timezone: ${effectiveTz}`}
                       >
                         🕐 {tzBadgeAbbr}
                       </span>

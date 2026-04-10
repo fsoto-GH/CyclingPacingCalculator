@@ -47,6 +47,10 @@ interface SegmentFormProps {
   expandSignal?: number;
   /** Which split index should be expanded when expandSignal fires (-1 = none) */
   expandSplitIdx?: number;
+  /** Increment to collapse this segment and all its splits. */
+  collapseSignal?: number;
+  /** Increment to expand this segment and all its splits without scrolling. */
+  expandAllSignal?: number;
 }
 
 export default function SegmentFormComponent({
@@ -68,8 +72,13 @@ export default function SegmentFormComponent({
   segmentStartCity,
   expandSignal,
   expandSplitIdx = -1,
+  collapseSignal,
+  expandAllSignal,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
+  // Increments whenever this segment becomes collapsed — used to collapse all child splits.
+  const [splitCollapseSignal, setSplitCollapseSignal] = useState(0);
+  const prevCollapsed = useRef(true);
   const segRootRef = useRef<HTMLDivElement | null>(null);
   const hasOptionalValues =
     !!value.down_time_ratio ||
@@ -86,6 +95,14 @@ export default function SegmentFormComponent({
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
 
+  // When segment transitions to collapsed, cascade a collapse to all splits
+  useEffect(() => {
+    if (collapsed && !prevCollapsed.current) {
+      setSplitCollapseSignal((s) => s + 1);
+    }
+    prevCollapsed.current = collapsed;
+  }, [collapsed]);
+
   // Expand + scroll when CourseMap popup navigates here
   useEffect(() => {
     if (!expandSignal) return;
@@ -98,6 +115,16 @@ export default function SegmentFormComponent({
       });
     });
   }, [expandSignal]);
+
+  useEffect(() => {
+    if (!collapseSignal) return;
+    setCollapsed(true);
+  }, [collapseSignal]);
+
+  useEffect(() => {
+    if (!expandAllSignal) return;
+    setCollapsed(false);
+  }, [expandAllSignal]);
 
   const handleSplitCountChange = (raw: string) => {
     update({ splitCount: raw });
@@ -521,6 +548,8 @@ export default function SegmentFormComponent({
                 cumulativeDist={cumulativeDists?.[j] ?? null}
                 gpxTotalDist={gpxTotalDist ?? null}
                 expandSignal={expandSplitIdx === j ? expandSignal : undefined}
+                collapseSignal={splitCollapseSignal || undefined}
+                expandAllSignal={undefined}
               />
             ))}
           </div>
