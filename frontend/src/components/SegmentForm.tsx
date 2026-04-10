@@ -290,12 +290,27 @@ export default function SegmentFormComponent({
                 sleepHms) && (
                 <span className="split-header-city">
                   {(() => {
-                    const cityPart = segEndCityFetching
-                      ? "(finding nearest city…)"
-                      : segmentStartCity && segEndCity
-                        ? `${segmentStartCity} — ${segEndCity}`
-                        : (segEndCity ?? null);
+                    const cityPart = segEndCityFetching ? (
+                      <span className="split-nearby-city--loading">
+                        (finding nearest city…)
+                      </span>
+                    ) : segmentStartCity && segEndCity ? (
+                      `${segmentStartCity} — ${segEndCity}`
+                    ) : (
+                      (segEndCity ?? null)
+                    );
                     const sleepPart = sleepHms ? `${sleepHms} 💤` : null;
+                    if (segEndCityFetching) {
+                      return sleepPart ? (
+                        <>
+                          {cityPart}
+                          {" · "}
+                          {sleepPart}
+                        </>
+                      ) : (
+                        cityPart
+                      );
+                    }
                     return [cityPart, sleepPart].filter(Boolean).join(" · ");
                   })()}
                 </span>

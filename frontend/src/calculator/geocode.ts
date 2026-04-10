@@ -10,9 +10,82 @@
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
 const USER_AGENT = "CyclingPacingCalculator/1.0";
 
+// ── Persistent geocode cache ──────────────────────────────────────────────────
+// Entries are written to localStorage (prefix "geo:") with a timestamp so they
+// can expire and be evicted.  On module load the valid entries are read back
+// into the in-memory Map, so getCachedGeocode() stays synchronous/zero-cost.
+//
+// Limits:
+//   TTL_MS      — entries older than 30 days are treated as missing
+//   MAX_ENTRIES — if the store exceeds this after a write, the oldest entries
+//                 are trimmed until it is back at MAX_ENTRIES
+const LS_PREFIX = "geo:";
+const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const MAX_ENTRIES = 500;
+
+interface StoredEntry {
+  label: string;
+  ts: number;
+}
+
 // Module-level cache: "lat4,lon4" → "City, State"
 // Keyed at 4 decimal places (~11 m precision) — more than enough for city lookup.
 const cache = new Map<string, string>();
+
+// Seed in-memory cache from localStorage on module load, evicting stale entries.
+(function seedGeocodeCache() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(LS_PREFIX)) continue;
+      try {
+        const raw = localStorage.getItem(k)!;
+        const entry = JSON.parse(raw) as StoredEntry;
+        if (Date.now() - entry.ts > TTL_MS) {
+          localStorage.removeItem(k);
+        } else {
+          cache.set(k.slice(LS_PREFIX.length), entry.label);
+        }
+      } catch {
+        localStorage.removeItem(k!);
+      }
+    }
+  } catch {
+    // localStorage unavailable — operate cache-free
+  }
+})();
+
+function lsPersist(key: string, label: string): void {
+  try {
+    const entry: StoredEntry = { label, ts: Date.now() };
+    localStorage.setItem(LS_PREFIX + key, JSON.stringify(entry));
+
+    // Evict oldest entries if over the cap.
+    if (cache.size > MAX_ENTRIES) {
+      const items: { key: string; ts: number }[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k?.startsWith(LS_PREFIX)) continue;
+        try {
+          const raw = localStorage.getItem(k)!;
+          const e = JSON.parse(raw) as StoredEntry;
+          items.push({ key: k, ts: e.ts });
+        } catch {
+          localStorage.removeItem(k!);
+        }
+      }
+      items.sort((a, b) => a.ts - b.ts);
+      const excess = items.length - MAX_ENTRIES;
+      for (let i = 0; i < excess; i++) {
+        const full = items[i].key;
+        localStorage.removeItem(full);
+        cache.delete(full.slice(LS_PREFIX.length));
+      }
+    }
+  } catch {
+    // localStorage full or unavailable — in-memory cache still works
+  }
+}
 
 function cacheKey(lat: number, lon: number): string {
   return `${lat.toFixed(4)},${lon.toFixed(4)}`;
@@ -35,7 +108,8 @@ interface NominatimResponse {
 /**
  * Reverse-geocode a coordinate to the nearest city/town/village name.
  * Returns a formatted string like "Milwaukee, Wisconsin" or null on failure.
- * Results are cached for the session — repeated calls with the same
+ * Results are cached in localStorage (30-day TTL, 500-entry cap) and seeded
+ * into an in-memory Map on module load, so repeated calls with the same
  * coordinates (within ~11 m) return instantly without a network request.
  */
 export async function reverseGeocode(
@@ -76,6 +150,7 @@ export async function reverseGeocode(
   const label = addr.state ? `${place}, ${addr.state}` : place;
 
   cache.set(key, label);
+  lsPersist(key, label);
   return label;
 }
 
@@ -87,9 +162,19 @@ export function getCachedGeocode(lat: number, lon: number): string | undefined {
   return cache.get(cacheKey(lat, lon));
 }
 
-/** Clear the in-memory cache (e.g. for testing). */
+/** Clear the in-memory cache and all persisted localStorage entries. */
 export function clearGeocodeCache(): void {
   cache.clear();
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(LS_PREFIX)) toRemove.push(k);
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // localStorage unavailable
+  }
 }
 
 // Separate cache for street-level address lookups (zoom=18)

@@ -8,7 +8,12 @@ import type {
 } from "../types";
 import { makeDefaultDayHours } from "../types";
 import type { RestStopForm as RestStopFormType } from "../types";
-import { nowLocalDatetime, speedLabel, distanceLabel } from "../utils";
+import {
+  nowLocalDatetime,
+  speedLabel,
+  distanceLabel,
+  minutesToHms,
+} from "../utils";
 import { makeDefaultSplit } from "../defaults";
 import { serializeCourse } from "../serialization";
 import { calculateCourse } from "../api";
@@ -145,6 +150,22 @@ export default function CourseForm() {
     if (autoNameDialog.open && !el.open) el.showModal();
     else if (!autoNameDialog.open && el.open) el.close();
   }, [autoNameDialog.open]);
+
+  const [quickSetup, setQuickSetup] = useState<{
+    open: boolean;
+    segments: string;
+    splits: string;
+    distance: string;
+    sleep: string;
+  }>({ open: false, segments: "1", splits: "1", distance: "", sleep: "0" });
+  const quickSetupRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const el = quickSetupRef.current;
+    if (!el) return;
+    if (quickSetup.open && !el.open) el.showModal();
+    else if (!quickSetup.open && el.open) el.close();
+  }, [quickSetup.open]);
+
   const [gpxMissingWarning, setGpxMissingWarning] = useState<string | null>(
     null,
   );
@@ -172,6 +193,10 @@ export default function CourseForm() {
   // Tracks the endKm that was last successfully fetched per [segIdx][splitIdx],
   // so we can apply the >5 mi threshold on distance edits.
   const lastFetchedKmRef = useRef<(number | null)[][]>([]);
+  // Timestamp (ms) of the last real Nominatim network request, shared across
+  // all concurrent processCityQueue invocations so the 1 req/s limit is
+  // respected even when a new processor starts before the old one exits.
+  const lastNetworkRequestMsRef = useRef<number>(0);
   // Stable ref to gpxTrack for use inside async queue processor.
   const gpxTrackRef = useRef<GpxTrackPoint[] | null>(null);
   gpxTrackRef.current = gpxTrack;
@@ -735,7 +760,6 @@ export default function CourseForm() {
       cityQueueRef.current = [...cityQueueRef.current, ...toFetch];
 
       async function processCityQueue() {
-        let lastWasNetwork = false;
         while (cityQueueRef.current.length > 0 && cityGenRef.current === gen) {
           const item = cityQueueRef.current.shift();
           if (!item) break;
@@ -749,12 +773,21 @@ export default function CourseForm() {
             : undefined;
           const isNetwork = coord !== null && cached === undefined;
 
-          // Only wait between actual network requests — cached hits are free.
-          if (isNetwork && lastWasNetwork) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 1100));
-            if (cityGenRef.current !== gen) break;
+          // Rate-limit real network requests to ≤1 req/s (Nominatim policy).
+          // lastNetworkRequestMsRef is shared across all concurrent processor
+          // invocations: the check and update are in the same synchronous block
+          // (no await between them), so JS's single-threaded model guarantees
+          // no two processors can both pass the guard simultaneously.
+          if (isNetwork) {
+            const elapsed = Date.now() - lastNetworkRequestMsRef.current;
+            if (elapsed < 1100) {
+              await new Promise<void>((resolve) =>
+                setTimeout(resolve, 1100 - elapsed),
+              );
+              if (cityGenRef.current !== gen) break;
+            }
+            lastNetworkRequestMsRef.current = Date.now();
           }
-          lastWasNetwork = isNetwork;
 
           let label: string | null = null;
           if (coord) {
@@ -1165,6 +1198,8 @@ export default function CourseForm() {
                 {form.unitSystem === "imperial"
                   ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
                   : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
+                {" · "}
+                {gpxTrack.length.toLocaleString()} pts
               </span>
             </div>
             <button
@@ -1418,6 +1453,14 @@ export default function CourseForm() {
             </button>
           )}
           <button
+            type="button"
+            className="action-btn"
+            onClick={() => setQuickSetup((q) => ({ ...q, open: true }))}
+            title="Quickly build or append segments with uniform split distances"
+          >
+            Quick Setup
+          </button>
+          <button
             className="action-btn action-btn-reset"
             type="button"
             onClick={handleReset}
@@ -1426,6 +1469,194 @@ export default function CourseForm() {
           </button>
         </div>
       </div>
+
+      {/* Quick-setup dialog */}
+      <dialog
+        ref={quickSetupRef}
+        className="legend-modal"
+        onClose={() => setQuickSetup((q) => ({ ...q, open: false }))}
+      >
+        <div className="legend-header">
+          <h2>Quick Setup</h2>
+          <button
+            className="legend-close"
+            onClick={() => setQuickSetup((q) => ({ ...q, open: false }))}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="legend-body">
+          <p style={{ marginTop: 0, marginBottom: "1rem" }}>
+            Create segments with uniform splits in{" "}
+            <strong>Split Distance</strong> mode.
+          </p>
+          <div
+            className="fields-grid"
+            style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: "0.75rem" }}
+          >
+            <div className="field">
+              <label htmlFor="qs-segments"># Segments</label>
+              <input
+                id="qs-segments"
+                type="number"
+                min="1"
+                step="1"
+                value={quickSetup.segments}
+                onChange={(e) =>
+                  setQuickSetup((q) => ({ ...q, segments: e.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="qs-splits"># Splits / Segment</label>
+              <input
+                id="qs-splits"
+                type="number"
+                min="1"
+                step="1"
+                value={quickSetup.splits}
+                onChange={(e) =>
+                  setQuickSetup((q) => ({ ...q, splits: e.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="qs-distance">
+                Distance / Split ({distanceLabel(form.unitSystem)})
+              </label>
+              <input
+                id="qs-distance"
+                type="number"
+                min="0"
+                step="any"
+                value={quickSetup.distance}
+                onChange={(e) =>
+                  setQuickSetup((q) => ({ ...q, distance: e.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="qs-sleep">Sleep / Segment (min)</label>
+              <input
+                id="qs-sleep"
+                type="number"
+                min="0"
+                step="any"
+                value={quickSetup.sleep}
+                onChange={(e) =>
+                  setQuickSetup((q) => ({ ...q, sleep: e.target.value }))
+                }
+              />
+              {minutesToHms(quickSetup.sleep) && (
+                <span className="time-aside">
+                  {minutesToHms(quickSetup.sleep)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="legend-footer">
+          <button
+            type="button"
+            className="action-btn"
+            onClick={() => setQuickSetup((q) => ({ ...q, open: false }))}
+          >
+            Cancel
+          </button>
+          {form.segments.length > 0 &&
+            (() => {
+              const nSeg = parseInt(quickSetup.segments, 10);
+              const nSpl = parseInt(quickSetup.splits, 10);
+              const dist = parseFloat(quickSetup.distance);
+              const sleepVal =
+                quickSetup.sleep.trim() === "" ? "0" : quickSetup.sleep;
+              const valid =
+                !isNaN(nSeg) &&
+                nSeg > 0 &&
+                !isNaN(nSpl) &&
+                nSpl > 0 &&
+                !isNaN(dist) &&
+                dist > 0;
+              return (
+                <button
+                  type="button"
+                  className="action-btn"
+                  disabled={!valid}
+                  title={valid ? undefined : "Fill in all fields to continue"}
+                  onClick={() => {
+                    const newSegs: SegmentFormState[] = Array.from(
+                      { length: nSeg },
+                      () => ({
+                        ...makeDefaultSegment(),
+                        sleep_time: sleepVal,
+                        splits: Array.from({ length: nSpl }, () => ({
+                          ...makeDefaultSplit(),
+                          distance: String(dist),
+                        })),
+                        splitCount: String(nSpl),
+                      }),
+                    );
+                    setForm((prev) => ({
+                      ...prev,
+                      mode: "distance",
+                      segmentCount: String(prev.segments.length + nSeg),
+                      segments: [...prev.segments, ...newSegs],
+                    }));
+                    setQuickSetup((q) => ({ ...q, open: false }));
+                  }}
+                >
+                  Append Segments
+                </button>
+              );
+            })()}
+          {(() => {
+            const nSeg = parseInt(quickSetup.segments, 10);
+            const nSpl = parseInt(quickSetup.splits, 10);
+            const dist = parseFloat(quickSetup.distance);
+            const sleepVal =
+              quickSetup.sleep.trim() === "" ? "0" : quickSetup.sleep;
+            const valid =
+              !isNaN(nSeg) &&
+              nSeg > 0 &&
+              !isNaN(nSpl) &&
+              nSpl > 0 &&
+              !isNaN(dist) &&
+              dist > 0;
+            return (
+              <button
+                type="button"
+                className="action-btn action-btn-export"
+                disabled={!valid}
+                title={valid ? undefined : "Fill in all fields to continue"}
+                onClick={() => {
+                  const newSegs: SegmentFormState[] = Array.from(
+                    { length: nSeg },
+                    () => ({
+                      ...makeDefaultSegment(),
+                      sleep_time: sleepVal,
+                      splits: Array.from({ length: nSpl }, () => ({
+                        ...makeDefaultSplit(),
+                        distance: String(dist),
+                      })),
+                      splitCount: String(nSpl),
+                    }),
+                  );
+                  setForm((prev) => ({
+                    ...prev,
+                    mode: "distance",
+                    segmentCount: String(nSeg),
+                    segments: newSegs,
+                  }));
+                  setQuickSetup((q) => ({ ...q, open: false }));
+                }}
+              >
+                Build Segments
+              </button>
+            );
+          })()}
+        </div>
+      </dialog>
 
       {/* Auto-name confirmation dialog */}
       <dialog
