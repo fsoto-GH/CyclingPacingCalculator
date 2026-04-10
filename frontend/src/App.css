@@ -339,6 +339,17 @@ h4 {
   padding: 0.5rem 0.75rem;
 }
 
+/* Container query: collapse grid to single column when the box is narrow */
+.optional-fields.fields-grid {
+  container-type: inline-size;
+}
+
+@container (max-width: 370px) {
+  .optional-fields.fields-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .splits-container {
   margin-top: 0.75rem;
   padding-left: 0.5rem;
@@ -1978,9 +1989,53 @@ dialog {
   flex-shrink: 0;
 }
 
-/* Find-nearby modal: narrower than the default 680px guide/example width */
+/* Find-nearby modal: wider on desktop to fit 3-column checkbox grid */
 .find-nearby-modal {
-  max-width: 420px;
+  max-width: 520px;
+  width: min(520px, 95vw);
+}
+
+.fnm-maps-link {
+  margin-right: auto;
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+
+.no-hours-confirm {
+  max-width: 360px;
+}
+
+.no-hours-confirm__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.no-hours-confirm__body p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.no-hours-confirm__maps-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: #6b8aff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.no-hours-confirm__maps-link:hover {
+  color: #93a8ff;
+}
+
+.no-hours-confirm__use-btn {
+  background: #4361ee;
+  color: #fff;
+  border-color: #4361ee;
 }
 
 /* "Search Nearby" filled variant of ghost-btn */
@@ -2320,26 +2375,47 @@ dialog {
 }
 
 /* ── Find-nearby floating action button (overlaid on map canvas) ── */
-.split-map-nearby-fab {
+.split-map-right-stack {
   position: absolute;
-  bottom: 36px;
+  bottom: 8px;
   right: 8px;
   z-index: 1000;
-  padding: 5px 12px;
-  border-radius: 14px;
-  background: rgba(26, 26, 46, 0.9);
-  color: #e2e8f0;
-  font-size: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+/* Shared style for every item in the right overlay stack */
+.split-map-right-stack > * {
+  display: block;
+  padding: 4px 10px;
+  border-radius: 3px;
+  background: rgba(15, 15, 30, 0.82);
+  color: #c7d4f0;
+  font-size: 0.73rem;
+  border: 1px solid rgba(255, 255, 255, 0.13);
   white-space: nowrap;
-  opacity: 0.5;
-  transition: opacity 0.15s;
+  opacity: 0.88;
   backdrop-filter: blur(2px);
+  transition: opacity 0.15s, background 0.15s;
+  text-decoration: none;
+  cursor: pointer;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.split-map-right-stack > *:hover {
+  opacity: 1;
+  background: rgba(15, 15, 30, 0.96);
+}
+
+.split-map-nearby-fab {
+  /* inherits shared stack style */
 }
 
 .split-map-nearby-fab:hover {
-  opacity: 1;
+  /* handled by shared .split-map-right-stack > *:hover */
 }
 
 .split-tz-badge {
@@ -2968,17 +3044,16 @@ dialog {
   color: #fca5a5;
 }
 
+.split-map-links {
+  display: contents;
+}
+
 .split-map-link {
-  position: absolute;
-  bottom: 6px;
-  right: 8px;
-  z-index: 1000;
-  font-size: 0.72rem;
-  color: #93c5fd;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 2px 6px;
-  border-radius: 3px;
-  text-decoration: none;
+  /* inherits shared stack style */
+}
+
+.split-map-link:hover {
+  /* handled by shared .split-map-right-stack > *:hover */
 }
 
 .split-map-reset-btn {
@@ -3027,11 +3102,6 @@ dialog {
 
 .split-map-fullscreen-btn:hover {
   background: #f4f4f4;
-}
-
-.split-map-link:hover {
-  color: #fff;
-  background: rgba(0, 0, 0, 0.8);
 }
 
 /* Leaflet popup content */
@@ -3411,10 +3481,77 @@ dialog {
   margin: 0;
 }
 
+.fnm-desc {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.fnm-radius-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.fnm-radius-label {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.fnm-radius-label strong {
+  color: #e2e8f0;
+}
+
+.fnm-radius-slider {
+  width: 100%;
+  accent-color: #6b8aff;
+  cursor: pointer;
+}
+
+.fnm-radius-slider:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.fnm-radius-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  color: #475569;
+  pointer-events: none;
+  user-select: none;
+}
+
+.fnm-tick-active {
+  color: #6b8aff;
+  font-weight: 700;
+}
+
+.fnm-radius-warn {
+  font-size: 0.75rem;
+  color: #fbbf24;
+  margin: 0;
+  min-height: 1.2em;
+}
+
+.fnm-radius-warn--hidden {
+  visibility: hidden;
+}
+
 .fnm-checks-header {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 0.35rem;
+}
+
+.fnm-checks-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .fnm-select-all-btn {
@@ -3439,8 +3576,14 @@ dialog {
 
 .fnm-checks {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 0.3rem 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .fnm-checks {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .fnm-check-label {

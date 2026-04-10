@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   MapContainer,
   TileLayer,
@@ -8,6 +15,7 @@ import {
   Pane,
   Popup,
   useMap,
+  AttributionControl,
 } from "react-leaflet";
 import { divIcon } from "leaflet";
 import type {
@@ -24,13 +32,13 @@ import {
 } from "../calculator/overpass";
 import { reverseGeocode } from "../calculator/geocode";
 import type { NearbyAmenity } from "../calculator/overpass";
+import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** ±10 mi expressed in km */
 const SLICE_KM = 16.0934;
-const SEARCH_RADIUS_M = 1609.34;
 
 // Module-level cache — persists across remounts so the same address is never re-fetched
 const geocodeCache = new Map<
@@ -325,8 +333,11 @@ export default function SplitEndpointMap({
   onSelectStop,
 }: SplitEndpointMapProps) {
   const [showNearby, setShowNearby] = useState(false);
+  const { radiusM } = useContext(AmenityContext);
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [confirmStop, setConfirmStop] = useState<NearbyAmenity | null>(null);
+  const confirmDialogRef = useRef<HTMLDialogElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -471,10 +482,24 @@ export default function SplitEndpointMap({
   }, []);
 
   function handleSelect(a: NearbyAmenity) {
+    if (a.hours == null) {
+      setConfirmStop(a);
+      // showModal on next tick so the ref is rendered
+      setTimeout(() => confirmDialogRef.current?.showModal(), 0);
+      return;
+    }
+    doSelect(a);
+  }
+
+  function doSelect(a: NearbyAmenity) {
     const patch: Partial<RestStopForm> = { enabled: true, name: a.name };
     if (a.hours) {
       patch.sameHoursEveryDay = false;
       patch.perDay = a.hours;
+    } else {
+      // No hours data — default to "same daily hours" and "closed"
+      patch.sameHoursEveryDay = true;
+      patch.allDays = { mode: "closed", opens: "06:00", closes: "22:00" };
     }
     if (a.streetLine && a.hasLocality) {
       // Full address: house + street + city/state — use as-is, single call
@@ -508,8 +533,10 @@ export default function SplitEndpointMap({
           bounds={bounds}
           boundsOptions={{ padding: [20, 20] }}
           scrollWheelZoom={true}
+          attributionControl={false}
           style={{ height: "100%", width: "100%" }}
         >
+          <AttributionControl position="bottomleft" />
           <Pane name="route-lines" style={{ zIndex: 393 }} />
           <Pane name="route-labels" style={{ zIndex: 397 }} />
           <MapInvalidator />
@@ -636,15 +663,6 @@ export default function SplitEndpointMap({
             ))}
         </MapContainer>
 
-        {/* OSM link — inside canvas so it overlays the map */}
-        <a
-          href={`https://www.openstreetmap.org/?mlat=${endLat}&mlon=${endLon}#map=15/${endLat}/${endLon}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="split-map-link"
-        >
-          Open in OSM ↗
-        </a>
         {/* Fullscreen button */}
         <button
           type="button"
@@ -677,31 +695,49 @@ export default function SplitEndpointMap({
             <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
           </svg>
         </button>
-        {/* Find Nearby — FAB overlaid on canvas */}
-        <button
-          type="button"
-          className="split-map-nearby-fab"
-          onClick={
-            amenities !== null && !showNearby
-              ? () => setShowNearby(true)
+        {/* Right-side stack: Find Nearby → Google Maps → OSM */}
+        <div className="split-map-right-stack">
+          <button
+            type="button"
+            className="split-map-nearby-fab"
+            onClick={
+              amenities !== null && !showNearby
+                ? () => setShowNearby(true)
+                : showNearby
+                  ? () => setShowNearby(false)
+                  : () => setModalOpen(true)
+            }
+            title={
+              amenities !== null && !showNearby
+                ? "Show nearby results"
+                : showNearby
+                  ? "Hide nearby results"
+                  : "Find nearby stops"
+            }
+          >
+            {amenities !== null && !showNearby
+              ? "Show Stops 📍"
               : showNearby
-                ? () => setShowNearby(false)
-                : () => setModalOpen(true)
-          }
-          title={
-            amenities !== null && !showNearby
-              ? "Show nearby results"
-              : showNearby
-                ? "Hide nearby results"
-                : "Find nearby stops"
-          }
-        >
-          {amenities !== null && !showNearby
-            ? "📍 Show Results"
-            : showNearby
-              ? "✕ Hide"
-              : "🔍 Find Nearby"}
-        </button>
+                ? "Hide ✕"
+                : "Nearby Stops 📍"}
+          </button>
+          <a
+            href={`https://www.google.com/maps?q=${endLat},${endLon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="split-map-link"
+          >
+            Open Google Maps ↗
+          </a>
+          <a
+            href={`https://www.openstreetmap.org/?mlat=${endLat}&mlon=${endLon}#map=15/${endLat}/${endLon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="split-map-link"
+          >
+            Open OSM ↗
+          </a>
+        </div>
       </div>
       {/* end canvas */}
 
@@ -733,8 +769,8 @@ export default function SplitEndpointMap({
           </div>
           {amenities.length === 0 ? (
             <div className="split-map-amenity-empty">
-              No stops found within {fmtDist(SEARCH_RADIUS_M, unitSystem)}. Try
-              updating your search criteria.
+              No stops found within {fmtDist(radiusM, unitSystem)}. Try
+              adjusting your search radius or stop types.
             </div>
           ) : (
             amenities.map((a) => (
@@ -774,10 +810,70 @@ export default function SplitEndpointMap({
         <FindNearbyModal
           lat={endLat}
           lon={endLon}
-          radiusM={SEARCH_RADIUS_M}
+          unitSystem={unitSystem}
           onResults={handleModalResults}
           onClose={() => setModalOpen(false)}
         />
+      )}
+      {confirmStop && (
+        <dialog
+          ref={confirmDialogRef}
+          className="legend-modal no-hours-confirm"
+          onClose={() => setConfirmStop(null)}
+        >
+          <div className="legend-header">
+            <h2>Hours Unknown</h2>
+            <button
+              className="legend-close"
+              onClick={() => {
+                confirmDialogRef.current?.close();
+                setConfirmStop(null);
+              }}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="legend-body no-hours-confirm__body">
+            <p>
+              <strong>{confirmStop.name}</strong> has no listed hours in
+              OpenStreetMap. Visit its Google Maps page to look up hours, then
+              enter them manually after adding the stop.
+            </p>
+            <a
+              href={`https://www.google.com/maps/search/${encodeURIComponent(confirmStop.name)}/@${confirmStop.lat},${confirmStop.lon},17z`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="no-hours-confirm__maps-link"
+            >
+              🗺️ Open Google Maps to look up hours
+            </a>
+          </div>
+          <div className="legend-footer">
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => {
+                confirmDialogRef.current?.close();
+                setConfirmStop(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="ghost-btn no-hours-confirm__use-btn"
+              onClick={() => {
+                const stop = confirmStop;
+                confirmDialogRef.current?.close();
+                setConfirmStop(null);
+                doSelect(stop);
+              }}
+            >
+              Use Anyway
+            </button>
+          </div>
+        </dialog>
       )}
     </div>
   );

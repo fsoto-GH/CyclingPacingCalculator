@@ -35,18 +35,18 @@ export interface NearbyAmenity {
 }
 
 export const AMENITY_LIST = [
+  "bench",
+  "cafe",
+  "convenience",
+  "fast_food",
+  "food_court",
   "fuel",
   "supermarket",
-  "convenience",
-  "pharmacy",
-  "fast_food",
-  "cafe",
-  "restaurant",
-  "drinking_water",
-  "vending_machine",
-  "bench",
   "ice_cream",
-  "food_court",
+  "pharmacy",
+  "restaurant",
+  "vending_machine",
+  "drinking_water",
 ] as const;
 
 export const AMENITY_ICONS: Record<string, string> = {
@@ -257,6 +257,7 @@ interface OverpassElement {
 
 interface OverpassResponse {
   elements: OverpassElement[];
+  remark?: string;
 }
 
 /**
@@ -299,6 +300,8 @@ out;
       });
       if (!resp.ok) throw new Error(`Overpass error: ${resp.status}`);
       const data: OverpassResponse = await resp.json();
+      if (data.remark?.includes("runtime error"))
+        throw new Error(`OVERPASS_OOM:${data.remark}`);
 
       const results: NearbyAmenity[] = data.elements
         .filter((el) => el.tags?.name)
@@ -310,7 +313,9 @@ out;
           const hours = rawHours ? parseOsmHours(rawHours) : null;
 
           // Build a best-effort address from OSM addr:* tags
-          const hasHouseAndStreet = !!(tags["addr:housenumber"] && tags["addr:street"]);
+          const hasHouseAndStreet = !!(
+            tags["addr:housenumber"] && tags["addr:street"]
+          );
           const streetLine = hasHouseAndStreet
             ? `${tags["addr:housenumber"]} ${tags["addr:street"]}`
             : "";
