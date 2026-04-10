@@ -408,6 +408,32 @@ export default function CourseMap({
     }
   }
 
+  function fitToSegment(si: number) {
+    const seg = segmentPolylines.find((p) => p.segIdx === si);
+    if (!seg || seg.positions.length === 0 || !mapRef.current) return;
+    let minLat = Infinity,
+      maxLat = -Infinity,
+      minLon = Infinity,
+      maxLon = -Infinity;
+    for (const [lat, lon] of seg.positions) {
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+    }
+    mapRef.current.fitBounds(
+      [
+        [minLat, minLon],
+        [maxLat, maxLon],
+      ],
+      { padding: [32, 32] },
+    );
+  }
+
+  function flyToPoint(lat: number, lon: number) {
+    mapRef.current?.flyTo([lat, lon], 13);
+  }
+
   if (polyline.length < 2) return null;
 
   const legendSegments = formSegments.map((seg, si) => ({
@@ -416,7 +442,6 @@ export default function CourseMap({
       seg.name?.trim() ||
       (formSegments.length > 1 ? `Segment ${si + 1}` : "Route"),
   }));
-  const hasRestStops = markers.some((m) => m.role === "stop");
   const finishMarker = markers.find((m) => m.role === "finish");
   const finishColor = finishMarker
     ? SEGMENT_COLORS[finishMarker.segIdx % SEGMENT_COLORS.length]
@@ -529,37 +554,55 @@ export default function CourseMap({
       </div>
       {/* ── Legend ── */}
       <div className="course-map-legend">
-        <div className="cml-segments">
-          {legendSegments.map((seg, i) => (
-            <div key={i} className="cml-item">
-              <span className="cml-line" style={{ background: seg.color }} />
-              <span className="cml-label">{seg.name}</span>
-            </div>
-          ))}
-        </div>
         <div className="cml-nodes">
-          <div className="cml-item">
+          <div
+            className="cml-item cml-item--clickable"
+            onClick={() => flyToPoint(gpxTrack[0].lat, gpxTrack[0].lon)}
+            title="Zoom to course start"
+          >
             <span
               className="cml-dot"
               style={{ background: MARKER_COLORS.start }}
             />
-            <span className="cml-label">Start</span>
+            <span className="cml-label">Course Start</span>
           </div>
-          {finishColor && (
-            <div className="cml-item">
-              <span className="cml-dot" style={{ background: finishColor }} />
-              <span className="cml-label">Finish</span>
-            </div>
-          )}
-          {hasRestStops && (
-            <div className="cml-item">
+          {finishMarker && (
+            <div
+              className="cml-item cml-item--clickable"
+              onClick={() => flyToPoint(finishMarker.lat, finishMarker.lon)}
+              title="Zoom to last configured split"
+            >
               <span
                 className="cml-dot"
-                style={{ background: MARKER_COLORS.stop }}
+                style={{ background: finishColor ?? MARKER_COLORS.finish }}
               />
-              <span className="cml-label">Rest Stop</span>
+              <span className="cml-label">Segment Finish</span>
             </div>
           )}
+          <div
+            className="cml-item cml-item--clickable"
+            onClick={() => {
+              const last = gpxTrack[gpxTrack.length - 1];
+              flyToPoint(last.lat, last.lon);
+            }}
+            title="Zoom to end of GPX track"
+          >
+            <span className="cml-dot" style={{ background: "#f87171" }} />
+            <span className="cml-label">Course Finish</span>
+          </div>
+        </div>
+        <div className="cml-segments">
+          {legendSegments.map((seg, i) => (
+            <div
+              key={i}
+              className="cml-item cml-item--clickable"
+              onClick={() => fitToSegment(i)}
+              title={`Zoom to ${seg.name}`}
+            >
+              <span className="cml-line" style={{ background: seg.color }} />
+              <span className="cml-label">{seg.name}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

@@ -1285,7 +1285,7 @@ h4 {
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: 8px 8px 0 0;
   overflow: hidden;
   margin-top: 1.25rem;
   border: 1px solid #3a3a3a;
@@ -3305,9 +3305,8 @@ dialog {
 /* ── Course-map legend ── */
 .course-map-legend {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 1.25rem;
+  flex-direction: column;
+  gap: 0.3rem;
   padding: 0.45rem 0.6rem;
   background: #141420;
   border: 1px solid #2e2e3e;
@@ -3316,7 +3315,6 @@ dialog {
   font-size: 0.75rem;
 }
 
-.cml-segments,
 .cml-nodes {
   display: flex;
   flex-wrap: wrap;
@@ -3324,13 +3322,16 @@ dialog {
   gap: 0.2rem 0.9rem;
 }
 
-.cml-segments {
-  border-right: 1px solid #2e2e3e;
-  padding-right: 1.25rem;
-}
-
 .cml-nodes:empty {
   display: none;
+}
+
+.cml-segments {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.2rem 0.9rem;
+  border-top: 1px solid #2e2e3e;
+  padding-top: 0.35rem;
 }
 
 .cml-item {
@@ -3339,6 +3340,15 @@ dialog {
   gap: 0.35rem;
   white-space: nowrap;
   color: #94a3b8;
+}
+
+.cml-item--clickable {
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.cml-item--clickable:hover {
+  color: #e2e8f0;
 }
 
 .cml-line {
@@ -3361,6 +3371,9 @@ dialog {
 .cml-label {
   font-size: 0.73rem;
   color: #94a3b8;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 /* ── Amenity list header (count + actions) ── */
