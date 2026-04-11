@@ -28,6 +28,7 @@ interface RouteMarker {
   role: "start" | "split" | "finish" | "stop";
   segIdx: number;
   splitIdx: number;
+  notes?: string;
 }
 
 interface CourseMapProps {
@@ -35,7 +36,6 @@ interface CourseMapProps {
   splitBoundariesKm: [number, number][][];
   formSegments: SegmentForm[];
   unitSystem: UnitSystem;
-  showRestStops?: boolean;
   /** Called when the user clicks the "Go to split" button in a popup */
   onMarkerClick?: (segIdx: number, splitIdx: number) => void;
 }
@@ -274,6 +274,12 @@ function SplitMarker({
         <strong>{m.label}</strong>
         <br />
         {m.distanceStr}
+        {m.notes && (
+          <>
+            <br />
+            <em style={{ color: "#999", fontSize: "0.85em" }}>{m.notes}</em>
+          </>
+        )}
         {canNav && (
           <>
             <br />
@@ -290,6 +296,50 @@ function SplitMarker({
         )}
       </Popup>
     </CircleMarker>
+  );
+}
+
+function StopMarker({
+  m,
+  onMarkerClick,
+}: {
+  m: RouteMarker;
+  onMarkerClick?: (segIdx: number, splitIdx: number) => void;
+}) {
+  const map = useMap();
+  const icon = useMemo(
+    () =>
+      divIcon({
+        html: `<div class="stop-marker-icon">🛑</div>`,
+        className: "",
+        iconSize: [22, 22],
+        iconAnchor: [11, 26],
+      }),
+    [],
+  );
+  const canNav = onMarkerClick != null && m.splitIdx >= 0;
+  return (
+    <Marker position={[m.lat, m.lon]} icon={icon}>
+      <Popup>
+        <strong>{m.label}</strong>
+        <br />
+        {m.distanceStr}
+        {canNav && (
+          <>
+            <br />
+            <button
+              className="map-popup-nav-btn"
+              onClick={() => {
+                map.closePopup();
+                onMarkerClick(m.segIdx, m.splitIdx);
+              }}
+            >
+              ↓ Go to split
+            </button>
+          </>
+        )}
+      </Popup>
+    </Marker>
   );
 }
 
@@ -317,7 +367,6 @@ export default function CourseMap({
   splitBoundariesKm,
   formSegments,
   unitSystem,
-  showRestStops = true,
   onMarkerClick,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
@@ -404,6 +453,7 @@ export default function CourseMap({
           segIdx: si,
           splitIdx: sj,
           role: "split",
+          notes: formSegments[si]?.splits[sj]?.notes || undefined,
         });
       }
     }
@@ -414,26 +464,24 @@ export default function CourseMap({
     }
 
     // Rest stop markers — placed at split endpoints where a rest stop is enabled
-    if (showRestStops) {
-      for (let si = 0; si < splitBoundariesKm.length; si++) {
-        const segBounds = splitBoundariesKm[si];
-        for (let sj = 0; sj < segBounds.length; sj++) {
-          const rs: RestStopForm | undefined =
-            formSegments[si]?.splits[sj]?.rest_stop;
-          if (!rs?.enabled || !rs.name) continue;
-          const [, endKm] = segBounds[sj];
-          const coord = interpolateLatLon(gpxTrack, endKm);
-          if (!coord) continue;
-          result.push({
-            lat: coord.lat,
-            lon: coord.lon,
-            label: `🛑 ${rs.name}`,
-            distanceStr: `${toUserDist(endKm).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`,
-            segIdx: si,
-            splitIdx: sj,
-            role: "stop",
-          });
-        }
+    for (let si = 0; si < splitBoundariesKm.length; si++) {
+      const segBounds = splitBoundariesKm[si];
+      for (let sj = 0; sj < segBounds.length; sj++) {
+        const rs: RestStopForm | undefined =
+          formSegments[si]?.splits[sj]?.rest_stop;
+        if (!rs?.enabled || !rs.name) continue;
+        const [, endKm] = segBounds[sj];
+        const coord = interpolateLatLon(gpxTrack, endKm);
+        if (!coord) continue;
+        result.push({
+          lat: coord.lat,
+          lon: coord.lon,
+          label: `🛑 ${rs.name}`,
+          distanceStr: `${toUserDist(endKm).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`,
+          segIdx: si,
+          splitIdx: sj,
+          role: "stop",
+        });
       }
     }
 
@@ -445,6 +493,7 @@ export default function CourseMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMarkers, setShowMarkers] = useState(true);
+  const [showRestStops, setShowRestStops] = useState(true);
 
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -512,6 +561,15 @@ export default function CourseMap({
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
           </svg>
+        </button>
+        <button
+          className="map-markers-btn"
+          onClick={() => setShowRestStops((v) => !v)}
+          title={showRestStops ? "Hide rest stop markers" : "Show rest stop markers"}
+          aria-label={showRestStops ? "Hide rest stop markers" : "Show rest stop markers"}
+          style={{ opacity: showRestStops ? 1 : 0.5, fontSize: "14px", lineHeight: 1 }}
+        >
+          🛑
         </button>
         <button
           className="map-reset-btn"
@@ -594,18 +652,24 @@ export default function CourseMap({
               pane="route-lines"
             />
           ))}
-          {markers.map((m, i) => (
-            <SplitMarker
-              key={i}
-              m={m}
-              color={
-                m.role === "split" || m.role === "finish"
-                  ? SEGMENT_COLORS[m.segIdx % SEGMENT_COLORS.length]
-                  : MARKER_COLORS[m.role]
-              }
-              onMarkerClick={onMarkerClick}
-            />
-          ))}
+          {markers.map((m, i) =>
+            m.role === "stop" ? (
+              showRestStops ? (
+                <StopMarker key={i} m={m} onMarkerClick={onMarkerClick} />
+              ) : null
+            ) : (
+              <SplitMarker
+                key={i}
+                m={m}
+                color={
+                  m.role === "split" || m.role === "finish"
+                    ? SEGMENT_COLORS[m.segIdx % SEGMENT_COLORS.length]
+                    : MARKER_COLORS[m.role]
+                }
+                onMarkerClick={onMarkerClick}
+              />
+            ),
+          )}
         </MapContainer>
       </div>
       {/* ── Legend ── */}
@@ -651,7 +715,7 @@ export default function CourseMap({
             title="If a stop is configured at a split, a marker will appear here. Click it to zoom to the split and configure the stop details."
           >
             <span className="cml-dot" style={{ background: "#a855f7" }} />
-            <span className="cml-label">Course Finish</span>
+            <span className="cml-label">Rest Stop</span>
           </div>
         </div>
         <div className="cml-segments">

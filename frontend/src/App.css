@@ -110,6 +110,7 @@ h4 {
   min-width: 0;
   padding-right: 1.6rem; /* room for the stepper column */
   /* hide native spin buttons — we replace them */
+  appearance: textfield;
   -moz-appearance: textfield;
 }
 .number-input-wrapper input[type="number"]::-webkit-outer-spin-button,
@@ -218,9 +219,15 @@ h4 {
 
 @media (max-width: 640px) {
   .fields-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
   .fields-grid--2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 415px) {
+  .fields-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -618,6 +625,31 @@ h4 {
 .split-header-title--editable:hover {
   color: #e2e8f0;
   border-bottom-color: #555;
+}
+
+/* ── Course card header: section badge + action buttons ── */
+.course-section-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  background: rgba(67, 97, 238, 0.15);
+  border: 1px solid rgba(67, 97, 238, 0.4);
+  border-radius: 3px;
+  color: #7c9ef5;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.course-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* Inline name input rendered in-place of the title text */
@@ -2058,7 +2090,6 @@ h4 {
 
 /* ── Title row ── */
 .title-row {
-  display: flex;
   align-items: center;
   gap: 0.5rem;
   border-bottom: 2px solid #4361ee;
@@ -2079,6 +2110,7 @@ h4 {
   gap: 0.6rem;
   align-items: center;
   flex-shrink: 0;
+  justify-content: space-between;
 }
 
 /* ── Button group (connected border) ── */
@@ -3718,6 +3750,51 @@ dialog {
 
 .input-address-loading::placeholder {
   animation: address-placeholder-pulse 1.2s ease-in-out infinite;
+}
+
+/* ── Collapsible course map wrapper ── */
+.course-map-collapsible {
+  margin-top: 1.25rem;
+}
+
+.course-map-collapse-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  background: #1a1a2e;
+  border: 1px solid #2e2e3e;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: background 0.15s;
+}
+
+.course-map-collapse-header:hover {
+  background: #1e2040;
+  color: #cbd5e1;
+}
+
+.collapse-icon-sm {
+  font-size: 0.65rem;
+  color: #4361ee;
+}
+
+.course-map-collapsible .course-map-outer {
+  margin-top: 0;
+}
+
+/* ── Rest stop map marker ── */
+.stop-marker-icon {
+  font-size: 18px;
+  line-height: 1;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
 }
 
 /* ── Course-map outer wrapper (holds map canvas + legend) ── */

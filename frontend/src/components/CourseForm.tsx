@@ -63,7 +63,7 @@ function makeDefaultSegment(): SegmentFormState {
 const STORAGE_KEY = "cycling-pacing-form";
 
 const INITIAL_FORM: CourseFormState = {
-  name: "",
+  name: "Course",
   unitSystem: "imperial",
   mode: "distance",
   timezone: browserTimezone,
@@ -253,6 +253,7 @@ export default function CourseForm() {
 
   // Course settings card — collapsible + inline name editing
   const [courseCollapsed, setCourseCollapsed] = useState(false);
+  const [mapCollapsed, setMapCollapsed] = useState(false);
   const [isEditingCourseName, setIsEditingCourseName] = useState(false);
   const courseNameInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -300,11 +301,6 @@ export default function CourseForm() {
     setResult(null);
     setApiError(null);
     setTouched(new Set());
-    setGpxTrack(null);
-    setGpxSurface(null);
-    setGpxFileName(null);
-    setGpxMissingWarning(null);
-    clearGpx().catch(() => {});
   }, []);
 
   const applyAutoName = useCallback(
@@ -1327,7 +1323,7 @@ export default function CourseForm() {
             </button>
           </div>
         )}
-
+        <h2>Course Settings</h2>
         {/* Course Settings Card */}
         <div className="segment-form course-settings-card">
           <div
@@ -1370,10 +1366,36 @@ export default function CourseForm() {
                       setTimeout(() => courseNameInputRef.current?.focus(), 0);
                     }}
                   >
-                    {form.name?.trim() || "Course Settings"}
+                    {form.name?.trim() || "Course"}
                   </span>
                 )}
               </div>
+            </div>
+            <div
+              className="course-header-actions"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="segments-toggle-btn segments-toggle-btn--export"
+                onClick={handleExport}
+                disabled={Object.keys(allErrors).length > 0}
+                title={
+                  Object.keys(allErrors).length > 0
+                    ? "Fix validation errors before exporting"
+                    : "Export course configuration as JSON"
+                }
+              >
+                📁 Export
+              </button>
+              <button
+                className="segments-toggle-btn segments-toggle-btn--reset"
+                type="button"
+                onClick={handleReset}
+                title="Reset all form fields to defaults"
+              >
+                ↺ Reset
+              </button>
             </div>
           </div>
 
@@ -1530,129 +1552,106 @@ export default function CourseForm() {
                   <FieldError fieldId="course-seg-count" />
                 </div>
               </div>
+
+              {/* Segments Toolbar */}
+              <div className="segments-toolbar">
+                <div className="segments-toolbar-left">
+                  <button
+                    className="segments-toggle-btn"
+                    onClick={() => setCollapseAllSignal((s) => s + 1)}
+                    title="Collapse all segments and their splits"
+                  >
+                    ▶ Collapse
+                  </button>
+                  <button
+                    className="segments-toggle-btn"
+                    onClick={() => setExpandAllSignal((s) => s + 1)}
+                    title="Expand all segments"
+                  >
+                    ▼ Expand
+                  </button>
+                  <span className="segments-toolbar-sep" />
+                  <button
+                    type="button"
+                    className="segments-toggle-btn"
+                    onClick={() => setQuickSetup((q) => ({ ...q, open: true }))}
+                    title="Quickly build or append segments with uniform split distances"
+                  >
+                    ⚡ Quick Setup
+                  </button>
+                  {gpxStartCity && (
+                    <button
+                      type="button"
+                      className="segments-toggle-btn"
+                      onClick={handleAutoName}
+                      title="Name all splits and segments using their nearest cities"
+                    >
+                      🏷️ Auto-Name
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="segments-container">
+                {form.segments.map((seg, i) => (
+                  <SegmentFormComponent
+                    key={i}
+                    segIndex={i}
+                    value={seg}
+                    onChange={(s) => updateSegment(i, s)}
+                    unitSystem={form.unitSystem}
+                    mode={form.mode}
+                    gpxProfiles={gpxProfiles?.[i] ?? null}
+                    gpxTrack={gpxTrack}
+                    courseTz={form.timezone}
+                    isLastSeg={i === form.segments.length - 1}
+                    splitStatuses={splitGpxStatuses[i]}
+                    cityLabels={cityLabels[i]}
+                    cityFetching={cityFetching[i]}
+                    cumulativeDists={splitCumulativeDists?.[i] ?? undefined}
+                    segmentStartDist={
+                      i === 0
+                        ? 0
+                        : (splitCumulativeDists?.[i - 1]?.[
+                            form.segments[i - 1].splits.length - 1
+                          ] ?? null)
+                    }
+                    gpxTotalDist={gpxTotalDistUser}
+                    segmentStartCity={
+                      i === 0
+                        ? gpxStartCity
+                        : (cityLabels[i - 1]?.[
+                            form.segments[i - 1].splits.length - 1
+                          ] ?? null)
+                    }
+                    expandSignal={(() => {
+                      // Any nav signal targeting a split in this segment should expand it
+                      return (
+                        form.segments[i].splits.reduce((max, _, j) => {
+                          const k = `${i}-${j}`;
+                          return Math.max(max, mapNavSignals[k] ?? 0);
+                        }, 0) || undefined
+                      );
+                    })()}
+                    expandSplitIdx={(() => {
+                      // Find which split has the most recent signal for this segment
+                      let best = -1;
+                      let bestVal = 0;
+                      form.segments[i].splits.forEach((_, j) => {
+                        const v = mapNavSignals[`${i}-${j}`] ?? 0;
+                        if (v > bestVal) {
+                          bestVal = v;
+                          best = j;
+                        }
+                      });
+                      return best;
+                    })()}
+                    collapseSignal={collapseAllSignal || undefined}
+                    expandAllSignal={expandAllSignal || undefined}
+                  />
+                ))}
+              </div>
             </div>
           )}
-        </div>
-
-        {/* Segments */}
-        <div className="segments-toolbar">
-          <div className="segments-toolbar-left">
-            <button
-              className="segments-toggle-btn"
-              onClick={() => setCollapseAllSignal((s) => s + 1)}
-              title="Collapse all segments and their splits"
-            >
-              ▶ Collapse
-            </button>
-            <button
-              className="segments-toggle-btn"
-              onClick={() => setExpandAllSignal((s) => s + 1)}
-              title="Expand all segments"
-            >
-              ▼ Expand
-            </button>
-            <span className="segments-toolbar-sep" />
-            <button
-              type="button"
-              className="segments-toggle-btn"
-              onClick={() => setQuickSetup((q) => ({ ...q, open: true }))}
-              title="Quickly build or append segments with uniform split distances"
-            >
-              ⚡ Quick Setup
-            </button>
-            {gpxStartCity && (
-              <button
-                type="button"
-                className="segments-toggle-btn"
-                onClick={handleAutoName}
-                title="Name all splits and segments using their nearest cities"
-              >
-                🏷️ Auto-Name
-              </button>
-            )}
-          </div>
-          <div className="segments-toolbar-right">
-            <button
-              type="button"
-              className="segments-toggle-btn segments-toggle-btn--export"
-              onClick={handleExport}
-              disabled={Object.keys(allErrors).length > 0}
-              title={
-                Object.keys(allErrors).length > 0
-                  ? "Fix validation errors before exporting"
-                  : "Export course configuration as JSON"
-              }
-            >
-              📁 Export
-            </button>
-            <button
-              className="segments-toggle-btn segments-toggle-btn--reset"
-              type="button"
-              onClick={handleReset}
-              title="Reset all form fields to defaults"
-            >
-              ↺ Reset
-            </button>
-          </div>
-        </div>
-        <div className="segments-container">
-          {form.segments.map((seg, i) => (
-            <SegmentFormComponent
-              key={i}
-              segIndex={i}
-              value={seg}
-              onChange={(s) => updateSegment(i, s)}
-              unitSystem={form.unitSystem}
-              mode={form.mode}
-              gpxProfiles={gpxProfiles?.[i] ?? null}
-              gpxTrack={gpxTrack}
-              courseTz={form.timezone}
-              isLastSeg={i === form.segments.length - 1}
-              splitStatuses={splitGpxStatuses[i]}
-              cityLabels={cityLabels[i]}
-              cityFetching={cityFetching[i]}
-              cumulativeDists={splitCumulativeDists?.[i] ?? undefined}
-              segmentStartDist={
-                i === 0
-                  ? 0
-                  : (splitCumulativeDists?.[i - 1]?.[
-                      form.segments[i - 1].splits.length - 1
-                    ] ?? null)
-              }
-              gpxTotalDist={gpxTotalDistUser}
-              segmentStartCity={
-                i === 0
-                  ? gpxStartCity
-                  : (cityLabels[i - 1]?.[
-                      form.segments[i - 1].splits.length - 1
-                    ] ?? null)
-              }
-              expandSignal={(() => {
-                // Any nav signal targeting a split in this segment should expand it
-                return (
-                  form.segments[i].splits.reduce((max, _, j) => {
-                    const k = `${i}-${j}`;
-                    return Math.max(max, mapNavSignals[k] ?? 0);
-                  }, 0) || undefined
-                );
-              })()}
-              expandSplitIdx={(() => {
-                // Find which split has the most recent signal for this segment
-                let best = -1;
-                let bestVal = 0;
-                form.segments[i].splits.forEach((_, j) => {
-                  const v = mapNavSignals[`${i}-${j}`] ?? 0;
-                  if (v > bestVal) {
-                    bestVal = v;
-                    best = j;
-                  }
-                });
-                return best;
-              })()}
-              collapseSignal={collapseAllSignal || undefined}
-              expandAllSignal={expandAllSignal || undefined}
-            />
-          ))}
         </div>
 
         {/* API error */}
@@ -1905,15 +1904,28 @@ export default function CourseForm() {
 
       {/* Live course map — shown as soon as a GPX and at least one distance are set */}
       {gpxTrack && splitBoundariesKm && (
-        <Suspense fallback={<div className="map-loading">Loading map…</div>}>
-          <CourseMap
-            gpxTrack={gpxTrack}
-            splitBoundariesKm={splitBoundariesKm}
-            formSegments={form.segments}
-            unitSystem={form.unitSystem}
-            onMarkerClick={handleMapMarkerClick}
-          />
-        </Suspense>
+        <div className="course-map-collapsible">
+          <div
+            className="course-map-collapse-header"
+            onClick={() => setMapCollapsed((c) => !c)}
+          >
+            <span className="collapse-icon-sm">{mapCollapsed ? "▶" : "▼"}</span>
+            <span>Course Map</span>
+          </div>
+          {!mapCollapsed && (
+            <Suspense
+              fallback={<div className="map-loading">Loading map…</div>}
+            >
+              <CourseMap
+                gpxTrack={gpxTrack}
+                splitBoundariesKm={splitBoundariesKm}
+                formSegments={form.segments}
+                unitSystem={form.unitSystem}
+                onMarkerClick={handleMapMarkerClick}
+              />
+            </Suspense>
+          )}
+        </div>
       )}
 
       {/* Results — outside course-form to avoid re-layout on form state changes */}
