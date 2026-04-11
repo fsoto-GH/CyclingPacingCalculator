@@ -115,6 +115,7 @@ export interface SplitForm {
   adjustment_time: string; // minutes
   differentTimezone: boolean;
   timezone: string; // IANA timezone override
+  tzManuallySet?: boolean; // true when the user explicitly chose the tz (auto-detection will not override)
   notes?: string; // freeform rider notes, displayed in results
 }
 

@@ -85,7 +85,21 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
             <li>
               <strong>Automatic timezone detection</strong> — each split's
               endpoint is matched against a compact boundary dataset entirely in
-              the browser; no API call required.
+              the browser; no API call required. When a split's endpoint falls
+              in a timezone different from the course timezone, a{" "}
+              <span style={{ color: "#c4b5fd" }}>purple timezone badge</span>{" "}
+              (🕐) is added automatically. If you change the split's distance so
+              its endpoint moves to a new timezone, the badge updates to reflect
+              the new location.
+            </li>
+            <li>
+              <strong>Manual timezone override</strong> — you can choose a
+              different timezone for any split via the <em>Split Timezone</em>{" "}
+              selector in the Overrides panel. Once set manually, the badge
+              turns <span style={{ color: "#fbbf24" }}>amber</span> and shows a
+              ✏️ icon to signal that auto-detection is paused for that split.
+              Selecting the course timezone from the picker clears the manual
+              override and re-enables auto-detection.
             </li>
             <li>
               <strong>Nearby rest stop search</strong> — find fuel stations,
@@ -274,10 +288,13 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
               percentage of the distance where grade exceeds 5%.
             </li>
             <li>
-              A <span style={{ color: "#c4b5fd" }}>timezone badge</span> appears
-              on a split when its endpoint is in a different timezone than the
-              course-level timezone. Unique timezone abbreviations are also
-              summarized in the segment header.
+              A <span style={{ color: "#c4b5fd" }}>purple timezone badge</span>{" "}
+              (🕐) appears on a split when its endpoint is in a different
+              timezone than the course-level timezone — set automatically from
+              the GPX. When you manually override the timezone, the badge turns{" "}
+              <span style={{ color: "#fbbf24" }}>amber</span> with a ✏️ icon.
+              Unique timezone abbreviations are also summarized in the segment
+              header.
             </li>
           </ul>
         </Section>

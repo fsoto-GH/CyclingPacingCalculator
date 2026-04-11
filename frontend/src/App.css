@@ -283,6 +283,67 @@ h4 {
   background: #2e2e2e;
 }
 
+/* ── Inline toggle row (label+hint left, control right) ── */
+.toggle-row--inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+}
+
+.toggle-row-label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.toggle-row-label-group > span:first-child {
+  font-size: 0.85rem;
+  color: #cccccc;
+  font-weight: 500;
+}
+
+.toggle-row-label-group .hint {
+  margin-top: 0;
+  font-style: normal;
+}
+
+.toggle-row--inline .toggle-group {
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .toggle-row--inline {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .toggle-row--inline .toggle-row-label-group {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4em;
+    flex: 1 1 100%;
+  }
+
+  .toggle-row--inline .toggle-row-label-group .hint {
+    display: inline;
+    font-size: 0.73rem;
+  }
+
+  .toggle-row--inline .toggle-group {
+    width: 100%;
+  }
+
+  .toggle-row--inline .toggle-group button {
+    flex: 1;
+  }
+}
+
 /* ── Radio group ── */
 .radio-group {
   display: flex;
@@ -493,7 +554,7 @@ h4 {
 
 @container (max-width: 370px) {
   .optional-fields.fields-grid {
-    grid-template-columns: 1fr;
+    display: block;
   }
 }
 
@@ -636,7 +697,31 @@ h4 {
 
 .split-header-meta-item--dist     { color: #60a5fa; } /* blue  — distance */
 .split-header-meta-item--tz       { color: #c4b5fd; } /* purple — timezone */
+.split-header-meta-item--tz.tz-manual {
+  color: #fbbf24; /* amber — manually overridden timezone */
+  outline: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 3px;
+  padding: 0 2px;
+}
 .split-header-meta-item--gain     { color: #4ade80; } /* green  — elevation gain */
+
+/* Reset-to-auto button inside the Split Timezone label */
+.tz-reset-btn {
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 4px;
+  background: transparent;
+  color: #fbbf24;
+  cursor: pointer;
+  font-family: inherit;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+.tz-reset-btn:hover {
+  background: rgba(251, 191, 36, 0.1);
+}
 .split-header-meta-item--loss     { color: #f87171; } /* red    — elevation loss */
 .split-header-meta-item--grade    { color: #94a3b8; } /* slate  — avg grade */
 .split-header-meta-item--steep    { color: #fbbf24; } /* amber  — steep warning */
@@ -3579,13 +3664,13 @@ dialog {
 /* Nominatim type badge shown in rest-stop popup */
 /* Distance tick labels rendered on the route polyline */
 .split-map-tick-label {
-  background: rgba(15, 23, 42, 0.60);
-  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.5);
+  color: #dbedffc7;
   font-size: 0.62rem;
   font-weight: 700;
   padding: 1px 4px;
   border-radius: 3px;
-  border: 1px solid rgba(51, 65, 85, 0.55);
+  border: 1px solid rgba(51, 65, 85, 0.5);
   white-space: nowrap;
   pointer-events: none;
   user-select: none;

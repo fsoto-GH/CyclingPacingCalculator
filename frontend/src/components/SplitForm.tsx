@@ -73,26 +73,26 @@ export default function SplitFormComponent({
     onChange({ ...value, ...patch });
   const [addressLoading, setAddressLoading] = useState(false);
 
-  // Auto-detect timezone from GPX endpoint. Runs whenever the detected tz
-  // or the course tz changes; leaves any *manually* set timezone alone once
-  // the GPX profile is gone.
+  // Auto-detect timezone from GPX endpoint. Runs whenever the detected tz,
+  // course tz, or manual-override flag changes.
+  // If the user has explicitly set a timezone (tzManuallySet), auto-detection
+  // is suppressed so their choice is preserved even when distances change.
+  // Selecting the course timezone in the picker clears tzManuallySet and
+  // re-enables auto-detection.
   useEffect(() => {
+    if (value.tzManuallySet) return; // user-controlled — hands off
     const detectedTz = gpxProfile?.endTimezone ?? null;
     if (detectedTz && detectedTz !== courseTz) {
       // Endpoint is in a different tz — enable the override
       if (!value.differentTimezone || value.timezone !== detectedTz) {
         onChange({ ...value, differentTimezone: true, timezone: detectedTz });
       }
-    } else if (
-      detectedTz === courseTz &&
-      value.differentTimezone &&
-      value.timezone === detectedTz
-    ) {
-      // Endpoint tz matches the course tz — clear the auto-set override
+    } else if (detectedTz === courseTz && value.differentTimezone) {
+      // Endpoint is now back in the course tz — clear the auto-set override
       onChange({ ...value, differentTimezone: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpxProfile?.endTimezone, courseTz]);
+  }, [gpxProfile?.endTimezone, courseTz, value.tzManuallySet]);
 
   const hasOptionalValues =
     !!value.moving_speed ||
@@ -396,10 +396,11 @@ export default function SplitFormComponent({
                   <div className="split-header-dist-row">
                     {tzBadgeAbbr && (
                       <span
-                        className="split-header-meta-item split-header-meta-item--tz"
-                        title={`Split timezone: ${effectiveTz}`}
+                        className={`split-header-meta-item split-header-meta-item--tz${value.tzManuallySet ? " tz-manual" : ""}`}
+                        title={`Split timezone: ${effectiveTz}${value.tzManuallySet ? " (manually set — auto-detection paused)" : " (auto-detected)"}`}
                       >
                         🕐 {tzBadgeAbbr}
+                        {value.tzManuallySet && " ✏️"}
                       </span>
                     )}
                     {hasDist && (
@@ -619,7 +620,24 @@ export default function SplitFormComponent({
                   />
 
                   <div className="field field--full-width">
-                    <label htmlFor={`${prefix}-tz`}>Split Timezone</label>
+                    <label htmlFor={`${prefix}-tz`}>
+                      Split Timezone
+                      {value.tzManuallySet && (
+                        <button
+                          type="button"
+                          className="tz-reset-btn"
+                          title="Clear manual override — re-enable auto-detection from GPX"
+                          onClick={() =>
+                            update({
+                              differentTimezone: false,
+                              tzManuallySet: false,
+                            })
+                          }
+                        >
+                          ✕ Reset to auto
+                        </button>
+                      )}
+                    </label>
                     <TimezoneSelect
                       id={`${prefix}-tz`}
                       value={
@@ -628,8 +646,12 @@ export default function SplitFormComponent({
                       onChange={(tz) =>
                         update(
                           tz === courseTz
-                            ? { differentTimezone: false }
-                            : { differentTimezone: true, timezone: tz },
+                            ? { differentTimezone: false, tzManuallySet: false }
+                            : {
+                                differentTimezone: true,
+                                timezone: tz,
+                                tzManuallySet: true,
+                              },
                         )
                       }
                     />

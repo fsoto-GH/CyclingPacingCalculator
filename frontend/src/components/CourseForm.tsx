@@ -702,6 +702,21 @@ export default function CourseForm() {
 
   // Debounced profile computation — expensive (GPX slicing + tzlookup per split).
   // Runs 400 ms after the user stops editing distances.
+  // When unitSystem or mode changes the old profiles are for a different GPX slice, so
+  // clear them immediately (before the debounce fires) to avoid briefly showing stale values.
+  const prevUnitSystemRef = useRef(form.unitSystem);
+  const prevModeRef = useRef(form.mode);
+  useEffect(() => {
+    if (
+      form.unitSystem !== prevUnitSystemRef.current ||
+      form.mode !== prevModeRef.current
+    ) {
+      prevUnitSystemRef.current = form.unitSystem;
+      prevModeRef.current = form.mode;
+      setGpxProfiles(null);
+    }
+  }, [form.unitSystem, form.mode]);
+
   useEffect(() => {
     if (!gpxTrack || !gpxSurface) {
       setGpxProfiles(null);
@@ -1365,63 +1380,61 @@ export default function CourseForm() {
           {!courseCollapsed && (
             <div className="segment-body">
               {/* Unit & Mode Toggles */}
-              <div className="toggle-row-pair">
-                <div className="field toggle-row">
-                  <label id="units-label">Units</label>
-                  <div
-                    className="toggle-group"
-                    role="group"
-                    aria-labelledby="units-label"
-                  >
-                    <button
-                      type="button"
-                      className={
-                        form.unitSystem === "imperial" ? "active" : ""
-                      }
-                      onClick={() => update({ unitSystem: "imperial" })}
-                    >
-                      Imperial ({speedLabel("imperial")},{" "}
-                      {distanceLabel("imperial")})
-                    </button>
-                    <button
-                      type="button"
-                      className={form.unitSystem === "metric" ? "active" : ""}
-                      onClick={() => update({ unitSystem: "metric" })}
-                    >
-                      Metric ({speedLabel("metric")}, {distanceLabel("metric")})
-                    </button>
-                  </div>
+              <div className="toggle-row--inline">
+                <div className="toggle-row-label-group">
+                  <span id="units-label">Units</span>
                 </div>
-
-                <div className="field toggle-row">
-                  <label id="mode-label">Mode</label>
-                  <div
-                    className="toggle-group"
-                    role="group"
-                    aria-labelledby="mode-label"
+                <div
+                  className="toggle-group"
+                  role="group"
+                  aria-labelledby="units-label"
+                >
+                  <button
+                    type="button"
+                    className={form.unitSystem === "imperial" ? "active" : ""}
+                    onClick={() => update({ unitSystem: "imperial" })}
                   >
-                    <button
-                      type="button"
-                      className={form.mode === "distance" ? "active" : ""}
-                      onClick={() => update({ mode: "distance" })}
-                    >
-                      Split Distance
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        form.mode === "target_distance" ? "active" : ""
-                      }
-                      onClick={() => update({ mode: "target_distance" })}
-                    >
-                      Target Distance
-                    </button>
-                  </div>
+                    Imperial ({speedLabel("imperial")},{" "}
+                    {distanceLabel("imperial")})
+                  </button>
+                  <button
+                    type="button"
+                    className={form.unitSystem === "metric" ? "active" : ""}
+                    onClick={() => update({ unitSystem: "metric" })}
+                  >
+                    Metric ({speedLabel("metric")}, {distanceLabel("metric")})
+                  </button>
+                </div>
+              </div>
+
+              <div className="toggle-row--inline">
+                <div className="toggle-row-label-group">
+                  <span id="mode-label">Mode</span>
                   <span className="hint">
                     {form.mode === "distance"
-                      ? "Distance values will define the length of each split."
-                      : "Distance values will define course mile-markers."}
+                      ? "Distance values define the length of each split."
+                      : "Distance values define course mile-markers."}
                   </span>
+                </div>
+                <div
+                  className="toggle-group"
+                  role="group"
+                  aria-labelledby="mode-label"
+                >
+                  <button
+                    type="button"
+                    className={form.mode === "distance" ? "active" : ""}
+                    onClick={() => update({ mode: "distance" })}
+                  >
+                    Split Distance
+                  </button>
+                  <button
+                    type="button"
+                    className={form.mode === "target_distance" ? "active" : ""}
+                    onClick={() => update({ mode: "target_distance" })}
+                  >
+                    Target Distance
+                  </button>
                 </div>
               </div>
 

@@ -525,24 +525,38 @@ export default function CourseMap({
             <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
           </svg>
         </button>
-        <button
-          className="map-fullscreen-btn"
-          onClick={toggleFullscreen}
-          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-          aria-label={isFullscreen ? "Exit fullscreen" : "View map fullscreen"}
-        >
-          {isFullscreen ? (
-            // compress icon
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
-            </svg>
-          ) : (
-            // expand icon
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-            </svg>
-          )}
-        </button>
+        {document.fullscreenEnabled && (
+          <button
+            className="map-fullscreen-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            aria-label={
+              isFullscreen ? "Exit fullscreen" : "View map fullscreen"
+            }
+          >
+            {isFullscreen ? (
+              // compress icon
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="currentColor"
+              >
+                <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+              </svg>
+            ) : (
+              // expand icon
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="currentColor"
+              >
+                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+              </svg>
+            )}
+          </button>
+        )}
         <MapContainer
           ref={mapRef}
           bounds={bounds}
@@ -630,6 +644,13 @@ export default function CourseMap({
             title="Zoom to end of GPX track"
           >
             <span className="cml-dot" style={{ background: "#f87171" }} />
+            <span className="cml-label">Course Finish</span>
+          </div>
+          <div
+            className="cml-item cml-item--clickable"
+            title="If a stop is configured at a split, a marker will appear here. Click it to zoom to the split and configure the stop details."
+          >
+            <span className="cml-dot" style={{ background: "#a855f7" }} />
             <span className="cml-label">Course Finish</span>
           </div>
         </div>
