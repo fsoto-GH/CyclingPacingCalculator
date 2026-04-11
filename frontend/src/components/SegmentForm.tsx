@@ -181,26 +181,54 @@ export default function SegmentFormComponent({
   const segEndCity = cityLabels?.[lastSplitIdx] ?? null;
   const segEndCityFetching = cityFetching?.[lastSplitIdx] ?? false;
 
-  // Unique TZ abbreviations from splits that override the course timezone.
-  // Deduplicated by abbreviation (not IANA name) — two zones with the same
-  // abbreviation at any given moment share the same offset, so one badge suffices.
-  const uniqueSegTzAbbrs = (() => {
-    const seen = new Set<string>();
+  // Ordered, adjacent-deduplicated TZ abbreviations across this segment's splits.
+  // The effective TZ per split mirrors the logic in SplitForm's auto-detection useEffect
+  // so that badges stay accurate even when the segment is collapsed (splits unmounted):
+  //   - tzManuallySet → honour the stored differentTimezone / timezone fields as-is
+  //   - otherwise     → derive from gpxProfile.endTimezone vs courseTz (same as the effect)
+  // The leading entry is dropped when it matches the course TZ (not a "new" zone).
+  const segTzSequence = (() => {
+    const courseTzAbbr =
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: courseTz,
+        timeZoneName: "short",
+      })
+        .formatToParts(new Date())
+        .find((p) => p.type === "timeZoneName")?.value ?? courseTz;
+
     const result: { tz: string; abbr: string }[] = [];
-    for (const split of value.splits) {
-      if (split.differentTimezone && split.timezone) {
-        const abbr =
-          new Intl.DateTimeFormat("en-US", {
-            timeZone: split.timezone,
-            timeZoneName: "short",
-          })
-            .formatToParts(new Date())
-            .find((p) => p.type === "timeZoneName")?.value ?? split.timezone;
-        if (!seen.has(abbr)) {
-          seen.add(abbr);
-          result.push({ tz: split.timezone, abbr });
-        }
+    let prevAbbr: string | null = null;
+
+    value.splits.forEach((split, j) => {
+      let tz: string;
+      if (split.tzManuallySet) {
+        // User explicitly set TZ — trust the stored flag.
+        tz =
+          split.differentTimezone && split.timezone ? split.timezone : courseTz;
+      } else {
+        // Auto-detected: mirror SplitForm's useEffect logic so the badge is
+        // correct even before the effect has a chance to run on mount.
+        const detectedTz = gpxProfiles?.[j]?.endTimezone ?? null;
+        tz = detectedTz && detectedTz !== courseTz ? detectedTz : courseTz;
       }
+
+      const abbr =
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: tz,
+          timeZoneName: "short",
+        })
+          .formatToParts(new Date())
+          .find((p) => p.type === "timeZoneName")?.value ?? tz;
+
+      if (abbr !== prevAbbr) {
+        result.push({ tz, abbr });
+        prevAbbr = abbr;
+      }
+    });
+
+    // Drop the leading entry if it just reflects the course TZ.
+    if (result.length > 0 && result[0].abbr === courseTzAbbr) {
+      return result.slice(1);
     }
     return result;
   })();
@@ -336,15 +364,15 @@ export default function SegmentFormComponent({
             </div>
           )}
         </div>
-        {(uniqueSegTzAbbrs.length > 0 || segCumulativeDist != null) && (
+        {(segTzSequence.length > 0 || segCumulativeDist != null) && (
           <div
             className="split-header-right"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="split-header-dist-row">
-              {uniqueSegTzAbbrs.map(({ tz, abbr }) => (
+              {segTzSequence.map(({ tz, abbr }, idx) => (
                 <span
-                  key={tz}
+                  key={`${tz}-${idx}`}
                   className="split-header-meta-item split-header-meta-item--tz"
                   title={`Timezone: ${tz}`}
                 >

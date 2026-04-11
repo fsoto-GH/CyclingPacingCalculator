@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  useTransition,
+  lazy,
+  Suspense,
+} from "react";
 import {
   MapContainer,
   TileLayer,
@@ -15,10 +24,16 @@ import type {
   LatLngExpression,
   Map as LeafletMap,
 } from "leaflet";
-import type { GpxTrackPoint, UnitSystem, SegmentForm } from "../types";
+import type {
+  GpxTrackPoint,
+  UnitSystem,
+  SegmentForm,
+  SplitGpxProfile,
+} from "../types";
 import type { RestStopForm } from "../types";
 import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
 import { distanceLabel, SEGMENT_COLORS } from "../utils";
+const ElevationProfile = lazy(() => import("./ElevationProfile"));
 
 interface RouteMarker {
   lat: number;
@@ -36,6 +51,7 @@ interface CourseMapProps {
   splitBoundariesKm: [number, number][][];
   formSegments: SegmentForm[];
   unitSystem: UnitSystem;
+  gpxProfiles?: SplitGpxProfile[][] | null;
   /** Called when the user clicks the "Go to split" button in a popup */
   onMarkerClick?: (segIdx: number, splitIdx: number) => void;
 }
@@ -110,15 +126,18 @@ function getIntervalKm(zoom: number, unitSystem: UnitSystem): number {
     if (zoom >= 13) return 2 * MI;
     if (zoom >= 12) return 5 * MI;
     if (zoom >= 11) return 10 * MI;
-    if (zoom >= 10) return 20 * MI;
-    return 50 * MI;
+    if (zoom >= 8) return 20 * MI;
+    if (zoom > 4) return 150 * MI;
+    return (20 - zoom) * 15 * MI;
   }
   if (zoom >= 14) return 1;
   if (zoom >= 13) return 2;
   if (zoom >= 12) return 5;
   if (zoom >= 11) return 10;
-  if (zoom >= 10) return 25;
-  return 50;
+  if (zoom >= 9) return 20;
+  if (zoom >= 8) return 25;
+  if (zoom > 4) return 250;
+  return (20 - zoom) * 25;
 }
 
 /**
@@ -367,6 +386,7 @@ export default function CourseMap({
   splitBoundariesKm,
   formSegments,
   unitSystem,
+  gpxProfiles,
   onMarkerClick,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
@@ -494,6 +514,21 @@ export default function CourseMap({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMarkers, setShowMarkers] = useState(true);
   const [showRestStops, setShowRestStops] = useState(true);
+  const [selectedSegIdx, setSelectedSegIdx] = useState<number | null>(null);
+  const [selectedSplitIdx, setSelectedSplitIdx] = useState<number | null>(null);
+  const [hoverKm, setHoverKm] = useState<number | null>(null);
+  const [, startSelectionTransition] = useTransition();
+
+  // Throttle hover updates to one per animation frame — mousemove fires at
+  // ~200 Hz but we only need ~60 fps for the map marker.
+  const rafId = useRef<number | null>(null);
+  const handleHoverKm = useCallback((km: number | null) => {
+    if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    rafId.current = requestAnimationFrame(() => {
+      rafId.current = null;
+      setHoverKm(km);
+    });
+  }, []);
 
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -535,6 +570,53 @@ export default function CourseMap({
     mapRef.current?.flyTo([lat, lon], 13);
   }
 
+  function fitToSplit(segIdx: number, splitIdx: number) {
+    const profile = gpxProfiles?.[segIdx]?.[splitIdx];
+    if (!profile || !mapRef.current) return;
+    const slice = sliceTrackPoints(gpxTrack, profile.startKm, profile.endKm);
+    if (slice.length < 2) return;
+    let minLat = Infinity,
+      maxLat = -Infinity,
+      minLon = Infinity,
+      maxLon = -Infinity;
+    for (const { lat, lon } of slice) {
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+    }
+    mapRef.current.fitBounds(
+      [
+        [minLat, minLon],
+        [maxLat, maxLon],
+      ],
+      { padding: [40, 40] },
+    );
+  }
+
+  const handleClickKm = useCallback(
+    (km: number) => {
+      if (!gpxProfiles) return;
+      for (let si = 0; si < gpxProfiles.length; si++) {
+        for (let sj = 0; sj < gpxProfiles[si].length; sj++) {
+          const p = gpxProfiles[si][sj];
+          if (km >= p.startKm - 0.001 && km <= p.endKm + 0.001) {
+            // Mark as low-priority so the current frame paints first.
+            startSelectionTransition(() => {
+              setSelectedSegIdx(si);
+              setSelectedSplitIdx(sj);
+            });
+            // Defer the expensive sliceTrackPoints call to after paint.
+            requestAnimationFrame(() => fitToSplit(si, sj));
+            return;
+          }
+        }
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gpxProfiles],
+  );
+
   if (polyline.length < 2) return null;
 
   const legendSegments = formSegments.map((seg, si) => ({
@@ -563,11 +645,19 @@ export default function CourseMap({
           </svg>
         </button>
         <button
-          className="map-markers-btn"
+          className="map-stop-btn"
           onClick={() => setShowRestStops((v) => !v)}
-          title={showRestStops ? "Hide rest stop markers" : "Show rest stop markers"}
-          aria-label={showRestStops ? "Hide rest stop markers" : "Show rest stop markers"}
-          style={{ opacity: showRestStops ? 1 : 0.5, fontSize: "14px", lineHeight: 1 }}
+          title={
+            showRestStops ? "Hide rest stop markers" : "Show rest stop markers"
+          }
+          aria-label={
+            showRestStops ? "Hide rest stop markers" : "Show rest stop markers"
+          }
+          style={{
+            opacity: showRestStops ? 1 : 0.5,
+            fontSize: "14px",
+            lineHeight: 1,
+          }}
         >
           🛑
         </button>
@@ -670,6 +760,24 @@ export default function CourseMap({
               />
             ),
           )}
+          {hoverKm !== null &&
+            (() => {
+              const pt = interpolateLatLon(gpxTrack, hoverKm);
+              return pt ? (
+                <CircleMarker
+                  center={[pt.lat, pt.lon]}
+                  radius={7}
+                  pathOptions={{
+                    color: "#fff",
+                    weight: 2.5,
+                    fillColor: "#f97316",
+                    fillOpacity: 1,
+                  }}
+                  interactive={false}
+                  pane="route-labels"
+                />
+              ) : null;
+            })()}
         </MapContainer>
       </div>
       {/* ── Legend ── */}
@@ -722,15 +830,86 @@ export default function CourseMap({
           {legendSegments.map((seg, i) => (
             <div
               key={i}
-              className="cml-item cml-item--clickable"
-              onClick={() => fitToSegment(i)}
-              title={`Zoom to ${seg.name}`}
+              className={`cml-item cml-item--clickable${selectedSegIdx === i ? " cml-item--active" : ""}`}
+              onClick={() => {
+                fitToSegment(i);
+                startSelectionTransition(() => {
+                  setSelectedSegIdx(i);
+                  setSelectedSplitIdx(null);
+                });
+              }}
+              title={`Zoom to ${seg.name} · click to show elevation`}
             >
               <span className="cml-line" style={{ background: seg.color }} />
               <span className="cml-label">{seg.name}</span>
             </div>
           ))}
         </div>
+        {gpxProfiles &&
+          (() => {
+            let activeProfiles: SplitGpxProfile[];
+            let activeLabel: string;
+            if (selectedSplitIdx !== null && selectedSegIdx !== null) {
+              const p = gpxProfiles[selectedSegIdx]?.[selectedSplitIdx];
+              activeProfiles = p ? [p] : [];
+              const splitName =
+                formSegments[selectedSegIdx]?.splits[
+                  selectedSplitIdx
+                ]?.name?.trim();
+              const segName =
+                legendSegments[selectedSegIdx]?.name ??
+                `Segment ${selectedSegIdx + 1}`;
+              activeLabel = splitName
+                ? splitName
+                : formSegments.length > 1
+                  ? `${segName} · Split ${selectedSplitIdx + 1}`
+                  : `Split ${selectedSplitIdx + 1}`;
+            } else if (selectedSegIdx !== null) {
+              activeProfiles = gpxProfiles[selectedSegIdx] ?? [];
+              activeLabel =
+                legendSegments[selectedSegIdx]?.name ??
+                `Segment ${selectedSegIdx + 1}`;
+            } else {
+              activeProfiles = gpxProfiles.flat();
+              activeLabel = "Full Course";
+            }
+            const isFiltered =
+              selectedSegIdx !== null || selectedSplitIdx !== null;
+            return activeProfiles.length > 0 ? (
+              <div className="cml-elev-panel">
+                <div className="cml-elev-header">
+                  <span className="cml-elev-title">⛰ {activeLabel}</span>
+                  {isFiltered && (
+                    <button
+                      type="button"
+                      className="cml-elev-reset"
+                      onClick={() => {
+                        setSelectedSegIdx(null);
+                        setSelectedSplitIdx(null);
+                      }}
+                      title="Show full course elevation"
+                    >
+                      ↺ Full course
+                    </button>
+                  )}
+                </div>
+                <Suspense fallback={null}>
+                  <ElevationProfile
+                    gpxTrack={gpxTrack}
+                    gpxProfiles={activeProfiles}
+                    unitSystem={unitSystem}
+                    onHoverKm={handleHoverKm}
+                    onClickKm={handleClickKm}
+                    splitCountsPerSegment={
+                      !isFiltered && gpxProfiles
+                        ? gpxProfiles.map((seg) => seg.length)
+                        : undefined
+                    }
+                  />
+                </Suspense>
+              </div>
+            ) : null;
+          })()}
       </div>
     </div>
   );

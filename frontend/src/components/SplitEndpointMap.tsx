@@ -29,6 +29,7 @@ import {
   AMENITY_ICONS,
   AMENITY_LABELS,
   AMENITY_COLORS,
+  queryNearbyAmenities,
 } from "../calculator/overpass";
 import { reverseGeocode } from "../calculator/geocode";
 import type { NearbyAmenity } from "../calculator/overpass";
@@ -345,11 +346,16 @@ export default function SplitEndpointMap({
   onSelectStop,
 }: SplitEndpointMapProps) {
   const [showNearby, setShowNearby] = useState(false);
-  const { radiusM } = useContext(AmenityContext);
+  const { radiusM, selectedTypes, customTypes } = useContext(AmenityContext);
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
   const [confirmStop, setConfirmStop] = useState<NearbyAmenity | null>(null);
   const confirmDialogRef = useRef<HTMLDialogElement>(null);
+  const [usedStopId, setUsedStopId] = useState<number | null>(null);
+  const usedStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -377,17 +383,20 @@ export default function SplitEndpointMap({
     }
   }
 
-  // Abort geocode requests and pending timers on unmount
+  // Abort geocode requests, pending timers, and any in-flight search on unmount
   useEffect(
     () => () => {
       geocodeAbortRef.current?.abort();
       if (geocodeTimerRef.current !== null)
         clearTimeout(geocodeTimerRef.current);
+      searchAbortRef.current?.abort();
+      if (usedStopTimerRef.current !== null)
+        clearTimeout(usedStopTimerRef.current);
     },
     [],
   );
 
-  // When the endpoint moves, clear cached results so user re-searches from modal
+  // When the endpoint moves, clear cached results so user re-searches
   useEffect(() => {
     if (isFirstEndpointRender.current) {
       isFirstEndpointRender.current = false;
@@ -395,6 +404,8 @@ export default function SplitEndpointMap({
     }
     setAmenities(null);
     setShowNearby(false);
+    setSearchError(null);
+    searchAbortRef.current?.abort();
   }, [endLat, endLon]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Geocode the rest stop address via Nominatim — debounced 600 ms, cached by address
@@ -488,10 +499,68 @@ export default function SplitEndpointMap({
     ];
   }, [endLat, endLon, restStopCoords]);
 
-  const handleModalResults = useCallback((results: NearbyAmenity[]) => {
-    setAmenities(results);
-    setShowNearby(true);
-  }, []);
+  const handleSearch = useCallback(
+    async (
+      overrideRadius?: number,
+      overrideTypes?: Set<string>,
+      overrideCustom?: string,
+    ) => {
+      const searchRadius = overrideRadius ?? radiusM;
+      const searchTypes = overrideTypes ?? selectedTypes;
+      const searchCustom = overrideCustom ?? customTypes;
+
+      const custom = searchCustom
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const all = [...searchTypes, ...custom];
+      if (all.length === 0) {
+        setSearchError("No stop types selected. Configure criteria first.");
+        return;
+      }
+
+      searchAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      searchAbortRef.current = ctrl;
+      setSearchLoading(true);
+      setSearchError(null);
+
+      try {
+        let results = await queryNearbyAmenities(
+          endLat,
+          endLon,
+          searchRadius,
+          ctrl.signal,
+          all,
+        );
+        if (ctrl.signal.aborted) return;
+        const byDistThenName = (a: NearbyAmenity, b: NearbyAmenity) =>
+          a.distanceM - b.distanceM || a.name.localeCompare(b.name);
+        const withHours = results
+          .filter((r) => r.hours != null)
+          .sort(byDistThenName);
+        const noHours = results
+          .filter((r) => r.hours == null)
+          .sort(byDistThenName);
+        results = [...withHours, ...noHours];
+        setAmenities(results);
+        setShowNearby(true);
+      } catch (err: unknown) {
+        if ((err as { name?: string }).name === "AbortError") return;
+        const msg = (err as { message?: string }).message ?? "";
+        if (msg.startsWith("OVERPASS_OOM:")) {
+          setSearchError(
+            "Search exceeded available memory — try a smaller radius or fewer stop types.",
+          );
+        } else {
+          setSearchError("Search failed. Check your connection and try again.");
+        }
+      } finally {
+        setSearchLoading(false);
+      }
+    },
+    [endLat, endLon, radiusM, selectedTypes, customTypes],
+  );
 
   function handleSelect(a: NearbyAmenity) {
     if (a.hours == null) {
@@ -732,7 +801,7 @@ export default function SplitEndpointMap({
             <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
           </svg>
         </button>
-        {/* Right-side stack: Find Nearby → Google Maps → OSM */}
+        {/* Right-side stack: Nearby → Google Maps → OSM */}
         <div className="split-map-right-stack">
           <button
             type="button"
@@ -742,21 +811,26 @@ export default function SplitEndpointMap({
                 ? () => setShowNearby(true)
                 : showNearby
                   ? () => setShowNearby(false)
-                  : () => setModalOpen(true)
+                  : () => handleSearch()
             }
+            disabled={searchLoading}
             title={
-              amenities !== null && !showNearby
-                ? "Show nearby results"
-                : showNearby
-                  ? "Hide nearby results"
-                  : "Find nearby stops"
+              searchLoading
+                ? "Searching…"
+                : amenities !== null && !showNearby
+                  ? "Show nearby results"
+                  : showNearby
+                    ? "Hide nearby results"
+                    : "Search for nearby stops"
             }
           >
-            {amenities !== null && !showNearby
-              ? "Show Stops 📍"
-              : showNearby
-                ? "Hide ✕"
-                : "Nearby Stops 📍"}
+            {searchLoading
+              ? "Searching…"
+              : amenities !== null && !showNearby
+                ? "Show Stops 📍"
+                : showNearby
+                  ? "Hide ✕"
+                  : "Nearby Stops 📍"}
           </button>
           <a
             href={`https://www.google.com/maps?q=${endLat},${endLon}`}
@@ -778,6 +852,21 @@ export default function SplitEndpointMap({
       </div>
       {/* end canvas */}
 
+      {/* Search error — shown when a search fails */}
+      {searchError && (
+        <div className="split-map-search-error">
+          {searchError}
+          <button
+            type="button"
+            className="split-map-search-error-close"
+            onClick={() => setSearchError(null)}
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Amenity list — shown whenever a search has been run and results are visible */}
       {showNearby && amenities !== null && (
         <div className="split-map-amenity-list">
@@ -786,6 +875,26 @@ export default function SplitEndpointMap({
               {amenities.length} stop{amenities.length !== 1 ? "s" : ""} found
             </span>
             <div className="split-map-amenity-header-actions">
+              <a
+                href={(() => {
+                  const custom = customTypes
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                  const all = [...Array.from(selectedTypes), ...custom];
+                  const query =
+                    all.length > 0
+                      ? all.map((t) => t.replace(/_/g, "+")).join("+")
+                      : "restaurants+gas+stations+supermarkets";
+                  return `https://www.google.com/maps/search/${query}/@${endLat},${endLon},14z`;
+                })()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="split-map-amenity-action-btn split-map-amenity-scout-link"
+                title="Scout stops in Google Maps"
+              >
+                🗺️ Scout
+              </a>
               <button
                 type="button"
                 className="split-map-amenity-action-btn"
@@ -833,10 +942,19 @@ export default function SplitEndpointMap({
                 </div>
                 <button
                   type="button"
-                  className="split-map-amenity-use-btn"
-                  onClick={() => handleSelect(a)}
+                  className={`split-map-amenity-use-btn${usedStopId === a.id ? " split-map-amenity-use-btn--used" : ""}`}
+                  onClick={() => {
+                    handleSelect(a);
+                    if (usedStopTimerRef.current !== null)
+                      clearTimeout(usedStopTimerRef.current);
+                    setUsedStopId(a.id);
+                    usedStopTimerRef.current = setTimeout(
+                      () => setUsedStopId(null),
+                      1500,
+                    );
+                  }}
                 >
-                  Use
+                  {usedStopId === a.id ? "✓" : "Use"}
                 </button>
               </div>
             ))
@@ -845,11 +963,9 @@ export default function SplitEndpointMap({
       )}
       {modalOpen && (
         <FindNearbyModal
-          lat={endLat}
-          lon={endLon}
           unitSystem={unitSystem}
-          onResults={handleModalResults}
           onClose={() => setModalOpen(false)}
+          onSave={(r, types, custom) => handleSearch(r, types, custom)}
         />
       )}
       {confirmStop && (

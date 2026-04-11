@@ -205,18 +205,19 @@ export default function ResultsView({
   return (
     <div className="results-view">
       <div className="results-view-inner">
-        <h2>Results</h2>
-
-        <div
-          className={`narrative-section${narrativeExpanded ? " narrative-section--expanded" : ""}`}
-        >
-          <CourseSummaryNarrative
-            result={result}
-            formSegments={formSegments}
-            courseTz={courseTz}
-            unitSystem={unitSystem}
-            courseName={courseName}
-          />
+        {/* Narrative with collapse/expand */}
+        <div className="narrative-wrapper">
+          <div
+            className={`narrative-section${narrativeExpanded ? " narrative-section--expanded" : ""}`}
+          >
+            <CourseSummaryNarrative
+              result={result}
+              formSegments={formSegments}
+              courseTz={courseTz}
+              unitSystem={unitSystem}
+              courseName={courseName}
+            />
+          </div>
           <button
             type="button"
             className="results-expand-btn"

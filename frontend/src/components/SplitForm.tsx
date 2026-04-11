@@ -128,7 +128,7 @@ export default function SplitFormComponent({
   // Only active when GPX is loaded + endpoint coords are available + distance set.
   type LayoutState = "form" | "both" | "map";
   const [layoutState, setLayoutState] = useState<LayoutState>("form");
-  const [formColWidth, setFormColWidth] = useState(350);
+  const [formColWidth, setFormColWidth] = useState(500);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
@@ -196,7 +196,7 @@ export default function SplitFormComponent({
       if (!isDragging.current) return;
       const delta = e.clientX - dragStartX.current;
       setFormColWidth(
-        Math.min(500, Math.max(350, dragStartWidth.current + delta)),
+        Math.min(700, Math.max(350, dragStartWidth.current + delta)),
       );
     }
     function onMouseUp() {

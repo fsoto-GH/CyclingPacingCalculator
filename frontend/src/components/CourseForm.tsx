@@ -41,9 +41,10 @@ const CourseMap = lazy(() => import("./CourseMap"));
 const ResultsView = lazy(() => import("./ResultsView"));
 const LegendModal = lazy(() => import("./LegendModal"));
 const ExampleModal = lazy(() => import("./ExampleModal"));
+const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
 import { EXAMPLES } from "../examples";
 import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
-import { FieldErrorContext, FieldError } from "./FieldError";
+import { FieldErrorContext, FieldError, AllErrorsContext } from "./FieldError";
 import NumberInput from "./NumberInput";
 
 function makeDefaultSegment(): SegmentFormState {
@@ -69,8 +70,8 @@ const INITIAL_FORM: CourseFormState = {
   timezone: browserTimezone,
   init_moving_speed: "",
   min_moving_speed: "",
-  down_time_ratio: "",
-  split_delta: "",
+  down_time_ratio: "0",
+  split_delta: "0",
   start_time: nowLocalDatetime(),
   segmentCount: "1",
   segments: [makeDefaultSegment()],
@@ -134,6 +135,10 @@ function loadSavedForm(): CourseFormState {
       parsed.__splitDeltaInverted = true;
     }
 
+    // Migrate empty down_time_ratio / split_delta to "0" (was previously required to be non-empty)
+    if (!parsed.down_time_ratio?.trim()) parsed.down_time_ratio = "0";
+    if (!parsed.split_delta?.trim()) parsed.split_delta = "0";
+
     // Migrate rest stops and splits
     for (const seg of parsed.segments ?? []) {
       for (const split of seg.splits ?? []) {
@@ -172,10 +177,20 @@ export default function CourseForm() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [criteriaModalOpen, setCriteriaModalOpen] = useState(false);
   const [autoNameDialog, setAutoNameDialog] = useState<{
     open: boolean;
     namedItems: string[];
-  }>({ open: false, namedItems: [] });
+    segmentPrefix: string;
+    splitPrefix: string;
+    includeCityRoute: boolean;
+  }>({
+    open: false,
+    namedItems: [],
+    segmentPrefix: "",
+    splitPrefix: "",
+    includeCityRoute: true,
+  });
   const autoNameDialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const el = autoNameDialogRef.current;
@@ -254,11 +269,15 @@ export default function CourseForm() {
   // Course settings card — collapsible + inline name editing
   const [courseCollapsed, setCourseCollapsed] = useState(false);
   const [mapCollapsed, setMapCollapsed] = useState(false);
+  const [resultsCollapsed, setResultsCollapsed] = useState(false);
   const [isEditingCourseName, setIsEditingCourseName] = useState(false);
   const courseNameInputRef = useRef<HTMLInputElement | null>(null);
 
   // Restore GPX from IndexedDB on mount (large files don't fit in localStorage).
+  // Skip when ?example is present — the example loader will supply the track,
+  // and letting IDB restore race against it would overwrite the correct GPX.
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("example")) return;
     loadGpx()
       .then((record) => {
         if (!record) return;
@@ -304,8 +323,38 @@ export default function CourseForm() {
   }, []);
 
   const applyAutoName = useCallback(
-    (overwriteAll: boolean) => {
-      const cityShort = (label: string) => label.split(",")[0].trim();
+    (
+      overwriteAll: boolean,
+      segmentPrefix: string,
+      splitPrefix: string,
+      includeCityRoute: boolean,
+    ) => {
+      const cityPart = (label: string, idx: number) =>
+        (label.split(",")[idx] ?? "").trim();
+
+      function applyTemplate(
+        template: string,
+        segIdx: number,
+        splitIdx: number | undefined,
+        toks: {
+          fromCity: string;
+          toCity: string;
+          fromState: string;
+          toState: string;
+        },
+      ): string {
+        return template
+          .replace(/\{segment_num\}/g, String(segIdx + 1))
+          .replace(
+            /\{split_num\}/g,
+            splitIdx !== undefined ? String(splitIdx + 1) : "",
+          )
+          .replace(/\{from_city\}/g, toks.fromCity)
+          .replace(/\{to_city\}/g, toks.toCity)
+          .replace(/\{from_state\}/g, toks.fromState)
+          .replace(/\{to_state\}/g, toks.toState);
+      }
+
       setForm((prev) => {
         const newSegs = prev.segments.map((seg, si) => {
           const newSplits = seg.splits.map((split, sj) => {
@@ -321,10 +370,18 @@ export default function CourseForm() {
                       prev.segments[si - 1].splits.length - 1
                     ];
             if (!startCity) return split;
-            return {
-              ...split,
-              name: `${cityShort(startCity)} → ${cityShort(endCity)}`,
+            const toks = {
+              fromCity: cityPart(startCity, 0),
+              toCity: cityPart(endCity, 0),
+              fromState: cityPart(startCity, 1),
+              toState: cityPart(endCity, 1),
             };
+            const cityRoute = includeCityRoute
+              ? `${toks.fromCity} → ${toks.toCity}`
+              : null;
+            const prefix = applyTemplate(splitPrefix, si, sj, toks).trimEnd();
+            const name = [prefix, cityRoute].filter(Boolean).join(" ");
+            return { ...split, name };
           });
 
           const segStartCity =
@@ -333,15 +390,26 @@ export default function CourseForm() {
               : cityLabels[si - 1]?.[prev.segments[si - 1].splits.length - 1];
           const segEndCity = cityLabels[si]?.[seg.splits.length - 1];
           const canNameSeg = segStartCity && segEndCity;
-          return {
-            ...seg,
-            splits: newSplits,
-            ...(canNameSeg && (overwriteAll || !seg.name?.trim())
-              ? {
-                  name: `${cityShort(segStartCity!)} → ${cityShort(segEndCity!)}`,
-                }
-              : {}),
-          };
+          let segName: Record<string, string> = {};
+          if (canNameSeg && (overwriteAll || !seg.name?.trim())) {
+            const segToks = {
+              fromCity: cityPart(segStartCity!, 0),
+              toCity: cityPart(segEndCity!, 0),
+              fromState: cityPart(segStartCity!, 1),
+              toState: cityPart(segEndCity!, 1),
+            };
+            const cityRoute = includeCityRoute
+              ? `${segToks.fromCity} → ${segToks.toCity}`
+              : null;
+            const prefix = applyTemplate(
+              segmentPrefix,
+              si,
+              undefined,
+              segToks,
+            ).trimEnd();
+            segName = { name: [prefix, cityRoute].filter(Boolean).join(" ") };
+          }
+          return { ...seg, splits: newSplits, ...segName };
         });
         return { ...prev, segments: newSegs };
       });
@@ -362,13 +430,9 @@ export default function CourseForm() {
           );
       });
     });
-
-    if (namedItems.length === 0) {
-      applyAutoName(true);
-    } else {
-      setAutoNameDialog({ open: true, namedItems });
-    }
-  }, [form.segments, applyAutoName]);
+    // Always open the dialog so user can configure prefixes
+    setAutoNameDialog((d) => ({ ...d, open: true, namedItems }));
+  }, [form.segments]);
 
   const handleLoadExample = useCallback(
     (example: CourseFormState, gpxUrl?: string) => {
@@ -627,6 +691,12 @@ export default function CourseForm() {
       ? Math.round((km / 1.60934) * 10) / 10
       : Math.round(km * 10) / 10;
   }, [gpxTrack, form.unitSystem]);
+
+  // TZ auto-detected from the GPX track's first point.
+  const detectedCourseTz = useMemo(
+    () => (gpxTrack ? tzlookup(gpxTrack[0].lat, gpxTrack[0].lon) : null),
+    [gpxTrack],
+  );
 
   // Per-split distance status relative to the GPX total.
   // "over"       → this split's cumulative distance exceeds the GPX total (red)
@@ -1180,576 +1250,666 @@ export default function CourseForm() {
   }, [allErrors]);
 
   return (
-    <FieldErrorContext.Provider value={visibleErrors}>
-      <div className="course-form" onBlur={handleBlur}>
-        <div className="title-row">
-          <h1>
-            Cycling Pacing Calculator{" "}
-            <span className="app-version">v{__APP_VERSION__}</span>
-          </h1>
-          <div className="title-nav-buttons">
-            <div className="nav-btn-group">
+    <AllErrorsContext.Provider value={allErrors}>
+      <FieldErrorContext.Provider value={visibleErrors}>
+        <div className="course-form" onBlur={handleBlur}>
+          <div className="title-row">
+            <h1>
+              Cycling Pacing Calculator{" "}
+              <span className="app-version">v{__APP_VERSION__}</span>
+            </h1>
+            <div className="title-nav-buttons">
               <button
                 type="button"
-                className="nav-btn"
-                onClick={() => setExamplesOpen(true)}
-                title="Load a pre-built example course"
+                className="nav-btn nav-btn-legend"
+                onClick={() => setLegendOpen(true)}
+                title="Open the guide"
               >
-                <span className="nav-btn-icon">🧪</span>
-                <span className="nav-btn-label">Examples</span>
+                <span className="nav-btn-icon">📘</span>
+                <span className="nav-btn-label">Guide</span>
               </button>
-              <button
-                type="button"
-                className="nav-btn"
-                onClick={() => fileInputRef.current?.click()}
-                title="Import a previously exported JSON course"
-              >
-                <span className="nav-btn-icon">📥</span>
-                <span className="nav-btn-label">Import JSON</span>
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                style={{ display: "none" }}
-                onChange={handleImport}
-              />
-              <button
-                type="button"
-                className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
-                onClick={() => !gpxLoading && gpxFileRef.current?.click()}
-                disabled={gpxLoading}
-                title="Load a GPX track file for elevation profiles and nearby stops"
-              >
-                {gpxLoading ? (
-                  <>
-                    <span className="btn-spinner btn-spinner-sm" /> Parsing…
-                  </>
-                ) : (
-                  <>
-                    <span className="nav-btn-icon">🗺️</span>
-                    <span className="nav-btn-label">Load GPX</span>
-                  </>
-                )}
-              </button>
-              <input
-                ref={gpxFileRef}
-                type="file"
-                accept=".gpx"
-                style={{ display: "none" }}
-                onChange={handleGpxLoad}
-              />
-            </div>
-            <button
-              type="button"
-              className="nav-btn nav-btn-legend"
-              onClick={() => setLegendOpen(true)}
-              title="Open the guide"
-            >
-              <span className="nav-btn-icon">❓</span>
-              <span className="nav-btn-label">Guide</span>
-            </button>
-          </div>
-        </div>
-        <p className="app-description">
-          Plan multi-day cycling events with detailed pacing, rest stops, and
-          time estimates. Define segments and splits with custom speeds, decay
-          rates, sub-split strategies, and rest stop open hours. The calculator
-          projects arrival times, checks them against business hours, and
-          supports timezone-aware scheduling across regions.
-        </p>
-        <Suspense fallback={null}>
-          <LegendModal open={legendOpen} onClose={() => setLegendOpen(false)} />
-          <ExampleModal
-            open={examplesOpen}
-            onClose={() => setExamplesOpen(false)}
-            examples={EXAMPLES}
-            onSelect={handleLoadExample}
-          />
-        </Suspense>
-
-        {/* GPX banner */}
-        {gpxFileName && gpxLoading && (
-          <div className="gpx-file-field gpx-file-field-loading">
-            <div className="gpx-file-meta">
-              <span className="gpx-file-label gpx-label-loading">
-                <span className="btn-spinner btn-spinner-sm" /> Parsing GPX
-              </span>
-              <span className="gpx-file-name">{gpxFileName}</span>
-              <span className="gpx-file-stats gpx-stats-loading">
-                Reading track points…
-              </span>
-            </div>
-          </div>
-        )}
-        {gpxFileName && gpxTrack && !gpxLoading && (
-          <div className="gpx-file-field">
-            <div className="gpx-file-meta">
-              <span className="gpx-file-label">🗺 GPX route</span>
-              <span className="gpx-file-name">{gpxFileName}</span>
-              <span className="gpx-file-stats">
-                {form.unitSystem === "imperial"
-                  ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
-                  : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
-                {" · "}
-                {form.unitSystem === "imperial"
-                  ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
-                  : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
-                {" · "}
-                {gpxTrack.length.toLocaleString()} pts
-              </span>
-            </div>
-            <button
-              type="button"
-              className="gpx-file-remove"
-              onClick={handleGpxClear}
-              aria-label="Remove GPX route"
-            >
-              Remove
-            </button>
-          </div>
-        )}
-
-        {gpxMissingWarning && (
-          <div className="gpx-missing-warning">
-            <span>⚠ {gpxMissingWarning}</span>
-            <button
-              type="button"
-              className="gpx-missing-dismiss"
-              onClick={() => setGpxMissingWarning(null)}
-              aria-label="Dismiss warning"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        <h2>Course Settings</h2>
-        {/* Course Settings Card */}
-        <div className="segment-form course-settings-card">
-          <div
-            className="segment-header"
-            onClick={() => {
-              if (!isEditingCourseName) setCourseCollapsed((c) => !c);
-            }}
-          >
-            <span className="collapse-icon" style={{ color: "#4361ee" }}>
-              {courseCollapsed ? "▶" : "▼"}
-            </span>
-            <div className="split-header-left">
-              <div className="split-header-titlerow">
-                {isEditingCourseName ? (
-                  <input
-                    ref={courseNameInputRef}
-                    className="split-header-name-input"
-                    type="text"
-                    value={form.name ?? ""}
-                    placeholder="Course name (e.g. Mishigami 2025)"
-                    style={{ fontSize: "0.95rem" }}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => update({ name: e.target.value })}
-                    onBlur={() => setIsEditingCourseName(false)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === "Escape") {
-                        setIsEditingCourseName(false);
-                        e.preventDefault();
-                      }
-                    }}
-                  />
-                ) : (
-                  <span
-                    className="split-header-title split-header-title--editable"
-                    style={{ fontSize: "0.95rem" }}
-                    title="Click to rename"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsEditingCourseName(true);
-                      setTimeout(() => courseNameInputRef.current?.focus(), 0);
-                    }}
-                  >
-                    {form.name?.trim() || "Course"}
-                  </span>
-                )}
+              <div className="nav-btn-group">
+                <button
+                  type="button"
+                  className="nav-btn"
+                  onClick={() => setExamplesOpen(true)}
+                  title="Load a pre-built example course"
+                >
+                  <span className="nav-btn-icon">🧪</span>
+                  <span className="nav-btn-label">Examples</span>
+                </button>
+                <button
+                  type="button"
+                  className="nav-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Import a previously exported JSON course"
+                >
+                  <span className="nav-btn-icon">📥</span>
+                  <span className="nav-btn-label">Import JSON</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  style={{ display: "none" }}
+                  onChange={handleImport}
+                />
+                <button
+                  type="button"
+                  className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
+                  onClick={() => !gpxLoading && gpxFileRef.current?.click()}
+                  disabled={gpxLoading}
+                  title="Load a GPX track file for elevation profiles and nearby stops"
+                >
+                  {gpxLoading ? (
+                    <>
+                      <span className="btn-spinner btn-spinner-sm" /> Parsing…
+                    </>
+                  ) : (
+                    <>
+                      <span className="nav-btn-icon">🗺️</span>
+                      <span className="nav-btn-label">Load GPX</span>
+                    </>
+                  )}
+                </button>
+                <input
+                  ref={gpxFileRef}
+                  type="file"
+                  accept=".gpx"
+                  style={{ display: "none" }}
+                  onChange={handleGpxLoad}
+                />
               </div>
             </div>
+          </div>
+          <p className="app-description">
+            Plan multi-day cycling events with detailed pacing, rest stops, and
+            time estimates. Define segments and splits with custom speeds, decay
+            rates, sub-split strategies, and rest stop open hours. The
+            calculator projects arrival times, checks them against business
+            hours, and supports timezone-aware scheduling across regions.
+          </p>
+          <Suspense fallback={null}>
+            <LegendModal
+              open={legendOpen}
+              onClose={() => setLegendOpen(false)}
+            />
+            <ExampleModal
+              open={examplesOpen}
+              onClose={() => setExamplesOpen(false)}
+              examples={EXAMPLES}
+              onSelect={handleLoadExample}
+            />
+            {criteriaModalOpen && (
+              <FindNearbyModal
+                unitSystem={form.unitSystem}
+                onClose={() => setCriteriaModalOpen(false)}
+              />
+            )}
+          </Suspense>
+
+          {/* GPX banner */}
+          {gpxFileName && gpxLoading && (
+            <div className="gpx-file-field gpx-file-field-loading">
+              <div className="gpx-file-meta">
+                <span className="gpx-file-label gpx-label-loading">
+                  <span className="btn-spinner btn-spinner-sm" /> Parsing GPX
+                </span>
+                <span className="gpx-file-name">{gpxFileName}</span>
+                <span className="gpx-file-stats gpx-stats-loading">
+                  Reading track points…
+                </span>
+              </div>
+            </div>
+          )}
+          {gpxFileName && gpxTrack && !gpxLoading && (
+            <div className="gpx-file-field">
+              <div className="gpx-file-meta">
+                <span className="gpx-file-label">🗺 GPX route</span>
+                <span className="gpx-file-name">{gpxFileName}</span>
+                <span className="gpx-file-stats">
+                  {form.unitSystem === "imperial"
+                    ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
+                    : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
+                  {" · "}
+                  {form.unitSystem === "imperial"
+                    ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
+                    : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
+                  {" · "}
+                  {gpxTrack.length.toLocaleString()} pts
+                </span>
+              </div>
+              <button
+                type="button"
+                className="gpx-file-remove"
+                onClick={handleGpxClear}
+                aria-label="Remove GPX route"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          {gpxMissingWarning && (
+            <div className="gpx-missing-warning">
+              <span>⚠ {gpxMissingWarning}</span>
+              <button
+                type="button"
+                className="gpx-missing-dismiss"
+                onClick={() => setGpxMissingWarning(null)}
+                aria-label="Dismiss warning"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          <h2>Course Settings</h2>
+          {/* Course Settings Card */}
+          <div className="segment-form course-settings-card">
             <div
-              className="course-header-actions"
-              onClick={(e) => e.stopPropagation()}
+              className="segment-header"
+              onClick={() => {
+                if (!isEditingCourseName) setCourseCollapsed((c) => !c);
+              }}
             >
-              <button
-                type="button"
-                className="segments-toggle-btn segments-toggle-btn--export"
-                onClick={handleExport}
-                disabled={Object.keys(allErrors).length > 0}
-                title={
-                  Object.keys(allErrors).length > 0
-                    ? "Fix validation errors before exporting"
-                    : "Export course configuration as JSON"
-                }
-              >
-                📁 Export
-              </button>
-              <button
-                className="segments-toggle-btn segments-toggle-btn--reset"
-                type="button"
-                onClick={handleReset}
-                title="Reset all form fields to defaults"
-              >
-                ↺ Reset
-              </button>
-            </div>
-          </div>
-
-          {!courseCollapsed && (
-            <div className="segment-body">
-              {/* Unit & Mode Toggles */}
-              <div className="toggle-row--inline">
-                <div className="toggle-row-label-group">
-                  <span id="units-label">Units</span>
-                </div>
-                <div
-                  className="toggle-group"
-                  role="group"
-                  aria-labelledby="units-label"
-                >
-                  <button
-                    type="button"
-                    className={form.unitSystem === "imperial" ? "active" : ""}
-                    onClick={() => update({ unitSystem: "imperial" })}
-                  >
-                    Imperial ({speedLabel("imperial")},{" "}
-                    {distanceLabel("imperial")})
-                  </button>
-                  <button
-                    type="button"
-                    className={form.unitSystem === "metric" ? "active" : ""}
-                    onClick={() => update({ unitSystem: "metric" })}
-                  >
-                    Metric ({speedLabel("metric")}, {distanceLabel("metric")})
-                  </button>
-                </div>
-              </div>
-
-              <div className="toggle-row--inline">
-                <div className="toggle-row-label-group">
-                  <span id="mode-label">Mode</span>
-                  <span className="hint">
-                    {form.mode === "distance"
-                      ? "Distance values define the length of each split."
-                      : "Distance values define course mile-markers."}
-                  </span>
-                </div>
-                <div
-                  className="toggle-group"
-                  role="group"
-                  aria-labelledby="mode-label"
-                >
-                  <button
-                    type="button"
-                    className={form.mode === "distance" ? "active" : ""}
-                    onClick={() => update({ mode: "distance" })}
-                  >
-                    Split Distance
-                  </button>
-                  <button
-                    type="button"
-                    className={form.mode === "target_distance" ? "active" : ""}
-                    onClick={() => update({ mode: "target_distance" })}
-                  >
-                    Target Distance
-                  </button>
-                </div>
-              </div>
-
-              {/* Course-level inputs */}
-              <div className="fields-grid">
-                <div className="field">
-                  <label htmlFor="course-init-speed">Speed ({sLabel}) *</label>
-                  <NumberInput
-                    id="course-init-speed"
-                    step="any"
-                    min="0"
-                    value={form.init_moving_speed}
-                    onChange={(v) => update({ init_moving_speed: v })}
-                    placeholder="e.g. 16"
-                  />
-                  <FieldError fieldId="course-init-speed" />
-                </div>
-
-                <div className="field">
-                  <label htmlFor="course-min-speed">
-                    Min Speed ({sLabel}) *
-                  </label>
-                  <NumberInput
-                    id="course-min-speed"
-                    step="1"
-                    min="0"
-                    value={form.min_moving_speed}
-                    onChange={(v) => update({ min_moving_speed: v })}
-                    placeholder="e.g. 14"
-                  />
-                  <FieldError fieldId="course-min-speed" />
-                </div>
-
-                <div className="field">
-                  <label htmlFor="course-dtr">Down Time Ratio *</label>
-                  <NumberInput
-                    id="course-dtr"
-                    step="0.05"
-                    min="0"
-                    max="1"
-                    value={form.down_time_ratio}
-                    onChange={(v) => update({ down_time_ratio: v })}
-                    placeholder="e.g. 0.05"
-                  />
-                  <FieldError fieldId="course-dtr" />
-                </div>
-
-                <div className="field">
-                  <label
-                    htmlFor="course-split-delta"
-                    title="Per-split speed change: positive builds, negative fades."
-                  >
-                    Speed ∆ ({sLabel}) *
-                  </label>
-                  <NumberInput
-                    id="course-split-delta"
-                    step="0.05"
-                    value={form.split_delta}
-                    onChange={(v) => update({ split_delta: v })}
-                    placeholder="0"
-                  />
-                  <FieldError fieldId="course-split-delta" />
-                </div>
-
-                <div className="field span-two-columns">
-                  <label htmlFor="course-start-time">Start Time *</label>
-                  <input
-                    id="course-start-time"
-                    type="datetime-local"
-                    value={form.start_time}
-                    onChange={(e) => update({ start_time: e.target.value })}
-                  />
-                </div>
-
-                <div className="field span-two-columns">
-                  <label htmlFor="course-tz">Timezone</label>
-                  <TimezoneSelect
-                    id="course-tz"
-                    value={form.timezone}
-                    onChange={(tz) => update({ timezone: tz })}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="course-seg-count"># of Segments</label>
-                  <NumberInput
-                    id="course-seg-count"
-                    min="1"
-                    step="1"
-                    value={form.segmentCount}
-                    onChange={(v) => handleSegmentCountChange(v)}
-                    placeholder="1"
-                  />
-                  <FieldError fieldId="course-seg-count" />
-                </div>
-              </div>
-
-              {/* Segments Toolbar */}
-              <div className="segments-toolbar">
-                <div className="segments-toolbar-left">
-                  <button
-                    className="segments-toggle-btn"
-                    onClick={() => setCollapseAllSignal((s) => s + 1)}
-                    title="Collapse all segments and their splits"
-                  >
-                    ▶ Collapse
-                  </button>
-                  <button
-                    className="segments-toggle-btn"
-                    onClick={() => setExpandAllSignal((s) => s + 1)}
-                    title="Expand all segments"
-                  >
-                    ▼ Expand
-                  </button>
-                  <span className="segments-toolbar-sep" />
-                  <button
-                    type="button"
-                    className="segments-toggle-btn"
-                    onClick={() => setQuickSetup((q) => ({ ...q, open: true }))}
-                    title="Quickly build or append segments with uniform split distances"
-                  >
-                    ⚡ Quick Setup
-                  </button>
-                  {gpxStartCity && (
-                    <button
-                      type="button"
-                      className="segments-toggle-btn"
-                      onClick={handleAutoName}
-                      title="Name all splits and segments using their nearest cities"
+              <span className="collapse-icon">
+                {courseCollapsed ? "▶" : "▼"}
+              </span>
+              <div className="split-header-left">
+                <div className="split-header-titlerow">
+                  {isEditingCourseName ? (
+                    <input
+                      ref={courseNameInputRef}
+                      className="split-header-name-input"
+                      type="text"
+                      value={form.name ?? ""}
+                      placeholder="Course name (e.g. Mishigami 2025)"
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => update({ name: e.target.value })}
+                      onBlur={() => setIsEditingCourseName(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === "Escape") {
+                          setIsEditingCourseName(false);
+                          e.preventDefault();
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="split-header-title split-header-title--editable"
+                      title="Click to rename"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsEditingCourseName(true);
+                        setTimeout(
+                          () => courseNameInputRef.current?.focus(),
+                          0,
+                        );
+                      }}
                     >
-                      🏷️ Auto-Name
-                    </button>
+                      {form.name?.trim() || "Course"}
+                    </span>
                   )}
                 </div>
               </div>
-              <div className="segments-container">
-                {form.segments.map((seg, i) => (
-                  <SegmentFormComponent
-                    key={i}
-                    segIndex={i}
-                    value={seg}
-                    onChange={(s) => updateSegment(i, s)}
-                    unitSystem={form.unitSystem}
-                    mode={form.mode}
-                    gpxProfiles={gpxProfiles?.[i] ?? null}
-                    gpxTrack={gpxTrack}
-                    courseTz={form.timezone}
-                    isLastSeg={i === form.segments.length - 1}
-                    splitStatuses={splitGpxStatuses[i]}
-                    cityLabels={cityLabels[i]}
-                    cityFetching={cityFetching[i]}
-                    cumulativeDists={splitCumulativeDists?.[i] ?? undefined}
-                    segmentStartDist={
-                      i === 0
-                        ? 0
-                        : (splitCumulativeDists?.[i - 1]?.[
-                            form.segments[i - 1].splits.length - 1
-                          ] ?? null)
-                    }
-                    gpxTotalDist={gpxTotalDistUser}
-                    segmentStartCity={
-                      i === 0
-                        ? gpxStartCity
-                        : (cityLabels[i - 1]?.[
-                            form.segments[i - 1].splits.length - 1
-                          ] ?? null)
-                    }
-                    expandSignal={(() => {
-                      // Any nav signal targeting a split in this segment should expand it
-                      return (
-                        form.segments[i].splits.reduce((max, _, j) => {
-                          const k = `${i}-${j}`;
-                          return Math.max(max, mapNavSignals[k] ?? 0);
-                        }, 0) || undefined
-                      );
-                    })()}
-                    expandSplitIdx={(() => {
-                      // Find which split has the most recent signal for this segment
-                      let best = -1;
-                      let bestVal = 0;
-                      form.segments[i].splits.forEach((_, j) => {
-                        const v = mapNavSignals[`${i}-${j}`] ?? 0;
-                        if (v > bestVal) {
-                          bestVal = v;
-                          best = j;
-                        }
-                      });
-                      return best;
-                    })()}
-                    collapseSignal={collapseAllSignal || undefined}
-                    expandAllSignal={expandAllSignal || undefined}
-                  />
-                ))}
+              <div
+                className="course-header-actions"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="segments-toggle-btn segments-toggle-btn--export"
+                  onClick={handleExport}
+                  disabled={Object.keys(allErrors).length > 0}
+                  title={
+                    Object.keys(allErrors).length > 0
+                      ? "Fix validation errors before exporting"
+                      : "Export course configuration as JSON"
+                  }
+                >
+                  📁 Export
+                </button>
+                <button
+                  className="segments-toggle-btn segments-toggle-btn--reset"
+                  type="button"
+                  onClick={handleReset}
+                  title="Reset all form fields to defaults"
+                >
+                  ↺ Reset
+                </button>
               </div>
+            </div>
+
+            {!courseCollapsed && (
+              <div className="segment-body">
+                {/* Unit & Mode Toggles */}
+                <div className="toggle-row--inline">
+                  <div className="toggle-row-label-group">
+                    <span id="units-label">Units</span>
+                  </div>
+                  <div
+                    className="toggle-group"
+                    role="group"
+                    aria-labelledby="units-label"
+                  >
+                    <button
+                      type="button"
+                      className={form.unitSystem === "imperial" ? "active" : ""}
+                      onClick={() => update({ unitSystem: "imperial" })}
+                    >
+                      Imperial
+                    </button>
+                    <button
+                      type="button"
+                      className={form.unitSystem === "metric" ? "active" : ""}
+                      onClick={() => update({ unitSystem: "metric" })}
+                    >
+                      Metric
+                    </button>
+                  </div>
+                </div>
+
+                <div className="toggle-row--inline">
+                  <div className="toggle-row-label-group">
+                    <span id="mode-label">Distance Mode</span>
+                    <span className="hint">
+                      {form.mode === "distance"
+                        ? "Distance values define the length of each split."
+                        : "Distance values define course mile-markers."}
+                    </span>
+                  </div>
+                  <div
+                    className="toggle-group"
+                    role="group"
+                    aria-labelledby="mode-label"
+                  >
+                    <button
+                      type="button"
+                      className={form.mode === "distance" ? "active" : ""}
+                      onClick={() => update({ mode: "distance" })}
+                    >
+                      Split
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        form.mode === "target_distance" ? "active" : ""
+                      }
+                      onClick={() => update({ mode: "target_distance" })}
+                    >
+                      Target
+                    </button>
+                  </div>
+                </div>
+
+                {/* Course-level inputs */}
+                <div className="fields-grid">
+                  <div className="field">
+                    <label htmlFor="course-init-speed">
+                      Speed ({sLabel}) *
+                    </label>
+                    <NumberInput
+                      id="course-init-speed"
+                      step="any"
+                      min="0"
+                      value={form.init_moving_speed}
+                      onChange={(v) => update({ init_moving_speed: v })}
+                      placeholder="e.g. 16"
+                    />
+                    <FieldError fieldId="course-init-speed" />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="course-min-speed">
+                      Min Speed ({sLabel}) *
+                    </label>
+                    <NumberInput
+                      id="course-min-speed"
+                      step="1"
+                      min="0"
+                      value={form.min_moving_speed}
+                      onChange={(v) => update({ min_moving_speed: v })}
+                      placeholder="e.g. 14"
+                    />
+                    <FieldError fieldId="course-min-speed" />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="course-dtr">Down Time Ratio *</label>
+                    <NumberInput
+                      id="course-dtr"
+                      step="0.05"
+                      min="0"
+                      max="1"
+                      value={form.down_time_ratio}
+                      onChange={(v) => update({ down_time_ratio: v })}
+                      placeholder="e.g. 0.05"
+                    />
+                    <FieldError fieldId="course-dtr" />
+                  </div>
+
+                  <div className="field">
+                    <label
+                      htmlFor="course-split-delta"
+                      title="Per-split speed change: positive builds, negative fades."
+                    >
+                      Speed ∆ ({sLabel}) *
+                    </label>
+                    <NumberInput
+                      id="course-split-delta"
+                      step="0.05"
+                      value={form.split_delta}
+                      onChange={(v) => update({ split_delta: v })}
+                      placeholder="0"
+                    />
+                    <FieldError fieldId="course-split-delta" />
+                  </div>
+
+                  <div className="field span-two-columns">
+                    <label htmlFor="course-start-time">Start Time *</label>
+                    <input
+                      id="course-start-time"
+                      type="datetime-local"
+                      value={form.start_time}
+                      onChange={(e) => update({ start_time: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="field span-two-columns">
+                    <label htmlFor="course-tz">
+                      Timezone
+                      {detectedCourseTz &&
+                        form.timezone !== detectedCourseTz && (
+                          <button
+                            type="button"
+                            className="tz-reset-btn"
+                            title="Reset to GPS auto-detected timezone"
+                            onClick={() =>
+                              update({ timezone: detectedCourseTz })
+                            }
+                          >
+                            ✕ Reset to auto
+                          </button>
+                        )}
+                    </label>
+                    <TimezoneSelect
+                      id="course-tz"
+                      value={form.timezone}
+                      onChange={(tz) => update({ timezone: tz })}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="course-seg-count"># of Segments</label>
+                    <NumberInput
+                      id="course-seg-count"
+                      min="1"
+                      step="1"
+                      value={form.segmentCount}
+                      onChange={(v) => handleSegmentCountChange(v)}
+                      placeholder="1"
+                    />
+                    <FieldError fieldId="course-seg-count" />
+                  </div>
+                </div>
+
+                {/* Segments Toolbar */}
+                <div className="segments-toolbar">
+                  <div className="segments-toolbar-left">
+                    <button
+                      className="segments-toggle-btn"
+                      onClick={() => setCollapseAllSignal((s) => s + 1)}
+                      title="Collapse all segments and their splits"
+                    >
+                      ▶ Collapse
+                    </button>
+                    <button
+                      className="segments-toggle-btn"
+                      onClick={() => setExpandAllSignal((s) => s + 1)}
+                      title="Expand all segments"
+                    >
+                      ▼ Expand
+                    </button>
+                  </div>
+                  <div className="segments-toolbar-right">
+                    <button
+                      type="button"
+                      className="segments-toggle-btn"
+                      onClick={() =>
+                        setQuickSetup((q) => ({ ...q, open: true }))
+                      }
+                      title="Quickly build or append segments with uniform split distances"
+                    >
+                      ⚡ Quick Setup
+                    </button>
+                    {gpxStartCity && (
+                      <button
+                        type="button"
+                        className="segments-toggle-btn"
+                        onClick={handleAutoName}
+                        title="Name all splits and segments using their nearest cities"
+                      >
+                        🏷️ Auto-Name
+                      </button>
+                    )}
+                    <span className="segments-toolbar-sep" />
+                    <button
+                      type="button"
+                      className="segments-toggle-btn"
+                      onClick={() => setCriteriaModalOpen(true)}
+                      title="Configure stop types and search radius used by all split nearby-stop searches"
+                    >
+                      🔍 Stop Criteria
+                    </button>
+                  </div>
+                </div>
+                <div className="segments-container">
+                  {form.segments.map((seg, i) => (
+                    <SegmentFormComponent
+                      key={i}
+                      segIndex={i}
+                      value={seg}
+                      onChange={(s) => updateSegment(i, s)}
+                      unitSystem={form.unitSystem}
+                      mode={form.mode}
+                      gpxProfiles={gpxProfiles?.[i] ?? null}
+                      gpxTrack={gpxTrack}
+                      courseTz={form.timezone}
+                      isLastSeg={i === form.segments.length - 1}
+                      splitStatuses={splitGpxStatuses[i]}
+                      cityLabels={cityLabels[i]}
+                      cityFetching={cityFetching[i]}
+                      cumulativeDists={splitCumulativeDists?.[i] ?? undefined}
+                      segmentStartDist={
+                        i === 0
+                          ? 0
+                          : (splitCumulativeDists?.[i - 1]?.[
+                              form.segments[i - 1].splits.length - 1
+                            ] ?? null)
+                      }
+                      gpxTotalDist={gpxTotalDistUser}
+                      segmentStartCity={
+                        i === 0
+                          ? gpxStartCity
+                          : (cityLabels[i - 1]?.[
+                              form.segments[i - 1].splits.length - 1
+                            ] ?? null)
+                      }
+                      expandSignal={(() => {
+                        // Any nav signal targeting a split in this segment should expand it
+                        return (
+                          form.segments[i].splits.reduce((max, _, j) => {
+                            const k = `${i}-${j}`;
+                            return Math.max(max, mapNavSignals[k] ?? 0);
+                          }, 0) || undefined
+                        );
+                      })()}
+                      expandSplitIdx={(() => {
+                        // Find which split has the most recent signal for this segment
+                        let best = -1;
+                        let bestVal = 0;
+                        form.segments[i].splits.forEach((_, j) => {
+                          const v = mapNavSignals[`${i}-${j}`] ?? 0;
+                          if (v > bestVal) {
+                            bestVal = v;
+                            best = j;
+                          }
+                        });
+                        return best;
+                      })()}
+                      collapseSignal={collapseAllSignal || undefined}
+                      expandAllSignal={expandAllSignal || undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* API error */}
+          {apiError && (
+            <div className="error-banner">
+              <strong>
+                {useEngine === "client" ? "Calc Error" : "Server Error"}:
+              </strong>
+              <pre>{apiError}</pre>
             </div>
           )}
         </div>
 
-        {/* API error */}
-        {apiError && (
-          <div className="error-banner">
-            <strong>
-              {useEngine === "client" ? "Calc Error" : "Server Error"}:
-            </strong>
-            <pre>{apiError}</pre>
+        {/* Quick-setup dialog */}
+        <dialog
+          ref={quickSetupRef}
+          className="legend-modal"
+          onClose={() => setQuickSetup((q) => ({ ...q, open: false }))}
+        >
+          <div className="legend-header">
+            <h2>Quick Setup</h2>
+            <button
+              className="legend-close"
+              onClick={() => setQuickSetup((q) => ({ ...q, open: false }))}
+              aria-label="Close"
+            >
+              ✕
+            </button>
           </div>
-        )}
-      </div>
-
-      {/* Quick-setup dialog */}
-      <dialog
-        ref={quickSetupRef}
-        className="legend-modal"
-        onClose={() => setQuickSetup((q) => ({ ...q, open: false }))}
-      >
-        <div className="legend-header">
-          <h2>Quick Setup</h2>
-          <button
-            className="legend-close"
-            onClick={() => setQuickSetup((q) => ({ ...q, open: false }))}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="legend-body">
-          <p style={{ marginTop: 0, marginBottom: "1rem" }}>
-            Create segments with uniform splits in{" "}
-            <strong>Split Distance</strong> mode.
-          </p>
-          <div
-            className="fields-grid"
-            style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: "0.75rem" }}
-          >
-            <div className="field">
-              <label htmlFor="qs-segments"># Segments</label>
-              <NumberInput
-                id="qs-segments"
-                min="1"
-                step="1"
-                value={quickSetup.segments}
-                onChange={(v) => setQuickSetup((q) => ({ ...q, segments: v }))}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="qs-splits"># Splits / Segment</label>
-              <NumberInput
-                id="qs-splits"
-                min="1"
-                step="1"
-                value={quickSetup.splits}
-                onChange={(v) => setQuickSetup((q) => ({ ...q, splits: v }))}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="qs-distance">
-                Distance / Split ({distanceLabel(form.unitSystem)})
-              </label>
-              <NumberInput
-                id="qs-distance"
-                min="0"
-                step="any"
-                value={quickSetup.distance}
-                onChange={(v) => setQuickSetup((q) => ({ ...q, distance: v }))}
-                placeholder="e.g. 50"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="qs-sleep">Sleep / Segment (min)</label>
-              <NumberInput
-                id="qs-sleep"
-                min="0"
-                step="any"
-                value={quickSetup.sleep}
-                onChange={(v) => setQuickSetup((q) => ({ ...q, sleep: v }))}
-              />
-              {minutesToHms(quickSetup.sleep) && (
-                <span className="time-aside">
-                  {minutesToHms(quickSetup.sleep)}
-                </span>
-              )}
+          <div className="legend-body">
+            <p style={{ marginTop: 0, marginBottom: "1rem" }}>
+              Create segments with uniform splits in{" "}
+              <strong>Split Distance</strong> mode.
+            </p>
+            <div
+              className="fields-grid"
+              style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: "0.75rem" }}
+            >
+              <div className="field">
+                <label htmlFor="qs-segments"># Segments</label>
+                <NumberInput
+                  id="qs-segments"
+                  min="1"
+                  step="1"
+                  value={quickSetup.segments}
+                  onChange={(v) =>
+                    setQuickSetup((q) => ({ ...q, segments: v }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="qs-splits"># Splits / Segment</label>
+                <NumberInput
+                  id="qs-splits"
+                  min="1"
+                  step="1"
+                  value={quickSetup.splits}
+                  onChange={(v) => setQuickSetup((q) => ({ ...q, splits: v }))}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="qs-distance">
+                  Distance / Split ({distanceLabel(form.unitSystem)})
+                </label>
+                <NumberInput
+                  id="qs-distance"
+                  min="0"
+                  step="any"
+                  value={quickSetup.distance}
+                  onChange={(v) =>
+                    setQuickSetup((q) => ({ ...q, distance: v }))
+                  }
+                  placeholder="e.g. 50"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="qs-sleep">Sleep / Segment (min)</label>
+                <NumberInput
+                  id="qs-sleep"
+                  min="0"
+                  step="any"
+                  value={quickSetup.sleep}
+                  onChange={(v) => setQuickSetup((q) => ({ ...q, sleep: v }))}
+                />
+                {minutesToHms(quickSetup.sleep) && (
+                  <span className="time-aside">
+                    {minutesToHms(quickSetup.sleep)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="legend-footer">
-          <button
-            type="button"
-            className="action-btn"
-            onClick={() => setQuickSetup((q) => ({ ...q, open: false }))}
-          >
-            Cancel
-          </button>
-          {form.segments.length > 0 &&
-            (() => {
+          <div className="legend-footer">
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => setQuickSetup((q) => ({ ...q, open: false }))}
+            >
+              Cancel
+            </button>
+            {form.segments.length > 0 &&
+              (() => {
+                const nSeg = parseInt(quickSetup.segments, 10);
+                const nSpl = parseInt(quickSetup.splits, 10);
+                const dist = parseFloat(quickSetup.distance);
+                const sleepVal =
+                  quickSetup.sleep.trim() === "" ? "0" : quickSetup.sleep;
+                const valid =
+                  !isNaN(nSeg) &&
+                  nSeg > 0 &&
+                  !isNaN(nSpl) &&
+                  nSpl > 0 &&
+                  !isNaN(dist) &&
+                  dist > 0;
+                return (
+                  <button
+                    type="button"
+                    className="action-btn"
+                    disabled={!valid}
+                    title={valid ? undefined : "Fill in all fields to continue"}
+                    onClick={() => {
+                      const newSegs: SegmentFormState[] = Array.from(
+                        { length: nSeg },
+                        () => ({
+                          ...makeDefaultSegment(),
+                          sleep_time: sleepVal,
+                          splits: Array.from({ length: nSpl }, () => ({
+                            ...makeDefaultSplit(),
+                            distance: String(dist),
+                          })),
+                          splitCount: String(nSpl),
+                        }),
+                      );
+                      setForm((prev) => ({
+                        ...prev,
+                        mode: "distance",
+                        segmentCount: String(prev.segments.length + nSeg),
+                        segments: [...prev.segments, ...newSegs],
+                      }));
+                      setQuickSetup((q) => ({ ...q, open: false }));
+                    }}
+                  >
+                    Append Segments
+                  </button>
+                );
+              })()}
+            {(() => {
               const nSeg = parseInt(quickSetup.segments, 10);
               const nSpl = parseInt(quickSetup.splits, 10);
               const dist = parseFloat(quickSetup.distance);
@@ -1765,7 +1925,7 @@ export default function CourseForm() {
               return (
                 <button
                   type="button"
-                  className="action-btn"
+                  className="action-btn action-btn-export"
                   disabled={!valid}
                   title={valid ? undefined : "Fill in all fields to continue"}
                   onClick={() => {
@@ -1784,168 +1944,268 @@ export default function CourseForm() {
                     setForm((prev) => ({
                       ...prev,
                       mode: "distance",
-                      segmentCount: String(prev.segments.length + nSeg),
-                      segments: [...prev.segments, ...newSegs],
+                      segmentCount: String(nSeg),
+                      segments: newSegs,
                     }));
                     setQuickSetup((q) => ({ ...q, open: false }));
                   }}
                 >
-                  Append Segments
+                  Build Segments
                 </button>
               );
             })()}
-          {(() => {
-            const nSeg = parseInt(quickSetup.segments, 10);
-            const nSpl = parseInt(quickSetup.splits, 10);
-            const dist = parseFloat(quickSetup.distance);
-            const sleepVal =
-              quickSetup.sleep.trim() === "" ? "0" : quickSetup.sleep;
-            const valid =
-              !isNaN(nSeg) &&
-              nSeg > 0 &&
-              !isNaN(nSpl) &&
-              nSpl > 0 &&
-              !isNaN(dist) &&
-              dist > 0;
-            return (
-              <button
-                type="button"
-                className="action-btn action-btn-export"
-                disabled={!valid}
-                title={valid ? undefined : "Fill in all fields to continue"}
-                onClick={() => {
-                  const newSegs: SegmentFormState[] = Array.from(
-                    { length: nSeg },
-                    () => ({
-                      ...makeDefaultSegment(),
-                      sleep_time: sleepVal,
-                      splits: Array.from({ length: nSpl }, () => ({
-                        ...makeDefaultSplit(),
-                        distance: String(dist),
-                      })),
-                      splitCount: String(nSpl),
-                    }),
-                  );
-                  setForm((prev) => ({
-                    ...prev,
-                    mode: "distance",
-                    segmentCount: String(nSeg),
-                    segments: newSegs,
-                  }));
-                  setQuickSetup((q) => ({ ...q, open: false }));
+          </div>
+        </dialog>
+
+        {/* Auto-name dialog */}
+        <dialog
+          ref={autoNameDialogRef}
+          className="legend-modal"
+          onClose={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
+        >
+          <div className="legend-header">
+            <h2>Auto-Name by Cities</h2>
+            <button
+              className="legend-close"
+              onClick={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="legend-body">
+            {/* Prefix template inputs */}
+            <div className="auto-name-prefix-section">
+              <p
+                style={{
+                  marginTop: 0,
+                  marginBottom: "0.6rem",
+                  fontSize: "0.85rem",
+                  color: "#aaa",
                 }}
               >
-                Build Segments
-              </button>
-            );
-          })()}
-        </div>
-      </dialog>
+                Optionally add a prefix to each name. Available tokens:{" "}
+                <code className="autoname-token">{"{segment_num}"}</code>{" "}
+                <code className="autoname-token">{"{split_num}"}</code>{" "}
+                <code className="autoname-token">{"{from_city}"}</code>{" "}
+                <code className="autoname-token">{"{to_city}"}</code>{" "}
+                <code className="autoname-token">{"{from_state}"}</code>{" "}
+                <code className="autoname-token">{"{to_state}"}</code>
+              </p>
+              <div className="auto-name-prefix-rows">
+                <div className="auto-name-prefix-row">
+                  <label htmlFor="an-seg-prefix">Segment prefix</label>
+                  <input
+                    id="an-seg-prefix"
+                    type="text"
+                    className="auto-name-prefix-input"
+                    value={autoNameDialog.segmentPrefix}
+                    onChange={(e) =>
+                      setAutoNameDialog((d) => ({
+                        ...d,
+                        segmentPrefix: e.target.value,
+                      }))
+                    }
+                    placeholder={`e.g. Day {segment_num}:`}
+                  />
+                  {autoNameDialog.segmentPrefix.trim() && (
+                    <span className="auto-name-prefix-preview">
+                      →{" "}
+                      <em>
+                        {autoNameDialog.segmentPrefix
+                          .replace(/\{segment_num\}/g, "1")
+                          .replace(/\{from_city\}/g, "Chicago")
+                          .replace(/\{to_city\}/g, "Milwaukee")
+                          .replace(/\{from_state\}/g, "IL")
+                          .replace(/\{to_state\}/g, "WI")
+                          .trimEnd()}
+                        {autoNameDialog.includeCityRoute &&
+                          " Chicago → Milwaukee"}
+                      </em>
+                    </span>
+                  )}
+                </div>
+                <div className="auto-name-prefix-row">
+                  <label htmlFor="an-spl-prefix">Split prefix</label>
+                  <input
+                    id="an-spl-prefix"
+                    type="text"
+                    className="auto-name-prefix-input"
+                    value={autoNameDialog.splitPrefix}
+                    onChange={(e) =>
+                      setAutoNameDialog((d) => ({
+                        ...d,
+                        splitPrefix: e.target.value,
+                      }))
+                    }
+                    placeholder={`e.g. D{segment_num}.S{split_num}`}
+                  />
+                  {autoNameDialog.splitPrefix.trim() && (
+                    <span className="auto-name-prefix-preview">
+                      →{" "}
+                      <em>
+                        {autoNameDialog.splitPrefix
+                          .replace(/\{segment_num\}/g, "1")
+                          .replace(/\{split_num\}/g, "1")
+                          .replace(/\{from_city\}/g, "Chicago")
+                          .replace(/\{to_city\}/g, "Milwaukee")
+                          .replace(/\{from_state\}/g, "IL")
+                          .replace(/\{to_state\}/g, "WI")
+                          .trimEnd()}
+                        {autoNameDialog.includeCityRoute &&
+                          " Chicago → Milwaukee"}
+                      </em>
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* City route toggle */}
+              <label className="auto-name-city-toggle">
+                <input
+                  type="checkbox"
+                  checked={autoNameDialog.includeCityRoute}
+                  onChange={(e) =>
+                    setAutoNameDialog((d) => ({
+                      ...d,
+                      includeCityRoute: e.target.checked,
+                    }))
+                  }
+                />
+                <span>Append "City A → City B" route</span>
+              </label>
+            </div>
 
-      {/* Auto-name confirmation dialog */}
-      <dialog
-        ref={autoNameDialogRef}
-        className="legend-modal"
-        onClose={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
-      >
-        <div className="legend-header">
-          <h2>Auto-Name by Cities</h2>
-          <button
-            className="legend-close"
-            onClick={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="legend-body">
-          <p style={{ marginTop: 0 }}>
-            The following segments and splits already have names. How would you
-            like to proceed?
-          </p>
-          <ul style={{ paddingLeft: "1.25rem", margin: "0 0 0.5rem" }}>
-            {autoNameDialog.namedItems.map((item) => (
-              <li key={item} style={{ marginBottom: "0.25rem" }}>
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="legend-footer">
-          <button
-            type="button"
-            className="action-btn"
-            onClick={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="action-btn"
-            onClick={() => {
-              setAutoNameDialog((d) => ({ ...d, open: false }));
-              applyAutoName(false);
-            }}
-          >
-            Rename Unnamed Only
-          </button>
-          <button
-            type="button"
-            className="action-btn action-btn-export"
-            onClick={() => {
-              setAutoNameDialog((d) => ({ ...d, open: false }));
-              applyAutoName(true);
-            }}
-          >
-            Rename All
-          </button>
-        </div>
-      </dialog>
-
-      {/* Live course map — shown as soon as a GPX and at least one distance are set */}
-      {gpxTrack && splitBoundariesKm && (
-        <div className="course-map-collapsible">
-          <div
-            className="course-map-collapse-header"
-            onClick={() => setMapCollapsed((c) => !c)}
-          >
-            <span className="collapse-icon-sm">{mapCollapsed ? "▶" : "▼"}</span>
-            <span>Course Map</span>
+            {/* Existing-names warning (only when items present) */}
+            {autoNameDialog.namedItems.length > 0 && (
+              <>
+                <p
+                  style={{
+                    margin: "0.75rem 0 0.4rem",
+                    fontSize: "0.85rem",
+                    color: "#aaa",
+                  }}
+                >
+                  The following segments and splits already have names:
+                </p>
+                <ul style={{ paddingLeft: "1.25rem", margin: "0 0 0.5rem" }}>
+                  {autoNameDialog.namedItems.map((item) => (
+                    <li
+                      key={item}
+                      style={{ marginBottom: "0.25rem", fontSize: "0.82rem" }}
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </div>
-          {!mapCollapsed && (
-            <Suspense
-              fallback={<div className="map-loading">Loading map…</div>}
+          <div className="legend-footer">
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
             >
-              <CourseMap
-                gpxTrack={gpxTrack}
-                splitBoundariesKm={splitBoundariesKm}
-                formSegments={form.segments}
-                unitSystem={form.unitSystem}
-                onMarkerClick={handleMapMarkerClick}
-              />
-            </Suspense>
-          )}
-        </div>
-      )}
+              Cancel
+            </button>
+            {autoNameDialog.namedItems.length > 0 && (
+              <button
+                type="button"
+                className="action-btn"
+                onClick={() => {
+                  const { segmentPrefix, splitPrefix, includeCityRoute } =
+                    autoNameDialog;
+                  setAutoNameDialog((d) => ({ ...d, open: false }));
+                  applyAutoName(
+                    false,
+                    segmentPrefix,
+                    splitPrefix,
+                    includeCityRoute,
+                  );
+                }}
+              >
+                Rename Unnamed Only
+              </button>
+            )}
+            <button
+              type="button"
+              className="action-btn action-btn-export"
+              onClick={() => {
+                const { segmentPrefix, splitPrefix, includeCityRoute } =
+                  autoNameDialog;
+                setAutoNameDialog((d) => ({ ...d, open: false }));
+                applyAutoName(
+                  true,
+                  segmentPrefix,
+                  splitPrefix,
+                  includeCityRoute,
+                );
+              }}
+            >
+              {autoNameDialog.namedItems.length > 0 ? "Rename All" : "Apply"}
+            </button>
+          </div>
+        </dialog>
 
-      {/* Results — outside course-form to avoid re-layout on form state changes */}
-      {result && (
-        <Suspense
-          fallback={<div className="map-loading">Loading results…</div>}
-        >
-          <ResultsView
-            result={result}
-            unitSystem={form.unitSystem}
-            formSegments={form.segments}
-            courseTz={form.timezone}
-            courseName={form.name?.trim() || undefined}
-            cityLabels={cityLabels}
-            gpxTrack={gpxTrack}
-            splitBoundariesKm={splitBoundariesKm}
-            gpxProfiles={gpxProfiles}
-          />
-        </Suspense>
-      )}
-    </FieldErrorContext.Provider>
+        {/* Live course map — shown as soon as a GPX and at least one distance are set */}
+        {gpxTrack && splitBoundariesKm && (
+          <div className="course-map-collapsible">
+            <div
+              className="course-map-collapse-header"
+              onClick={() => setMapCollapsed((c) => !c)}
+            >
+              <span className="collapse-icon">{mapCollapsed ? "▶" : "▼"}</span>
+              <span>Course Map</span>
+            </div>
+            {!mapCollapsed && (
+              <Suspense
+                fallback={<div className="map-loading">Loading map…</div>}
+              >
+                <CourseMap
+                  gpxTrack={gpxTrack}
+                  splitBoundariesKm={splitBoundariesKm}
+                  formSegments={form.segments}
+                  unitSystem={form.unitSystem}
+                  gpxProfiles={gpxProfiles}
+                  onMarkerClick={handleMapMarkerClick}
+                />
+              </Suspense>
+            )}
+          </div>
+        )}
+
+        {/* Results — outside course-form to avoid re-layout on form state changes */}
+        {result && (
+          <div className="results-collapsible">
+            <div
+              className="results-collapse-header"
+              onClick={() => setResultsCollapsed((c) => !c)}
+            >
+              <span className="collapse-icon">
+                {resultsCollapsed ? "▶" : "▼"}
+              </span>
+              <span>Results</span>
+            </div>
+            {!resultsCollapsed && (
+              <Suspense
+                fallback={<div className="map-loading">Loading results…</div>}
+              >
+                <ResultsView
+                  result={result}
+                  unitSystem={form.unitSystem}
+                  formSegments={form.segments}
+                  courseTz={form.timezone}
+                  courseName={form.name?.trim() || undefined}
+                  cityLabels={cityLabels}
+                  gpxTrack={gpxTrack}
+                  splitBoundariesKm={splitBoundariesKm}
+                  gpxProfiles={gpxProfiles}
+                />
+              </Suspense>
+            )}
+          </div>
+        )}
+      </FieldErrorContext.Provider>
+    </AllErrorsContext.Provider>
   );
 }

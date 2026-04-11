@@ -96,13 +96,20 @@ function joinList(items: string[]): string {
 }
 
 function fmtTime(iso: string, tz: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    weekday: "long",
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: tz,
+  });
+  const time = d.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
     timeZone: tz,
     timeZoneName: "short",
   });
+  return `${date} at ${time}`;
 }
 
 /** Return the short timezone abbreviation for an ISO timestamp in a given IANA tz. */
@@ -115,15 +122,18 @@ function tzAbbr(iso: string, tz: string): string {
 }
 
 /**
- * Collect unique timezone transitions within a segment's splits.
- * Returns pairs like [["CDT", "ET"], ...] for each transition boundary.
+ * Build the ordered, adjacent-deduplicated list of timezone abbreviations
+ * encountered across a segment's splits (using actual split end times for
+ * DST-accurate abbreviations).  Returns e.g. ["CDT", "MDT", "CDT"] if the
+ * segment transitions through multiple zones.  Returns a single-element list
+ * when all splits share one zone.  Returns [] when splitEndTimes is empty.
  */
 function getSegmentTzShifts(
   formSeg: SegmentForm,
   courseTz: string,
   splitEndTimes: string[],
 ): string[] {
-  const abbrs: string[] = [];
+  const result: string[] = [];
   let prev: string | null = null;
 
   formSeg.splits.forEach((split, i) => {
@@ -132,14 +142,13 @@ function getSegmentTzShifts(
     const endIso = splitEndTimes[i];
     if (!endIso) return;
     const abbr = tzAbbr(endIso, tz);
-    if (prev !== null && abbr !== prev) {
-      if (!abbrs.includes(prev)) abbrs.push(prev);
-      if (!abbrs.includes(abbr)) abbrs.push(abbr);
+    if (abbr !== prev) {
+      result.push(abbr);
+      prev = abbr;
     }
-    prev = abbr;
   });
 
-  return abbrs; // non-empty only when there was at least one transition
+  return result; // single-element when all splits share one zone, multi when transitions exist
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -235,20 +244,40 @@ export default function CourseSummaryNarrative({
       maximumFractionDigits: 1,
     });
 
-    // Timezone shift note for this segment
+    // Timezone note for this segment.
+    // tzShifts is the ordered, adjacent-deduped list of TZ abbrs (e.g. ["CDT","MDT","CDT"]).
+    // >= 2 entries means at least one transition occurred.
+    // == 1 entry means the whole segment runs in a single non-course TZ (or the course TZ).
     const splitEndTimes = seg.split_details.map((s) => s.end_time);
     const tzShifts = formSeg
       ? getSegmentTzShifts(formSeg, courseTz, splitEndTimes)
       : [];
-    const tzShiftNote: React.ReactNode =
-      tzShifts.length >= 2 ? (
+
+    // Compute the course TZ abbreviation at the segment start time for comparison
+    const courseTzAbbr = seg.split_details[0]?.end_time
+      ? tzAbbr(seg.split_details[0].end_time, courseTz)
+      : courseTz;
+
+    let tzShiftNote: React.ReactNode = null;
+    if (tzShifts.length >= 2) {
+      // Multiple zones — full transition sequence
+      tzShiftNote = (
         <>
           {" "}
           <span className="narrative-tz">
             (crosses time zones: {tzShifts.join(" → ")})
           </span>
         </>
-      ) : null;
+      );
+    } else if (tzShifts.length === 1 && tzShifts[0] !== courseTzAbbr) {
+      // Entire segment is in a single non-course TZ
+      tzShiftNote = (
+        <>
+          {" "}
+          <span className="narrative-tz">(in {tzShifts[0]})</span>
+        </>
+      );
+    }
 
     const openStops = stops.filter((s) => s.status === "open");
     const nearStops = stops.filter((s) => s.status === "near");

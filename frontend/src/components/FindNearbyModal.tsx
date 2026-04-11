@@ -4,10 +4,7 @@ import {
   AMENITY_LIST,
   AMENITY_ICONS,
   AMENITY_LABELS,
-  queryNearbyAmenities,
 } from "../calculator/overpass";
-import type { NearbyAmenity } from "../calculator/overpass";
-
 import type { UnitSystem } from "../types";
 
 // Preset radius steps per unit system.
@@ -45,19 +42,16 @@ function fmtStep(stepM: number, unitSystem: UnitSystem): string {
 }
 
 interface FindNearbyModalProps {
-  lat: number;
-  lon: number;
   unitSystem: UnitSystem;
-  onResults: (results: NearbyAmenity[]) => void;
   onClose: () => void;
+  /** Called with the saved params so the caller can immediately re-search. */
+  onSave?: (radiusM: number, types: Set<string>, custom: string) => void;
 }
 
 export default function FindNearbyModal({
-  lat,
-  lon,
   unitSystem,
-  onResults,
   onClose,
+  onSave,
 }: FindNearbyModalProps) {
   const {
     selectedTypes,
@@ -72,17 +66,11 @@ export default function FindNearbyModal({
     closestStepIndex(radiusM, steps),
   );
   const currentRadiusM = steps[sliderIndex];
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   // Open the native dialog on mount
   useEffect(() => {
     dialogRef.current?.showModal();
-    return () => {
-      abortRef.current?.abort();
-    };
   }, []);
 
   function handleToggle(type: string, checked: boolean) {
@@ -97,60 +85,9 @@ export default function FindNearbyModal({
     setSelectedTypes(allSelected ? new Set() : new Set(AMENITY_LIST));
   }
 
-  async function handleSearch() {
-    const custom = customTypes
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const all = [...selectedTypes, ...custom];
-    if (all.length === 0) {
-      setError("Select at least one stop type.");
-      return;
-    }
-
-    abortRef.current?.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setLoading(true);
-    setError(null);
-
-    try {
-      let results = await queryNearbyAmenities(
-        lat,
-        lon,
-        currentRadiusM,
-        ctrl.signal,
-        all,
-      );
-      if (ctrl.signal.aborted) return;
-      setRadiusM(currentRadiusM);
-      const byDistThenName = (a: (typeof results)[0], b: (typeof results)[0]) =>
-        a.distanceM - b.distanceM || a.name.localeCompare(b.name);
-      const withHours = results
-        .filter((r) => r.hours != null)
-        .sort(byDistThenName);
-      const noHours = results
-        .filter((r) => r.hours == null)
-        .sort(byDistThenName);
-      results = [...withHours, ...noHours];
-      onResults(results);
-      onClose();
-    } catch (err: unknown) {
-      if ((err as { name?: string }).name === "AbortError") return;
-      const msg = (err as { message?: string }).message ?? "";
-      if (msg.startsWith("OVERPASS_OOM:")) {
-        setError(
-          "Search exceeded available memory — try a smaller radius or fewer stop types.",
-        );
-      } else {
-        setError("Search failed. Check your connection and try again.");
-      }
-      setLoading(false);
-    }
-  }
-
-  function handleCancel() {
-    abortRef.current?.abort();
+  function handleSave() {
+    setRadiusM(currentRadiusM);
+    onSave?.(currentRadiusM, selectedTypes, customTypes);
     onClose();
   }
 
@@ -161,13 +98,8 @@ export default function FindNearbyModal({
       onClose={onClose}
     >
       <div className="legend-header">
-        <h2>Find Nearby Stops</h2>
-        <button
-          className="legend-close"
-          onClick={handleCancel}
-          disabled={loading}
-          aria-label="Close"
-        >
+        <h2>Stop Search Criteria</h2>
+        <button className="legend-close" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </div>
@@ -187,7 +119,6 @@ export default function FindNearbyModal({
             step={1}
             value={sliderIndex}
             onChange={(e) => setSliderIndex(Number(e.target.value))}
-            disabled={loading}
           />
           <div className="fnm-radius-ticks">
             {steps.map((s, i) => (
@@ -219,7 +150,6 @@ export default function FindNearbyModal({
             type="button"
             className="fnm-select-all-btn"
             onClick={handleSelectAll}
-            disabled={loading}
           >
             {AMENITY_LIST.every((t) => selectedTypes.has(t))
               ? "Deselect All"
@@ -233,7 +163,6 @@ export default function FindNearbyModal({
                 type="checkbox"
                 checked={selectedTypes.has(type)}
                 onChange={(e) => handleToggle(type, e.target.checked)}
-                disabled={loading}
               />
               <span className="fnm-check-icon">
                 {AMENITY_ICONS[type] ?? "📍"}
@@ -259,40 +188,17 @@ export default function FindNearbyModal({
             value={customTypes}
             onChange={(e) => setCustomTypes(e.target.value)}
             placeholder="e.g. toilets, atm, bicycle_rental"
-            disabled={loading}
           />
         </div>
-
-        {error && <p className="fnm-error">{error}</p>}
       </div>
 
       <div className="legend-footer">
-        <a
-          href={(() => {
-            const custom = customTypes
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean);
-            const all = [...Array.from(selectedTypes), ...custom];
-            const query =
-              all.length > 0
-                ? all.map((t) => t.replace(/_/g, "+")).join("+")
-                : "restaurants+gas+stations+supermarkets";
-            return `https://www.google.com/maps/search/${query}/@${lat},${lon},14z`;
-          })()}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ghost-btn fnm-maps-link"
-        >
-          Scout in Google Maps
-        </a>
         <button
           type="button"
           className="ghost-btn fnm-search-btn"
-          onClick={handleSearch}
-          disabled={loading}
+          onClick={handleSave}
         >
-          {loading ? "Searching…" : "Search Nearby"}
+          Save
         </button>
       </div>
     </dialog>

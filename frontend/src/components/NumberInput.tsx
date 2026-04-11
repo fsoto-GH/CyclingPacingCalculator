@@ -1,4 +1,6 @@
+import { useContext } from "react";
 import type { InputHTMLAttributes } from "react";
+import { AllErrorsContext } from "./FieldError";
 
 interface NumberInputProps extends Omit<
   InputHTMLAttributes<HTMLInputElement>,
@@ -20,12 +22,16 @@ export default function NumberInput({
   min,
   max,
   disabled,
+  id,
   ...rest
 }: NumberInputProps) {
   const numStep =
     step === "any" || step === undefined ? 1 : parseFloat(String(step));
   const numMin = min !== undefined ? parseFloat(String(min)) : -Infinity;
   const numMax = max !== undefined ? parseFloat(String(max)) : Infinity;
+
+  const allErrors = useContext(AllErrorsContext);
+  const hasError = id ? Boolean(allErrors[id]) : false;
 
   function adjust(delta: number) {
     const current = parseFloat(value);
@@ -39,19 +45,23 @@ export default function NumberInput({
     <div className="number-input-wrapper">
       <input
         {...rest}
+        id={id}
         type="number"
         value={value}
         step={step}
         min={min}
         max={max}
         disabled={disabled}
+        aria-invalid={hasError ? true : undefined}
         onChange={(e) => onChange(e.target.value)}
       />
-      <div className="number-input-steppers" aria-hidden="true">
+      <div className="number-input-steppers">
         <button
           type="button"
           tabIndex={-1}
           disabled={disabled}
+          aria-hidden="true"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjust(numStep)}
         >
           ▲
@@ -60,6 +70,8 @@ export default function NumberInput({
           type="button"
           tabIndex={-1}
           disabled={disabled}
+          aria-hidden="true"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjust(-numStep)}
         >
           ▼
