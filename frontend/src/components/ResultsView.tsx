@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import type {
   CourseDetail,
   SegmentDetail,
@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
 import CourseSummaryNarrative from "./CourseSummaryNarrative";
-import GpxExportModal from "./GpxExportModal";
+const GpxExportModal = lazy(() => import("./GpxExportModal"));
 
 /** Convert HH:MM to minutes since midnight. */
 function timeToMin(t: string): number {
@@ -530,17 +530,19 @@ function SegmentSection({
         </>
       )}
       {gpxTrack && showExportModal && (
-        <GpxExportModal
-          open={showExportModal}
-          onClose={() => setShowExportModal(false)}
-          segIndex={index}
-          segName={formSegments[index]?.name}
-          splits={formSegments[index]?.splits ?? []}
-          gpxTrack={gpxTrack}
-          splitBoundariesKm={splitBoundariesKm?.[index] ?? []}
-          gpxProfiles={gpxProfiles?.[index] ?? []}
-          unitSystem={unitSystem}
-        />
+        <Suspense fallback={null}>
+          <GpxExportModal
+            open={showExportModal}
+            onClose={() => setShowExportModal(false)}
+            segIndex={index}
+            segName={formSegments[index]?.name}
+            splits={formSegments[index]?.splits ?? []}
+            gpxTrack={gpxTrack}
+            splitBoundariesKm={splitBoundariesKm?.[index] ?? []}
+            gpxProfiles={gpxProfiles?.[index] ?? []}
+            unitSystem={unitSystem}
+          />
+        </Suspense>
       )}
     </div>
   );

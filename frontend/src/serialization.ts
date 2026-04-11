@@ -92,8 +92,8 @@ function serializeSegment(seg: SegmentForm): SegmentPayload {
   const dtr = parseOptionalFloat(seg.down_time_ratio);
   if (dtr !== null) payload.down_time_ratio = dtr;
 
-  const sd = parseOptionalFloat(seg.split_decay);
-  if (sd !== null) payload.split_decay = sd;
+  const sd = parseOptionalFloat(seg.split_delta);
+  if (sd !== null) payload.split_delta = sd;
 
   const ms = parseOptionalFloat(seg.moving_speed);
   if (ms !== null) payload.moving_speed = ms;
@@ -111,7 +111,7 @@ export function serializeCourse(form: CourseForm): CoursePayload {
     init_moving_speed: parseFloat(form.init_moving_speed),
     min_moving_speed: parseFloat(form.min_moving_speed),
     down_time_ratio: parseFloat(form.down_time_ratio),
-    split_decay: parseFloat(form.split_decay),
+    split_delta: parseFloat(form.split_delta),
     start_time: new Date(form.start_time).toISOString(),
   };
 }

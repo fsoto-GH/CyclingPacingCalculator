@@ -17,6 +17,7 @@ import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import SplitFormComponent from "./SplitForm";
 import { FieldError } from "./FieldError";
+import NumberInput from "./NumberInput";
 
 interface SegmentFormProps {
   segIndex: number;
@@ -82,7 +83,7 @@ export default function SegmentFormComponent({
   const segRootRef = useRef<HTMLDivElement | null>(null);
   const hasOptionalValues =
     !!value.down_time_ratio ||
-    !!value.split_decay ||
+    !!value.split_delta ||
     !!value.moving_speed ||
     !!value.min_moving_speed;
   const [showOptional, setShowOptional] = useState(hasOptionalValues);
@@ -408,14 +409,14 @@ export default function SegmentFormComponent({
             />
 
             <div className="field">
-              <label htmlFor={`${prefix}-split-count`}>Split Count *</label>
-              <input
+              <label htmlFor={`${prefix}-split-count`}># of Splits</label>
+              <NumberInput
                 id={`${prefix}-split-count`}
-                type="number"
                 min="1"
                 step="1"
                 value={value.splitCount}
-                onChange={(e) => handleSplitCountChange(e.target.value)}
+                onChange={(v) => handleSplitCountChange(v)}
+                placeholder="1"
               />
               <FieldError fieldId={`${prefix}-split-count`} />
             </div>
@@ -455,29 +456,30 @@ export default function SegmentFormComponent({
             <div className="optional-fields fields-grid">
               <div className="field">
                 <label htmlFor={`${prefix}-dtr`}>Down Time Ratio</label>
-                <input
+                <NumberInput
                   id={`${prefix}-dtr`}
-                  type="number"
                   step="0.05"
                   min="0"
                   max="1"
                   value={value.down_time_ratio}
-                  onChange={(e) => update({ down_time_ratio: e.target.value })}
+                  onChange={(v) => update({ down_time_ratio: v })}
                   placeholder="Inherits"
                 />
                 <FieldError fieldId={`${prefix}-dtr`} />
               </div>
 
               <div className="field">
-                <label htmlFor={`${prefix}-split-decay`}>
-                  Split Decay ({sLabel})
+                <label
+                  htmlFor={`${prefix}-split-delta`}
+                  title="Per-split speed change; negative = decelerating"
+                >
+                  Speed Delta ({sLabel})
                 </label>
-                <input
-                  id={`${prefix}-split-decay`}
-                  type="number"
+                <NumberInput
+                  id={`${prefix}-split-delta`}
                   step="any"
-                  value={value.split_decay}
-                  onChange={(e) => update({ split_decay: e.target.value })}
+                  value={value.split_delta}
+                  onChange={(v) => update({ split_delta: v })}
                   placeholder="Inherits"
                 />
               </div>
@@ -486,12 +488,11 @@ export default function SegmentFormComponent({
                 <label htmlFor={`${prefix}-moving-speed`}>
                   Speed ({sLabel})
                 </label>
-                <input
+                <NumberInput
                   id={`${prefix}-moving-speed`}
-                  type="number"
                   step="any"
                   value={value.moving_speed}
-                  onChange={(e) => update({ moving_speed: e.target.value })}
+                  onChange={(v) => update({ moving_speed: v })}
                   placeholder="Inherits"
                 />
                 <FieldError fieldId={`${prefix}-moving-speed`} />
@@ -501,12 +502,11 @@ export default function SegmentFormComponent({
                 <label htmlFor={`${prefix}-min-speed`}>
                   Min Speed ({sLabel})
                 </label>
-                <input
+                <NumberInput
                   id={`${prefix}-min-speed`}
-                  type="number"
                   step="any"
                   value={value.min_moving_speed}
-                  onChange={(e) => update({ min_moving_speed: e.target.value })}
+                  onChange={(v) => update({ min_moving_speed: v })}
                   placeholder="Inherits"
                 />
                 <FieldError fieldId={`${prefix}-min-speed`} />

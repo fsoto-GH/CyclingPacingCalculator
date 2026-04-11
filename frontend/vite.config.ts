@@ -21,5 +21,29 @@ export default defineConfig({
   build: {
     outDir: "../static",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (
+            id.includes("node_modules/leaflet") ||
+            id.includes("node_modules/react-leaflet")
+          ) {
+            return "vendor-leaflet";
+          }
+          if (id.includes("node_modules/tz-lookup")) {
+            return "vendor-tz";
+          }
+          if (id.includes("node_modules/opening_hours")) {
+            return "vendor-opening-hours";
+          }
+          if (
+            id.includes("node_modules/react") ||
+            id.includes("node_modules/react-dom")
+          ) {
+            return "vendor-react";
+          }
+        },
+      },
+    },
   },
 });

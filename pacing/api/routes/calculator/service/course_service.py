@@ -76,7 +76,7 @@ def course_to_dto(course: Course) -> CourseDto:
                 for split in segment.splits
             ],
             down_time_ratio=segment.down_time_ratio,
-            split_decay=segment.split_decay,
+            split_delta=segment.split_delta,
             moving_speed=segment.moving_speed,
             min_moving_speed=segment.min_moving_speed,
             sleep_time=segment.sleep_time,
@@ -91,7 +91,7 @@ def course_to_dto(course: Course) -> CourseDto:
         init_moving_speed=course.init_moving_speed,
         min_moving_speed=course.min_moving_speed,
         down_time_ratio=course.down_time_ratio,
-        split_decay=course.split_decay,
+        split_delta=course.split_delta,
         start_time=course.start_time
     )
 

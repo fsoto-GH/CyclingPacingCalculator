@@ -307,7 +307,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
         <Section title="Speed">
           <p>
             The starting moving speed used for pacing predictions. Each split's
-            speed begins here and decays per the <em>Split Decay</em> value.
+            speed begins here and adjusts per the <em>Speed Delta</em> value.
           </p>
           <ul>
             <li>
@@ -323,7 +323,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
         <Section title="Min Speed">
           <p>
-            The floor for moving speed at any point in the course. Split Decay
+            The floor for moving speed at any point in the course. Speed Delta
             will never reduce speed below this value.
           </p>
           <ul>
@@ -349,14 +349,14 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
           </ul>
         </Section>
 
-        <Section title="Split Decay">
+        <Section title="Speed Delta">
           <p>
-            A flat amount subtracted from the rolling moving speed at each
-            successive split.
+            A flat amount added to the rolling moving speed at each successive
+            split. Positive values accelerate; negative values decelerate.
           </p>
           <ul>
             <li>
-              Example: Speed 16 with decay 0.1 → 16.0 → 15.9 → 15.8 → … down to
+              Example: Speed 16 with delta −0.1 → 16.0 → 15.9 → 15.8 → … down to
               Min Speed.
             </li>
           </ul>

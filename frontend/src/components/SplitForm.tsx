@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import type {
   SplitForm,
   SubSplitMode,
@@ -11,7 +11,8 @@ import TimeInput from "./TimeInput";
 import RestStopFormComponent from "./RestStopForm";
 import TimezoneSelect from "./TimezoneSelect";
 import { FieldError } from "./FieldError";
-import SplitEndpointMap from "./SplitEndpointMap";
+import NumberInput from "./NumberInput";
+const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
 
 interface SplitFormProps {
   segIndex: number;
@@ -473,13 +474,13 @@ export default function SplitFormComponent({
                 <label htmlFor={`${prefix}-distance`}>
                   Distance ({dLabel}) *
                 </label>
-                <input
+                <NumberInput
                   id={`${prefix}-distance`}
-                  type="number"
                   step="any"
                   min="0"
                   value={value.distance}
-                  onChange={(e) => update({ distance: e.target.value })}
+                  onChange={(v) => update({ distance: v })}
+                  placeholder="e.g. 50"
                 />
                 <FieldError fieldId={`${prefix}-distance`} />
               </div>
@@ -506,15 +507,13 @@ export default function SplitFormComponent({
                 {value.sub_split_mode === "even" && (
                   <div className="field">
                     <label htmlFor={`${prefix}-ss-count`}>Count *</label>
-                    <input
+                    <NumberInput
                       id={`${prefix}-ss-count`}
-                      type="number"
                       min="1"
                       step="1"
                       value={value.sub_split_count}
-                      onChange={(e) =>
-                        update({ sub_split_count: e.target.value })
-                      }
+                      onChange={(v) => update({ sub_split_count: v })}
+                      placeholder="1"
                     />
                     <FieldError fieldId={`${prefix}-ss-count`} />
                   </div>
@@ -525,14 +524,12 @@ export default function SplitFormComponent({
                     <label htmlFor={`${prefix}-ss-distance`}>
                       Size ({dLabel}) *
                     </label>
-                    <input
+                    <NumberInput
                       id={`${prefix}-ss-distance`}
-                      type="number"
                       step="any"
                       value={value.sub_split_distance}
-                      onChange={(e) =>
-                        update({ sub_split_distance: e.target.value })
-                      }
+                      onChange={(v) => update({ sub_split_distance: v })}
+                      placeholder="e.g. 20"
                     />
                     <FieldError fieldId={`${prefix}-ss-distance`} />
                   </div>
@@ -563,14 +560,12 @@ export default function SplitFormComponent({
                   <label htmlFor={`${prefix}-ss-threshold`}>
                     Last Threshold ({dLabel}) *
                   </label>
-                  <input
+                  <NumberInput
                     id={`${prefix}-ss-threshold`}
-                    type="number"
                     step="any"
                     value={value.last_sub_split_threshold}
-                    onChange={(e) =>
-                      update({ last_sub_split_threshold: e.target.value })
-                    }
+                    onChange={(v) => update({ last_sub_split_threshold: v })}
+                    placeholder="e.g. 10"
                   />
                   <FieldError fieldId={`${prefix}-ss-threshold`} />
                 </div>
@@ -594,12 +589,11 @@ export default function SplitFormComponent({
                     <label htmlFor={`${prefix}-moving-speed`}>
                       Speed ({sLabel})
                     </label>
-                    <input
+                    <NumberInput
                       id={`${prefix}-moving-speed`}
-                      type="number"
                       step="any"
                       value={value.moving_speed}
-                      onChange={(e) => update({ moving_speed: e.target.value })}
+                      onChange={(v) => update({ moving_speed: v })}
                       placeholder="Inherits"
                     />
                     <FieldError fieldId={`${prefix}-moving-speed`} />
@@ -668,20 +662,24 @@ export default function SplitFormComponent({
 
           // ── Map content (SplitEndpointMap) ──
           const mapContent = mapAvailable ? (
-            <SplitEndpointMap
-              gpxTrack={gpxTrack!}
-              startKm={displayProfile!.startKm}
-              endKm={displayProfile!.endKm}
-              endLat={displayProfile!.endLat}
-              endLon={displayProfile!.endLon}
-              endpointDefined={endpointDefined}
-              unitSystem={unitSystem}
-              restStop={value.rest_stop}
-              onSelectStop={(patch) =>
-                update({ rest_stop: { ...value.rest_stop, ...patch } })
-              }
-              onAddressLoading={setAddressLoading}
-            />
+            <Suspense
+              fallback={<div className="map-loading">Loading map…</div>}
+            >
+              <SplitEndpointMap
+                gpxTrack={gpxTrack!}
+                startKm={displayProfile!.startKm}
+                endKm={displayProfile!.endKm}
+                endLat={displayProfile!.endLat}
+                endLon={displayProfile!.endLon}
+                endpointDefined={endpointDefined}
+                unitSystem={unitSystem}
+                restStop={value.rest_stop}
+                onSelectStop={(patch) =>
+                  update({ rest_stop: { ...value.rest_stop, ...patch } })
+                }
+                onAddressLoading={setAddressLoading}
+              />
+            </Suspense>
           ) : null;
 
           // ── Select layout shell ──

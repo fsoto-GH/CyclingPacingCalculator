@@ -1,4 +1,12 @@
-﻿import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+﻿import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  lazy,
+  Suspense,
+} from "react";
 import type {
   CourseForm as CourseFormState,
   SegmentForm as SegmentFormState,
@@ -29,21 +37,22 @@ import tzlookup from "tz-lookup";
 import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
-import CourseMap from "./CourseMap";
-import ResultsView from "./ResultsView";
-import LegendModal from "./LegendModal";
-import ExampleModal from "./ExampleModal";
+const CourseMap = lazy(() => import("./CourseMap"));
+const ResultsView = lazy(() => import("./ResultsView"));
+const LegendModal = lazy(() => import("./LegendModal"));
+const ExampleModal = lazy(() => import("./ExampleModal"));
 import { EXAMPLES } from "../examples";
 import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
 import { FieldErrorContext, FieldError } from "./FieldError";
+import NumberInput from "./NumberInput";
 
 function makeDefaultSegment(): SegmentFormState {
   return {
     name: "",
-    sleep_time: "0",
+    sleep_time: "",
     include_end_down_time: false,
     down_time_ratio: "",
-    split_decay: "",
+    split_delta: "",
     moving_speed: "",
     min_moving_speed: "",
     splitCount: "1",
@@ -60,8 +69,8 @@ const INITIAL_FORM: CourseFormState = {
   timezone: browserTimezone,
   init_moving_speed: "",
   min_moving_speed: "",
-  down_time_ratio: "0",
-  split_decay: "0",
+  down_time_ratio: "",
+  split_delta: "",
   start_time: nowLocalDatetime(),
   segmentCount: "1",
   segments: [makeDefaultSegment()],
@@ -100,6 +109,30 @@ function loadSavedForm(): CourseFormState {
 
     // Ensure timezone exists (old forms lack it)
     if (!parsed.timezone) parsed.timezone = browserTimezone;
+
+    // Migrate split_decay → split_delta (field rename)
+    if (parsed.split_decay !== undefined && parsed.split_delta === undefined) {
+      parsed.split_delta = parsed.split_decay;
+      delete parsed.split_decay;
+    }
+    for (const seg of parsed.segments ?? []) {
+      if (seg.split_decay !== undefined && seg.split_delta === undefined) {
+        seg.split_delta = seg.split_decay;
+        delete seg.split_decay;
+      }
+    }
+
+    // Migrate split_delta sign inversion (positive used to mean slower; now positive = faster)
+    // Detect pre-inversion data by checking for the absence of a sentinel key.
+    if (!parsed.__splitDeltaInverted) {
+      const v = parseFloat(parsed.split_delta);
+      if (!isNaN(v) && v !== 0) parsed.split_delta = String(-v);
+      for (const seg of parsed.segments ?? []) {
+        const sv = parseFloat(seg.split_delta);
+        if (!isNaN(sv) && sv !== 0) seg.split_delta = String(-sv);
+      }
+      parsed.__splitDeltaInverted = true;
+    }
 
     // Migrate rest stops and splits
     for (const seg of parsed.segments ?? []) {
@@ -217,6 +250,11 @@ export default function CourseForm() {
   // Collapse/expand all segments and splits
   const [collapseAllSignal, setCollapseAllSignal] = useState(0);
   const [expandAllSignal, setExpandAllSignal] = useState(0);
+
+  // Course settings card — collapsible + inline name editing
+  const [courseCollapsed, setCourseCollapsed] = useState(false);
+  const [isEditingCourseName, setIsEditingCourseName] = useState(false);
+  const courseNameInputRef = useRef<HTMLInputElement | null>(null);
 
   // Restore GPX from IndexedDB on mount (large files don't fit in localStorage).
   useEffect(() => {
@@ -900,7 +938,7 @@ export default function CourseForm() {
       const initSpeed = parseFloat(f.init_moving_speed);
       const minSpeed = parseFloat(f.min_moving_speed);
       const dtr = parseFloat(f.down_time_ratio);
-      const splitDecay = parseFloat(f.split_decay);
+      const splitDelta = parseFloat(f.split_delta);
 
       if (
         f.init_moving_speed.trim() === "" ||
@@ -914,8 +952,8 @@ export default function CourseForm() {
         e["course-init-speed"] = "Must be ≥ Overall Min Speed";
       if (f.down_time_ratio.trim() === "" || isNaN(dtr) || dtr < 0 || dtr > 1)
         e["course-dtr"] = "Must be between 0 and 1";
-      if (f.split_decay.trim() === "" || isNaN(splitDecay))
-        e["course-split-decay"] = "Must be a number";
+      if (f.split_delta.trim() === "" || isNaN(splitDelta))
+        e["course-split-delta"] = "Must be a number";
 
       const segCount = parseInt(f.segmentCount, 10);
       if (isNaN(segCount) || segCount < 1)
@@ -1209,13 +1247,15 @@ export default function CourseForm() {
           projects arrival times, checks them against business hours, and
           supports timezone-aware scheduling across regions.
         </p>
-        <LegendModal open={legendOpen} onClose={() => setLegendOpen(false)} />
-        <ExampleModal
-          open={examplesOpen}
-          onClose={() => setExamplesOpen(false)}
-          examples={EXAMPLES}
-          onSelect={handleLoadExample}
-        />
+        <Suspense fallback={null}>
+          <LegendModal open={legendOpen} onClose={() => setLegendOpen(false)} />
+          <ExampleModal
+            open={examplesOpen}
+            onClose={() => setExamplesOpen(false)}
+            examples={EXAMPLES}
+            onSelect={handleLoadExample}
+          />
+        </Suspense>
 
         {/* GPX banner */}
         {gpxFileName && gpxLoading && (
@@ -1273,164 +1313,212 @@ export default function CourseForm() {
           </div>
         )}
 
-        {/* Unit & Mode Toggles */}
-        <div className="toggle-row-pair">
-          <div className="field toggle-row">
-            <label id="units-label">Units</label>
-            <div
-              className="toggle-group"
-              role="group"
-              aria-labelledby="units-label"
-            >
-              <button
-                type="button"
-                className={form.unitSystem === "imperial" ? "active" : ""}
-                onClick={() => update({ unitSystem: "imperial" })}
-              >
-                Imperial ({speedLabel("imperial")}, {distanceLabel("imperial")})
-              </button>
-              <button
-                type="button"
-                className={form.unitSystem === "metric" ? "active" : ""}
-                onClick={() => update({ unitSystem: "metric" })}
-              >
-                Metric ({speedLabel("metric")}, {distanceLabel("metric")})
-              </button>
+        {/* Course Settings Card */}
+        <div className="segment-form course-settings-card">
+          <div
+            className="segment-header"
+            onClick={() => {
+              if (!isEditingCourseName) setCourseCollapsed((c) => !c);
+            }}
+          >
+            <span className="collapse-icon" style={{ color: "#4361ee" }}>
+              {courseCollapsed ? "▶" : "▼"}
+            </span>
+            <div className="split-header-left">
+              <div className="split-header-titlerow">
+                {isEditingCourseName ? (
+                  <input
+                    ref={courseNameInputRef}
+                    className="split-header-name-input"
+                    type="text"
+                    value={form.name ?? ""}
+                    placeholder="Course name (e.g. Mishigami 2025)"
+                    style={{ fontSize: "0.95rem" }}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => update({ name: e.target.value })}
+                    onBlur={() => setIsEditingCourseName(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "Escape") {
+                        setIsEditingCourseName(false);
+                        e.preventDefault();
+                      }
+                    }}
+                  />
+                ) : (
+                  <span
+                    className="split-header-title split-header-title--editable"
+                    style={{ fontSize: "0.95rem" }}
+                    title="Click to rename"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEditingCourseName(true);
+                      setTimeout(() => courseNameInputRef.current?.focus(), 0);
+                    }}
+                  >
+                    {form.name?.trim() || "Course Settings"}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="field toggle-row">
-            <label id="mode-label">Mode</label>
-            <div
-              className="toggle-group"
-              role="group"
-              aria-labelledby="mode-label"
-            >
-              <button
-                type="button"
-                className={form.mode === "distance" ? "active" : ""}
-                onClick={() => update({ mode: "distance" })}
-              >
-                Split Distance
-              </button>
-              <button
-                type="button"
-                className={form.mode === "target_distance" ? "active" : ""}
-                onClick={() => update({ mode: "target_distance" })}
-              >
-                Target Distance
-              </button>
+          {!courseCollapsed && (
+            <div className="segment-body">
+              {/* Unit & Mode Toggles */}
+              <div className="toggle-row-pair">
+                <div className="field toggle-row">
+                  <label id="units-label">Units</label>
+                  <div
+                    className="toggle-group"
+                    role="group"
+                    aria-labelledby="units-label"
+                  >
+                    <button
+                      type="button"
+                      className={
+                        form.unitSystem === "imperial" ? "active" : ""
+                      }
+                      onClick={() => update({ unitSystem: "imperial" })}
+                    >
+                      Imperial ({speedLabel("imperial")},{" "}
+                      {distanceLabel("imperial")})
+                    </button>
+                    <button
+                      type="button"
+                      className={form.unitSystem === "metric" ? "active" : ""}
+                      onClick={() => update({ unitSystem: "metric" })}
+                    >
+                      Metric ({speedLabel("metric")}, {distanceLabel("metric")})
+                    </button>
+                  </div>
+                </div>
+
+                <div className="field toggle-row">
+                  <label id="mode-label">Mode</label>
+                  <div
+                    className="toggle-group"
+                    role="group"
+                    aria-labelledby="mode-label"
+                  >
+                    <button
+                      type="button"
+                      className={form.mode === "distance" ? "active" : ""}
+                      onClick={() => update({ mode: "distance" })}
+                    >
+                      Split Distance
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        form.mode === "target_distance" ? "active" : ""
+                      }
+                      onClick={() => update({ mode: "target_distance" })}
+                    >
+                      Target Distance
+                    </button>
+                  </div>
+                  <span className="hint">
+                    {form.mode === "distance"
+                      ? "Distance values will define the length of each split."
+                      : "Distance values will define course mile-markers."}
+                  </span>
+                </div>
+              </div>
+
+              {/* Course-level inputs */}
+              <div className="fields-grid">
+                <div className="field">
+                  <label htmlFor="course-init-speed">Speed ({sLabel}) *</label>
+                  <NumberInput
+                    id="course-init-speed"
+                    step="any"
+                    min="0"
+                    value={form.init_moving_speed}
+                    onChange={(v) => update({ init_moving_speed: v })}
+                    placeholder="e.g. 16"
+                  />
+                  <FieldError fieldId="course-init-speed" />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="course-min-speed">
+                    Min Speed ({sLabel}) *
+                  </label>
+                  <NumberInput
+                    id="course-min-speed"
+                    step="1"
+                    min="0"
+                    value={form.min_moving_speed}
+                    onChange={(v) => update({ min_moving_speed: v })}
+                    placeholder="e.g. 14"
+                  />
+                  <FieldError fieldId="course-min-speed" />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="course-dtr">Down Time Ratio *</label>
+                  <NumberInput
+                    id="course-dtr"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    value={form.down_time_ratio}
+                    onChange={(v) => update({ down_time_ratio: v })}
+                    placeholder="e.g. 0.05"
+                  />
+                  <FieldError fieldId="course-dtr" />
+                </div>
+
+                <div className="field">
+                  <label
+                    htmlFor="course-split-delta"
+                    title="Per-split speed change: positive builds, negative fades."
+                  >
+                    Speed ∆ ({sLabel}) *
+                  </label>
+                  <NumberInput
+                    id="course-split-delta"
+                    step="0.05"
+                    value={form.split_delta}
+                    onChange={(v) => update({ split_delta: v })}
+                    placeholder="0"
+                  />
+                  <FieldError fieldId="course-split-delta" />
+                </div>
+
+                <div className="field span-two-columns">
+                  <label htmlFor="course-start-time">Start Time *</label>
+                  <input
+                    id="course-start-time"
+                    type="datetime-local"
+                    value={form.start_time}
+                    onChange={(e) => update({ start_time: e.target.value })}
+                  />
+                </div>
+
+                <div className="field span-two-columns">
+                  <label htmlFor="course-tz">Timezone</label>
+                  <TimezoneSelect
+                    id="course-tz"
+                    value={form.timezone}
+                    onChange={(tz) => update({ timezone: tz })}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="course-seg-count"># of Segments</label>
+                  <NumberInput
+                    id="course-seg-count"
+                    min="1"
+                    step="1"
+                    value={form.segmentCount}
+                    onChange={(v) => handleSegmentCountChange(v)}
+                    placeholder="1"
+                  />
+                  <FieldError fieldId="course-seg-count" />
+                </div>
+              </div>
             </div>
-            <span className="hint">
-              {form.mode === "distance"
-                ? "Distance values will define the length of each split."
-                : "Distance values will define course mile-markers."}
-            </span>
-          </div>
-        </div>
-
-        {/* Course name + section label */}
-        <div className="course-section-header">
-          <h3 className="course-section-title">Course Settings</h3>
-          <div className="field course-name-field">
-            <input
-              id="course-name"
-              type="text"
-              placeholder="Course name (optional, e.g. Mishigami 2025)"
-              value={form.name ?? ""}
-              onChange={(e) => update({ name: e.target.value })}
-            />
-          </div>
-        </div>
-
-        {/* Course-level inputs */}
-        <div className="fields-grid">
-          <div className="field">
-            <label htmlFor="course-init-speed">Speed ({sLabel}) *</label>
-            <input
-              id="course-init-speed"
-              type="number"
-              step="any"
-              min="0"
-              value={form.init_moving_speed}
-              onChange={(e) => update({ init_moving_speed: e.target.value })}
-            />
-            <FieldError fieldId="course-init-speed" />
-          </div>
-
-          <div className="field">
-            <label htmlFor="course-min-speed">Min Speed ({sLabel}) *</label>
-            <input
-              id="course-min-speed"
-              type="number"
-              step="any"
-              min="0"
-              value={form.min_moving_speed}
-              onChange={(e) => update({ min_moving_speed: e.target.value })}
-            />
-            <FieldError fieldId="course-min-speed" />
-          </div>
-
-          <div className="field">
-            <label htmlFor="course-dtr">Down Time Ratio *</label>
-            <input
-              id="course-dtr"
-              type="number"
-              step="0.05"
-              min="0"
-              max="1"
-              value={form.down_time_ratio}
-              onChange={(e) => update({ down_time_ratio: e.target.value })}
-            />
-            <FieldError fieldId="course-dtr" />
-          </div>
-
-          <div className="field">
-            <label htmlFor="course-split-decay">Split Decay ({sLabel}) *</label>
-            <input
-              id="course-split-decay"
-              type="number"
-              step="0.05"
-              value={form.split_decay}
-              onChange={(e) => update({ split_decay: e.target.value })}
-            />
-            <FieldError fieldId="course-split-decay" />
-            <span className="hint">
-              Per-split speed change; negative = faster
-            </span>
-          </div>
-
-          <div className="field">
-            <label htmlFor="course-start-time">Start Time *</label>
-            <input
-              id="course-start-time"
-              type="datetime-local"
-              value={form.start_time}
-              onChange={(e) => update({ start_time: e.target.value })}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="course-tz">Timezone</label>
-            <TimezoneSelect
-              id="course-tz"
-              value={form.timezone}
-              onChange={(tz) => update({ timezone: tz })}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="course-seg-count">Segments *</label>
-            <input
-              id="course-seg-count"
-              type="number"
-              min="1"
-              step="1"
-              value={form.segmentCount}
-              onChange={(e) => handleSegmentCountChange(e.target.value)}
-            />
-            <FieldError fieldId="course-seg-count" />
-          </div>
+          )}
         </div>
 
         {/* Segments */}
@@ -1592,56 +1680,45 @@ export default function CourseForm() {
           >
             <div className="field">
               <label htmlFor="qs-segments"># Segments</label>
-              <input
+              <NumberInput
                 id="qs-segments"
-                type="number"
                 min="1"
                 step="1"
                 value={quickSetup.segments}
-                onChange={(e) =>
-                  setQuickSetup((q) => ({ ...q, segments: e.target.value }))
-                }
+                onChange={(v) => setQuickSetup((q) => ({ ...q, segments: v }))}
               />
             </div>
             <div className="field">
               <label htmlFor="qs-splits"># Splits / Segment</label>
-              <input
+              <NumberInput
                 id="qs-splits"
-                type="number"
                 min="1"
                 step="1"
                 value={quickSetup.splits}
-                onChange={(e) =>
-                  setQuickSetup((q) => ({ ...q, splits: e.target.value }))
-                }
+                onChange={(v) => setQuickSetup((q) => ({ ...q, splits: v }))}
               />
             </div>
             <div className="field">
               <label htmlFor="qs-distance">
                 Distance / Split ({distanceLabel(form.unitSystem)})
               </label>
-              <input
+              <NumberInput
                 id="qs-distance"
-                type="number"
                 min="0"
                 step="any"
                 value={quickSetup.distance}
-                onChange={(e) =>
-                  setQuickSetup((q) => ({ ...q, distance: e.target.value }))
-                }
+                onChange={(v) => setQuickSetup((q) => ({ ...q, distance: v }))}
+                placeholder="e.g. 50"
               />
             </div>
             <div className="field">
               <label htmlFor="qs-sleep">Sleep / Segment (min)</label>
-              <input
+              <NumberInput
                 id="qs-sleep"
-                type="number"
                 min="0"
                 step="any"
                 value={quickSetup.sleep}
-                onChange={(e) =>
-                  setQuickSetup((q) => ({ ...q, sleep: e.target.value }))
-                }
+                onChange={(v) => setQuickSetup((q) => ({ ...q, sleep: v }))}
               />
               {minutesToHms(quickSetup.sleep) && (
                 <span className="time-aside">
@@ -1815,28 +1892,34 @@ export default function CourseForm() {
 
       {/* Live course map — shown as soon as a GPX and at least one distance are set */}
       {gpxTrack && splitBoundariesKm && (
-        <CourseMap
-          gpxTrack={gpxTrack}
-          splitBoundariesKm={splitBoundariesKm}
-          formSegments={form.segments}
-          unitSystem={form.unitSystem}
-          onMarkerClick={handleMapMarkerClick}
-        />
+        <Suspense fallback={<div className="map-loading">Loading map…</div>}>
+          <CourseMap
+            gpxTrack={gpxTrack}
+            splitBoundariesKm={splitBoundariesKm}
+            formSegments={form.segments}
+            unitSystem={form.unitSystem}
+            onMarkerClick={handleMapMarkerClick}
+          />
+        </Suspense>
       )}
 
       {/* Results — outside course-form to avoid re-layout on form state changes */}
       {result && (
-        <ResultsView
-          result={result}
-          unitSystem={form.unitSystem}
-          formSegments={form.segments}
-          courseTz={form.timezone}
-          courseName={form.name?.trim() || undefined}
-          cityLabels={cityLabels}
-          gpxTrack={gpxTrack}
-          splitBoundariesKm={splitBoundariesKm}
-          gpxProfiles={gpxProfiles}
-        />
+        <Suspense
+          fallback={<div className="map-loading">Loading results…</div>}
+        >
+          <ResultsView
+            result={result}
+            unitSystem={form.unitSystem}
+            formSegments={form.segments}
+            courseTz={form.timezone}
+            courseName={form.name?.trim() || undefined}
+            cityLabels={cityLabels}
+            gpxTrack={gpxTrack}
+            splitBoundariesKm={splitBoundariesKm}
+            gpxProfiles={gpxProfiles}
+          />
+        </Suspense>
       )}
     </FieldErrorContext.Provider>
   );

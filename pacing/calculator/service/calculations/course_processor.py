@@ -56,7 +56,7 @@ def __normalize_course(course: Course) -> Course:
         init_moving_speed=course.init_moving_speed,
         min_moving_speed=course.min_moving_speed,
         down_time_ratio=course.down_time_ratio,
-        split_decay=course.split_decay,
+        split_delta=course.split_delta,
         start_time=course.start_time,
         mode=DISTANCE
     )
@@ -108,7 +108,7 @@ def __compute_course_detail(course: Course, curr_distance: float = 0) -> CourseD
         segment_detail = __compute_segment_detail(
             segment=segment,
             down_time_ratio=course.down_time_ratio,
-            split_decay=course.split_decay,
+            split_delta=course.split_delta,
             start_time=curr_start_time,
             moving_speed=curr_moving_speed,
             distance=curr_distance,

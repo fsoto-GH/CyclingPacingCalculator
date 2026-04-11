@@ -52,7 +52,7 @@ export interface SegmentPayload {
   name?: string | null;
   splits: SplitPayload[];
   down_time_ratio?: number | null;
-  split_decay?: number | null;
+  split_delta?: number | null;
   moving_speed?: number | null;
   min_moving_speed?: number | null;
   sleep_time?: number; // seconds
@@ -65,7 +65,7 @@ export interface CoursePayload {
   init_moving_speed: number;
   min_moving_speed: number;
   down_time_ratio: number;
-  split_decay: number;
+  split_delta: number;
   start_time: string; // ISO 8601
 }
 
@@ -123,7 +123,7 @@ export interface SegmentForm {
   sleep_time: string; // minutes
   include_end_down_time: boolean; // inverts to no_end_down_time
   down_time_ratio: string;
-  split_decay: string;
+  split_delta: string;
   moving_speed: string;
   min_moving_speed: string;
   splitCount: string;
@@ -139,7 +139,7 @@ export interface CourseForm {
   init_moving_speed: string;
   min_moving_speed: string;
   down_time_ratio: string;
-  split_decay: string;
+  split_delta: string;
   start_time: string;
   segmentCount: string;
   segments: SegmentForm[];

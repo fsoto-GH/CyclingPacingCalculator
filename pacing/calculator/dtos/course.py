@@ -11,7 +11,7 @@ class Course:
     init_moving_speed: float
     min_moving_speed: float
     down_time_ratio: float = 0
-    split_decay: float = 0
+    split_delta: float = 0
     start_time: datetime = datetime.today()
     # you can set course mode to base calculations on DISTANCE purely or distance points by setting to TARGET_DISTANCE
     # # TODO: Implement KOM, this might be a Printer object detail tbh

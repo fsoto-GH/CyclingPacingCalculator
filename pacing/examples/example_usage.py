@@ -144,7 +144,7 @@ def main():
         init_moving_speed=17,
         min_moving_speed=15,
         down_time_ratio=0.05,
-        split_decay=0.1
+        split_delta=-0.1
     )
 
     # 2) Use the course_processor to `process_course`

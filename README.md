@@ -64,16 +64,6 @@ npm run dev
 
 Opens at `http://localhost:5173`. The Vite dev server proxies `/v1/...` requests to `http://localhost:8000` if you want to test against the API.
 
-### Build the frontend (production)
-
-```bash
-cd frontend
-npm install
-npm run build
-```
-
-Output goes to `../static/`. The resulting files are a fully static site — host them on GitHub Pages, Netlify, Cloudflare Pages, S3, or anywhere that serves static files.
-
 ### Browser persistence
 
 The frontend uses two browser-local storage mechanisms — no server, no account required:
@@ -87,13 +77,13 @@ Both are restored automatically on page load. If you export a course JSON and la
 
 ### Query parameters
 
-| Parameter | Values            | Default  | Description                                                                           |
-| --------- | ----------------- | -------- | ------------------------------------------------------------------------------------- |
-| `engine`  | `client` \| `api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
+| Parameter  | Values         | Default  | Description                                                                           |
+| ---------- | -------------- | -------- | ------------------------------------------------------------------------------------- |
+| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
 
 Example: `http://localhost:5173/?engine=api`
 
-When `engine=api` is active, the Calculate button label renders in gold to indicate the API path is being used.
+When `engine=api` is active, the Calculate button label renders in gold to indicate the API path is being used. _Note: Functionality in the API is no longer fully in parity with the backend, so functionality on the front end is no longer guaranteed_
 
 ---
 
@@ -214,7 +204,7 @@ http://localhost:8000/docs
   "init_moving_speed": 20,
   "min_moving_speed": 16.0,
   "down_time_ratio": 0.05,
-  "split_decay": 0.25,
+  "split_delta": -0.25,
   "start_time": "2026-03-04T08:10:00"
 }
 ```
@@ -373,11 +363,11 @@ The **Load Example** button (toolbar) opens a modal with pre-built course config
 
 ### Included examples
 
-| Example                 | Description                                                                                                                                                                                               |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Simple Example**      | A single 100-mile segment split into two halves, demonstrating sub-split modes (even and fixed) and a real rest stop at Specialized Chicago with per-day hours.                                           |
-| **Complex Example**     | A multi-segment course with sleep time between segments, per-segment speed/decay overrides, and multiple timezones.                                                                                       |
-| **Mishigami Challenge** | A two-segment, 1,121-mile plan modelled on the actual Mishigami ultra-endurance race across Michigan (Chicago → St Ignace → Chicago), with realistic pacing decay, sleep windows, and timezone crossings. |
+| Example                 | Description                                                                                                                                                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Simple Example**      | A single 100-mile segment split into two halves, demonstrating sub-split modes (even and fixed) and a real rest stop at Specialized Chicago with per-day hours.                                                   |
+| **Complex Example**     | A multi-segment course with sleep time between segments, per-segment speed/delta overrides, and multiple timezones.                                                                                               |
+| **Mishigami Challenge** | A two-segment, 1,121-mile plan modelled on the actual Mishigami ultra-endurance race across Michigan (Chicago → St Ignace → Chicago), with realistic speed delta settings, sleep windows, and timezone crossings. |
 
 Examples are defined as plain TypeScript objects in [`frontend/src/examples.ts`](./frontend/src/examples.ts). Adding a new example is as simple as adding an entry to the exported array — no build step or configuration change required.
 
