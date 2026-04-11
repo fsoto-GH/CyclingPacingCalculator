@@ -536,6 +536,15 @@ export default function CourseMap({
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
+  // When a segment is deleted, the selected segment/split index may no longer
+  // be valid — reset to full-course view so the elevation graph keeps working.
+  useEffect(() => {
+    if (selectedSegIdx !== null && selectedSegIdx >= formSegments.length) {
+      setSelectedSegIdx(null);
+      setSelectedSplitIdx(null);
+    }
+  }, [formSegments.length, selectedSegIdx]);
+
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
       containerRef.current?.requestFullscreen();
@@ -845,71 +854,107 @@ export default function CourseMap({
             </div>
           ))}
         </div>
-        {gpxProfiles &&
-          (() => {
-            let activeProfiles: SplitGpxProfile[];
-            let activeLabel: string;
-            if (selectedSplitIdx !== null && selectedSegIdx !== null) {
-              const p = gpxProfiles[selectedSegIdx]?.[selectedSplitIdx];
-              activeProfiles = p ? [p] : [];
-              const splitName =
-                formSegments[selectedSegIdx]?.splits[
-                  selectedSplitIdx
-                ]?.name?.trim();
-              const segName =
-                legendSegments[selectedSegIdx]?.name ??
-                `Segment ${selectedSegIdx + 1}`;
-              activeLabel = splitName
-                ? splitName
-                : formSegments.length > 1
-                  ? `${segName} · Split ${selectedSplitIdx + 1}`
-                  : `Split ${selectedSplitIdx + 1}`;
-            } else if (selectedSegIdx !== null) {
-              activeProfiles = gpxProfiles[selectedSegIdx] ?? [];
-              activeLabel =
-                legendSegments[selectedSegIdx]?.name ??
-                `Segment ${selectedSegIdx + 1}`;
-            } else {
-              activeProfiles = gpxProfiles.flat();
-              activeLabel = "Full Course";
-            }
-            const isFiltered =
-              selectedSegIdx !== null || selectedSplitIdx !== null;
-            return activeProfiles.length > 0 ? (
+        {/* Elevation panel — visible whenever a GPX track is loaded.
+             When gpxProfiles is null (e.g. after form reset or before split
+             distances are entered) a synthetic full-track profile is used so
+             the terrain shape is still visible. */}
+        {(() => {
+          // Null-profiles fallback: synthesise a single full-track profile.
+          if (!gpxProfiles) {
+            const last = gpxTrack[gpxTrack.length - 1];
+            const syntheticProfile: SplitGpxProfile = {
+              elevGainM: 0,
+              elevLossM: 0,
+              avgGradePct: 0,
+              steepPct: 0,
+              surface: "unknown",
+              endLat: last.lat,
+              endLon: last.lon,
+              endTimezone: "",
+              startKm: 0,
+              endKm: last.cumDist,
+            };
+            return (
               <div className="cml-elev-panel">
                 <div className="cml-elev-header">
-                  <span className="cml-elev-title">⛰ {activeLabel}</span>
-                  {isFiltered && (
-                    <button
-                      type="button"
-                      className="cml-elev-reset"
-                      onClick={() => {
-                        setSelectedSegIdx(null);
-                        setSelectedSplitIdx(null);
-                      }}
-                      title="Show full course elevation"
-                    >
-                      ↺ Full course
-                    </button>
-                  )}
+                  <span className="cml-elev-title">⛰ Full Course</span>
                 </div>
                 <Suspense fallback={null}>
                   <ElevationProfile
                     gpxTrack={gpxTrack}
-                    gpxProfiles={activeProfiles}
+                    gpxProfiles={[syntheticProfile]}
                     unitSystem={unitSystem}
                     onHoverKm={handleHoverKm}
-                    onClickKm={handleClickKm}
-                    splitCountsPerSegment={
-                      !isFiltered && gpxProfiles
-                        ? gpxProfiles.map((seg) => seg.length)
-                        : undefined
-                    }
                   />
                 </Suspense>
               </div>
-            ) : null;
-          })()}
+            );
+          }
+
+          // Normal mode: use actual split profiles.
+          let activeProfiles: SplitGpxProfile[];
+          let activeLabel: string;
+          if (selectedSplitIdx !== null && selectedSegIdx !== null) {
+            const p = gpxProfiles[selectedSegIdx]?.[selectedSplitIdx];
+            activeProfiles = p ? [p] : [];
+            const splitName =
+              formSegments[selectedSegIdx]?.splits[
+                selectedSplitIdx
+              ]?.name?.trim();
+            const segName =
+              legendSegments[selectedSegIdx]?.name ??
+              `Segment ${selectedSegIdx + 1}`;
+            activeLabel = splitName
+              ? splitName
+              : formSegments.length > 1
+                ? `${segName} · Split ${selectedSplitIdx + 1}`
+                : `Split ${selectedSplitIdx + 1}`;
+          } else if (selectedSegIdx !== null) {
+            activeProfiles = gpxProfiles[selectedSegIdx] ?? [];
+            activeLabel =
+              legendSegments[selectedSegIdx]?.name ??
+              `Segment ${selectedSegIdx + 1}`;
+          } else {
+            activeProfiles = gpxProfiles.flat();
+            activeLabel = "Full Course";
+          }
+          const isFiltered =
+            selectedSegIdx !== null || selectedSplitIdx !== null;
+          return activeProfiles.length > 0 ? (
+            <div className="cml-elev-panel">
+              <div className="cml-elev-header">
+                <span className="cml-elev-title">⛰ {activeLabel}</span>
+                {isFiltered && (
+                  <button
+                    type="button"
+                    className="cml-elev-reset"
+                    onClick={() => {
+                      setSelectedSegIdx(null);
+                      setSelectedSplitIdx(null);
+                    }}
+                    title="Show full course elevation"
+                  >
+                    ↺ Full course
+                  </button>
+                )}
+              </div>
+              <Suspense fallback={null}>
+                <ElevationProfile
+                  gpxTrack={gpxTrack}
+                  gpxProfiles={activeProfiles}
+                  unitSystem={unitSystem}
+                  onHoverKm={handleHoverKm}
+                  onClickKm={handleClickKm}
+                  splitCountsPerSegment={
+                    !isFiltered
+                      ? gpxProfiles.map((seg) => seg.length)
+                      : undefined
+                  }
+                />
+              </Suspense>
+            </div>
+          ) : null;
+        })()}
       </div>
     </div>
   );

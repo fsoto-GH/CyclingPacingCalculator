@@ -63,7 +63,10 @@ function sliceAndDecimate(
   }
 
   // Grade: forward difference except at the last point (backward diff).
+  // Guard against a single-point raw array (e.g. after form reset with
+  // distance = 0) where raw[i-1] would be undefined.
   return raw.map((pt, i) => {
+    if (raw.length < 2) return { dist: pt.dist, ele: pt.ele, grade: 0 };
     const a = i < raw.length - 1 ? raw[i] : raw[i - 1];
     const b = i < raw.length - 1 ? raw[i + 1] : raw[i];
     const dEle = b.ele - a.ele;
@@ -248,25 +251,32 @@ const ElevationProfile = memo(function ElevationProfile({
             }}
           />
           {/* Alternating subtle background per split — visual hint that regions are clickable.
-               Use per-segment-local index so the shade resets at segment boundaries. */}
+               Shade resets at segment boundaries so an odd split count in one segment
+               doesn't bleed into the next (e.g. splits 3 and 1 both being "odd"). */}
           {gpxProfiles.length > 1 &&
             (() => {
-              // Build a flat array of local-within-segment indices.
-              let segIdx = 0;
-              let countInSeg = 0;
-              return gpxProfiles.map((p, i) => {
-                if (splitCountsPerSegment) {
-                  // Advance to the correct segment.
-                  while (
-                    segIdx < splitCountsPerSegment.length &&
-                    countInSeg >= splitCountsPerSegment[segIdx]
+              // Pre-compute a local-within-segment index for every profile entry.
+              const localIndices: number[] = [];
+              if (splitCountsPerSegment) {
+                let si = 0;
+                let local = 0;
+                for (let i = 0; i < gpxProfiles.length; i++) {
+                  // Move to next segment if we've consumed all splits in current one.
+                  if (
+                    si < splitCountsPerSegment.length &&
+                    local >= splitCountsPerSegment[si]
                   ) {
-                    segIdx++;
-                    countInSeg = 0;
+                    si++;
+                    local = 0;
                   }
+                  localIndices.push(local++);
                 }
-                const localIdx = splitCountsPerSegment ? countInSeg++ : i;
-                return localIdx % 2 === 0 ? null : (
+              } else {
+                for (let i = 0; i < gpxProfiles.length; i++)
+                  localIndices.push(i);
+              }
+              return gpxProfiles.map((p, i) =>
+                localIndices[i] % 2 === 0 ? null : (
                   <ReferenceArea
                     key={p.startKm}
                     x1={p.startKm}
@@ -275,8 +285,8 @@ const ElevationProfile = memo(function ElevationProfile({
                     fillOpacity={1}
                     stroke="none"
                   />
-                );
-              });
+                ),
+              );
             })()}
           {splitLines.map((km) => (
             <ReferenceLine

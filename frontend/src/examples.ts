@@ -544,7 +544,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
   min_moving_speed: "10",
   down_time_ratio: "0.1",
   split_delta: "-0.1",
-  start_time: "2026-04-09T16:50",
+  start_time: "2026-04-09T06:00",
   segmentCount: "17",
   segments: [
     {
