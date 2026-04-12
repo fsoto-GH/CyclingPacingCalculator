@@ -378,11 +378,12 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                 <Section title="Share a Course via URL">
                   <p>
-                    Example courses loaded from the <strong>Examples</strong>{" "}
-                    panel set a <code>?example=</code> query parameter in the
-                    URL. You can copy and share that URL — anyone who opens it
-                    will automatically load the same example. If they already
-                    have unsaved data the app will prompt before overwriting it.
+                    To share a course, use the <strong>Export JSON</strong>
+                    button in the toolbar and send the downloaded file. The
+                    recipient can import it with the <strong>Import JSON</strong>
+                    button. If the course has a GPX file and the recipient
+                    uploads the same GPX, all elevation and map data will be
+                    restored as well.
                   </p>
                 </Section>
               </Category>
@@ -545,8 +546,6 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     The <strong>Examples</strong> button in the top toolbar
                     loads pre-built courses including their GPX routes. If you
                     have unsaved data, the app will ask before overwriting it.
-                    Loading an example also sets a <code>?example=</code> URL
-                    parameter so the link is shareable.
                   </p>
                 </Section>
 

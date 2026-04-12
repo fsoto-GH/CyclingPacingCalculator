@@ -199,6 +199,7 @@ export default function CourseForm() {
   const [pendingExampleLoad, setPendingExampleLoad] = useState<{
     form: CourseFormState;
     gpxUrl?: string;
+    urlName?: string;
   } | null>(null);
   const [criteriaModalOpen, setCriteriaModalOpen] = useState(false);
   const [autoNameDialog, setAutoNameDialog] = useState<{
@@ -587,17 +588,16 @@ export default function CourseForm() {
   // Guard that intercepts example loads when the form has data.
   const handleLoadExampleGuarded = useCallback(
     (example: CourseFormState, gpxUrl?: string, urlName?: string) => {
-      // Always update the URL param so the loaded example is shareable.
-      if (urlName) {
-        const url = new URL(window.location.href);
-        url.searchParams.set("example", urlName);
-        window.history.replaceState({}, "", url.toString());
-      }
       if (isFormDirty) {
-        setPendingExampleLoad({ form: example, gpxUrl });
+        setPendingExampleLoad({ form: example, gpxUrl, urlName });
         setConfirmExampleOpen(true);
       } else {
         handleLoadExample(example, gpxUrl);
+        if (urlName) {
+          const url = new URL(window.location.href);
+          url.searchParams.set("example", urlName);
+          window.history.replaceState({}, "", url.toString());
+        }
       }
     },
     [isFormDirty, handleLoadExample],
@@ -606,6 +606,11 @@ export default function CourseForm() {
   const handleConfirmLoadExample = useCallback(() => {
     if (pendingExampleLoad) {
       handleLoadExample(pendingExampleLoad.form, pendingExampleLoad.gpxUrl);
+      if (pendingExampleLoad.urlName) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("example", pendingExampleLoad.urlName);
+        window.history.replaceState({}, "", url.toString());
+      }
       // Keep the ?example= param so the URL remains shareable.
     }
     setConfirmExampleOpen(false);
@@ -614,9 +619,6 @@ export default function CourseForm() {
   }, [pendingExampleLoad, handleLoadExample]);
 
   const handleCancelLoadExample = useCallback(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("example");
-    window.history.replaceState({}, "", url.toString());
     setConfirmExampleOpen(false);
     setPendingExampleLoad(null);
   }, []);

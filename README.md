@@ -19,7 +19,6 @@ While the race is over, I continue to enhance this project. Since the race, the 
 - Real-time auto-calculation as you type (no Calculate button)
 - Named courses, segments, and splits with auto-naming from city labels
 - Segment pagination and Quick Setup for large courses
-- Shareable example URLs via `?example=` query parameter
 
 This repository contains:
 
@@ -41,7 +40,7 @@ The frontend is a single-page React app located in [`frontend/`](./frontend). It
 - Collapsible segments, splits, and results
 - Segment pagination — page through large courses (5 / 10 / 20 segments per page)
 - Quick Setup dialog — rapidly build uniform segments with a single dialog
-- Example courses with shareable `?example=` URL parameter
+- Example courses (including the Mishigami Challenge and Trans Am Classic)
 - Import / export course definitions as JSON
 - GPX route loading with per-split elevation analysis (gain, loss, grade, surface)
 - Full-course elevation profile chart with segment color overlays and interactive split zoom
@@ -79,10 +78,9 @@ Both are restored automatically on page load. If you export a course JSON and la
 
 ### Query parameters
 
-| Parameter  | Values         | Default  | Description                                                                                                                          |
-| ---------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend                                                |
-| `example`  | url name       | —        | Loads a named example on page open (e.g. `?example=mishigami`). Set automatically when an example is loaded from the Examples modal. |
+| Parameter  | Values         | Default  | Description                                                           |
+| ---------- | -------------- | -------- | --------------------------------------------------------------------- |
+| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
 
 Example: `http://localhost:5173/?engine=api`
 
@@ -398,8 +396,6 @@ When a GPX file is loaded and split distances are configured, an interactive Lea
 ## �🧩 Example Courses
 
 The **Examples** button (toolbar) opens a modal with pre-built course configurations including their GPX routes. Loading an example replaces the current form state (with a confirmation prompt if you have unsaved data). The form auto-calculates immediately after loading.
-
-Loading an example also sets a `?example=<url_name>` query parameter so the URL is shareable — anyone who opens the link will automatically load the same example.
 
 ### Included examples
 
