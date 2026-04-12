@@ -8,7 +8,7 @@
  */
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
-const USER_AGENT = "CyclingPacingCalculator/1.0";
+const USER_AGENT = "UltraCyclingPlanner/1.0";
 
 // ── Persistent geocode cache ──────────────────────────────────────────────────
 // Entries are written to localStorage (prefix "geo:") with a timestamp so they

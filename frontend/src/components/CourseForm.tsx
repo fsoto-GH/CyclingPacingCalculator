@@ -79,7 +79,7 @@ function makeDefaultSegment(): SegmentFormState {
   };
 }
 
-const STORAGE_KEY = "cycling-pacing-form";
+const STORAGE_KEY = "ultra-cycling-planner-form";
 
 const INITIAL_FORM: CourseFormState = {
   name: "Course",
@@ -288,7 +288,11 @@ export default function CourseForm() {
   const segPageSizeRef = useRef(5);
   const handleMapMarkerClick = useCallback(
     (segIdx: number, splitIdx: number) => {
-      setMapNavTarget((prev) => ({ segIdx, splitIdx, rev: (prev?.rev ?? 0) + 1 }));
+      setMapNavTarget((prev) => ({
+        segIdx,
+        splitIdx,
+        rev: (prev?.rev ?? 0) + 1,
+      }));
       // Jump to the page that contains the target segment.
       setSegPage(Math.floor(segIdx / segPageSizeRef.current));
     },
@@ -1372,7 +1376,7 @@ export default function CourseForm() {
         <div className="course-form" onBlur={handleBlur}>
           <div className="title-row">
             <h1>
-              Cycling Pacing Calculator{" "}
+              Ultra Cycling Planner{" "}
               <span className="app-version">v{__APP_VERSION__}</span>
             </h1>
             <div className="title-nav-buttons">
@@ -1946,8 +1950,16 @@ export default function CourseForm() {
                                   form.segments[i - 1].splits.length - 1
                                 ] ?? null)
                           }
-                          expandSignal={mapNavTarget?.segIdx === i ? mapNavTarget.rev : undefined}
-                          expandSplitIdx={mapNavTarget?.segIdx === i ? mapNavTarget.splitIdx : -1}
+                          expandSignal={
+                            mapNavTarget?.segIdx === i
+                              ? mapNavTarget.rev
+                              : undefined
+                          }
+                          expandSplitIdx={
+                            mapNavTarget?.segIdx === i
+                              ? mapNavTarget.splitIdx
+                              : -1
+                          }
                           collapseSignal={collapseAllSignal || undefined}
                           expandAllSignal={expandAllSignal || undefined}
                         />

@@ -423,7 +423,7 @@ export function buildGpxString(
 
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<gpx version="1.1" creator="CyclingPacingCalculator" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+    `<gpx version="1.1" creator="UltraCyclingPlanner" xmlns="http://www.topografix.com/GPX/1/1">\n` +
     `  <trk>\n` +
     `    <name>${escapeXml(trackName)}</name>\n` +
     trksegs +

@@ -1,4 +1,4 @@
-# 🚴‍♂️ CyclingPacingCalculator
+# 🚴‍♂️ Ultra Cycling Planner
 
 ## 🧠 Why I Built This
 
@@ -78,8 +78,8 @@ Both are restored automatically on page load. If you export a course JSON and la
 
 ### Query parameters
 
-| Parameter  | Values         | Default  | Description                                                           |
-| ---------- | -------------- | -------- | --------------------------------------------------------------------- |
+| Parameter  | Values         | Default  | Description                                                                           |
+| ---------- | -------------- | -------- | ------------------------------------------------------------------------------------- |
 | ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
 
 Example: `http://localhost:5173/?engine=api`

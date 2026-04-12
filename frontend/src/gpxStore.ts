@@ -7,7 +7,7 @@
  * Record shape: { fileName: string; xml: string }
  */
 
-const DB_NAME = "cycling-pacing-gpx";
+const DB_NAME = "ultra-cycling-planner-gpx";
 const DB_VERSION = 1;
 const STORE = "gpx";
 const KEY = "current";
