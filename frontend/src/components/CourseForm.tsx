@@ -1842,7 +1842,7 @@ export default function CourseForm() {
                 <div className="seg-pagination">
                   <button
                     type="button"
-                    className="seg-page-btn"
+                    className="seg-page-btn seg-page-btn--first"
                     disabled={clampedSegPage === 0}
                     onClick={() => setSegPage(0)}
                     title="First page"
@@ -1879,7 +1879,7 @@ export default function CourseForm() {
                   </button>
                   <button
                     type="button"
-                    className="seg-page-btn"
+                    className="seg-page-btn seg-page-btn--last"
                     disabled={clampedSegPage >= totalSegPages - 1}
                     onClick={() => setSegPage(Math.max(0, totalSegPages - 1))}
                     title="Last page"
@@ -1988,10 +1988,7 @@ export default function CourseForm() {
               Create segments with uniform splits in{" "}
               <strong>Split Distance</strong> mode.
             </p>
-            <div
-              className="fields-grid"
-              style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: "0.75rem" }}
-            >
+            <div className="fields-grid qs-fields-grid">
               <div className="field">
                 <label htmlFor="qs-segments"># Segments</label>
                 <NumberInput

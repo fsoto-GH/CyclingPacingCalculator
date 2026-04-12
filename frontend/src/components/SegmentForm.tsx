@@ -104,9 +104,13 @@ export default function SegmentFormComponent({
     prevCollapsed.current = collapsed;
   }, [collapsed]);
 
-  // Expand + scroll when CourseMap popup navigates here
+  // Expand + scroll when CourseMap popup navigates here.
+  // lastFiredExpandRef guards against re-firing on remount (e.g. page change)
+  // when mapNavTarget still holds a stale signal from a previous navigation.
+  const lastFiredExpandRef = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!expandSignal) return;
+    if (!expandSignal || expandSignal === lastFiredExpandRef.current) return;
+    lastFiredExpandRef.current = expandSignal;
     setCollapsed(false);
     // Scroll after the DOM has expanded
     requestAnimationFrame(() => {

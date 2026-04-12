@@ -404,11 +404,10 @@ h4 {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-top: 1rem;
-  padding: 0.4rem 0.6rem;
-  background: #1a1a2e;
-  border: 1px solid #2e2e2e;
-  border-radius: 6px;
+  margin-top: 0.75rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid #2e2e2e;
+  border-bottom: 1px solid #2e2e2e;
   flex-wrap: wrap;
 }
 
@@ -473,7 +472,6 @@ h4 {
 
 @media (max-width: 640px) {
   .segments-toolbar {
-    flex-wrap: wrap;
     gap: 0.35rem;
   }
   .segments-toolbar-left {
@@ -485,15 +483,31 @@ h4 {
   }
 }
 
+@media (max-width: 440px) {
+  .segments-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+  }
+  .segments-toolbar-left,
+  .segments-toolbar-right {
+    flex: unset;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  .segments-toolbar-sep {
+    display: none;
+  }
+}
+
 /* Segment pagination bar */
 .seg-pagination {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
-  border-top: 1px solid #2e2e2e;
-  background: #181818;
-  border-radius: 0 0 6px 6px;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #2e2e2e;
 }
 
 .seg-page-btn {
@@ -537,6 +551,20 @@ h4 {
 
 .seg-page-size:hover {
   border-color: #60a5fa;
+}
+
+@media (max-width: 440px) {
+  .seg-pagination {
+    gap: 0.3rem;
+  }
+  /* Hide first/last page jump buttons — too many controls at 390px */
+  .seg-page-btn--first,
+  .seg-page-btn--last {
+    display: none;
+  }
+  .seg-page-label {
+    font-size: 0.68rem;
+  }
 }
 
 .segment-form {
@@ -1385,6 +1413,15 @@ h4 {
   transition: background 0.15s, opacity 0.15s, color 0.15s, border-color 0.15s;
   text-align: center;
   white-space: nowrap;
+}
+
+@media (max-width: 440px) {
+  .action-btn {
+    min-width: 0;
+    flex: 1 1 auto;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+  }
 }
 
 .action-btn-primary {
@@ -2628,11 +2665,30 @@ dialog {
   padding: 0.65rem 1.25rem;
   border-top: 1px solid #3a3a3a;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 /* ── Auto-name prefix section ── */
 .auto-name-prefix-section {
   padding-bottom: 0.5rem;
+}
+
+/* ── Quick Setup modal grid ── */
+.qs-fields-grid {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+@media (max-width: 600px) {
+  .qs-fields-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 440px) {
+  .qs-fields-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .auto-name-prefix-rows {
