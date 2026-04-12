@@ -15,3 +15,4 @@ class Segment(BaseModel):
     min_moving_speed: float | None = None
     sleep_time: timedelta = timedelta(hours=0)
     no_end_down_time: bool = True
+    name: str | None = None

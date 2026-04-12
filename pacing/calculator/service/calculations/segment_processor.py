@@ -124,6 +124,7 @@ def __compute_segment_detail(segment: Segment,
             pace=split.distance / (active_time.total_seconds() / 3600),
             start_distance=curr_distance,
             rest_stop=split.rest_stop,
+            name=split.name,
             sub_splits=__compute_sub_split_detail(
                 split=split,
                 start_distance=curr_distance,

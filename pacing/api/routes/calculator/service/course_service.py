@@ -71,7 +71,8 @@ def course_to_dto(course: Course) -> CourseDto:
                     rest_stop=rest_stop_to_dto(split),
                     down_time=split.down_time,
                     moving_speed=split.moving_speed,
-                    adjustment_time=split.adjustment_time
+                    adjustment_time=split.adjustment_time,
+                    name=split.name
                 )
                 for split in segment.splits
             ],
@@ -80,7 +81,8 @@ def course_to_dto(course: Course) -> CourseDto:
             moving_speed=segment.moving_speed,
             min_moving_speed=segment.min_moving_speed,
             sleep_time=segment.sleep_time,
-            no_end_down_time=segment.no_end_down_time
+            no_end_down_time=segment.no_end_down_time,
+            name=segment.name
         )
         for segment in course.segments
     ]

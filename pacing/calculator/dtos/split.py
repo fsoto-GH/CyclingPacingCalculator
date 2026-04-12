@@ -15,3 +15,4 @@ class Split:
     # this field overrides any moving speed set at parent levels (segment or course)
     moving_speed: float | None = None
     adjustment_time: timedelta = timedelta(hours=0)
+    name: str | None = None
