@@ -16,11 +16,15 @@ interface SearchResult {
 interface LegendCtx {
   searchResult: SearchResult | null;
   catKey: string;
+  expandAllSignal: number;
+  collapseAllSignal: number;
 }
 
 const LegendSearchContext = createContext<LegendCtx>({
   searchResult: null,
   catKey: "",
+  expandAllSignal: 0,
+  collapseAllSignal: 0,
 });
 
 type SearchEntry = { catKey: string; secTitle: string; keywords: string };
@@ -45,6 +49,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords:
       "autosave localstorage indexeddb refresh persist restore automatic browser",
   },
+  {
+    catKey: "tips",
+    secTitle: "Share a Course via URL",
+    keywords: "share url example link param shareable load auto",
+  },
   // Features
   {
     catKey: "features",
@@ -56,6 +65,12 @@ const SEARCH_INDEX: SearchEntry[] = [
     secTitle: "Load GPX — where the magic comes together",
     keywords:
       "gpx elevation gain loss grade steep surface timezone detection nominatim overpass rest stop export distance validation ramer smoothing",
+  },
+  {
+    catKey: "features",
+    secTitle: "Elevation Profile",
+    keywords:
+      "elevation profile chart zoom segment color reset full course split click legend",
   },
   {
     catKey: "features",
@@ -73,13 +88,28 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "features",
     secTitle: "Color-Coded Segments & Course Map",
     keywords:
-      "color segment map track legend marker rest stop popup city zoom navigate gray",
+      "color segment map track legend marker rest stop popup city zoom navigate gray elevation toggle",
   },
   {
     catKey: "features",
     secTitle: "Auto-Name from City Labels",
     keywords:
-      "auto name city label segment split prefix template placeholder rename",
+      "auto name city label segment split prefix template placeholder rename from_city to_city from_state to_state segment_num split_num",
+  },
+  {
+    catKey: "features",
+    secTitle: "Examples",
+    keywords: "example load preset mishigami trans am url share param",
+  },
+  {
+    catKey: "features",
+    secTitle: "Quick Setup",
+    keywords: "quick setup segments splits distance sleep uniform build append",
+  },
+  {
+    catKey: "features",
+    secTitle: "Segment Pagination",
+    keywords: "pagination page segments per page navigate large course",
   },
   // Disclaimers
   {
@@ -93,6 +123,12 @@ const SEARCH_INDEX: SearchEntry[] = [
     secTitle: "Address Resolution",
     keywords:
       "address resolution geocoding coordinates overpass mirror fallback broken",
+  },
+  {
+    catKey: "disclaimers",
+    secTitle: "Browser & Device Support",
+    keywords:
+      "browser device support screen size mobile responsive 390 600 px minimum width",
   },
   // Information
   {
@@ -112,6 +148,12 @@ const SEARCH_INDEX: SearchEntry[] = [
     secTitle: "Split & Segment Header Stats",
     keywords:
       "header stats blue green red gray yellow elevation grade steep timezone badge",
+  },
+  {
+    catKey: "information",
+    secTitle: "Start Time & Timezone",
+    keywords:
+      "start time timezone wall clock tz hint interpreted local course detected reset auto",
   },
   // Key Terms
   {
@@ -233,42 +275,65 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
   }, [searchQuery]);
 
   const noResults = searchResult !== null && searchResult.openCats.size === 0;
+  const [expandAllSignal, setExpandAllSignal] = useState(0);
+  const [collapseAllSignal, setCollapseAllSignal] = useState(0);
 
   return (
     <dialog ref={dialogRef} className="legend-modal" onClose={handleClose}>
       <div className="legend-header">
-        <h2>Guide</h2>
-        <div className="legend-search-wrap">
-          <input
-            ref={searchRef}
-            type="search"
-            className="legend-search-input"
-            placeholder="Search guide…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Search guide"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              className="legend-search-clear"
-              onClick={() => setSearchQuery("")}
-              aria-label="Clear search"
-            >
-              ✕
-            </button>
+        <div className="legend-header-left">
+          <h2>Guide</h2>
+          {!searchQuery && (
+            <div className="legend-guide-expand-btns">
+              <button
+                type="button"
+                className="legend-guide-btn"
+                onClick={() => setExpandAllSignal((s) => s + 1)}
+                title="Expand all sections"
+              >
+                ▼ Expand
+              </button>
+              <button
+                type="button"
+                className="legend-guide-btn"
+                onClick={() => setCollapseAllSignal((s) => s + 1)}
+                title="Collapse all sections"
+              >
+                ▶ Collapse
+              </button>
+            </div>
           )}
         </div>
-        <button
-          className="legend-close"
-          onClick={handleClose}
-          aria-label="Close"
-        >
-          ✕
-        </button>
+        <div className="legend-header-right">
+          <div className="legend-search-wrap">
+            <input
+              ref={searchRef}
+              type="search"
+              className="legend-search-input"
+              placeholder="Search guide…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search guide"
+            />
+          </div>
+          <button
+            className="legend-close"
+            onClick={handleClose}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
       </div>
       <div className="legend-body">
-        <LegendSearchContext.Provider value={{ searchResult, catKey: "" }}>
+        <LegendSearchContext.Provider
+          value={{
+            searchResult,
+            catKey: "",
+            expandAllSignal,
+            collapseAllSignal,
+          }}
+        >
           {noResults ? (
             <p className="legend-no-results">
               No results for &ldquo;<strong>{searchQuery.trim()}</strong>&rdquo;
@@ -308,6 +373,16 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     on upload, so it survives a page refresh without
                     re-uploading. Both are restored automatically when the page
                     loads.
+                  </p>
+                </Section>
+
+                <Section title="Share a Course via URL">
+                  <p>
+                    Example courses loaded from the <strong>Examples</strong>{" "}
+                    panel set a <code>?example=</code> query parameter in the
+                    URL. You can copy and share that URL — anyone who opens it
+                    will automatically load the same example. If they already
+                    have unsaved data the app will prompt before overwriting it.
                   </p>
                 </Section>
               </Category>
@@ -408,23 +483,24 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                 <Section title="Color-Coded Segments & Course Map">
                   <p>
                     Each segment is assigned a color that appears on the
-                    collapse toggle icon, the course map track, and the
-                    distance/elevation badges in the segment header. Portions of
-                    the course not yet covered by any split are shown in a light
-                    gray on the map.
+                    collapse toggle icon, the course map track, the elevation
+                    profile overlay, and the distance/elevation badges in the
+                    segment header. Portions of the course not yet covered by
+                    any split are shown in a light gray on the map.
                   </p>
                   <ul>
                     <li>
                       The <strong>course map legend</strong> is clickable — each
                       legend entry zooms the map to that segment's portion of
-                      the track.
+                      the track, and also zooms the elevation profile to that
+                      segment's range. Clicking the same segment again resets
+                      the elevation zoom.
                     </li>
                     <li>
                       Rest stop markers appear in{" "}
-                      <span style={{ color: "#a855f7" }}>purple</span>. Use the
-                      map to quickly see which split endpoints don't have a rest
-                      stop configured, and to get a broader view of nearby
-                      cities beyond what the split form shows.
+                      <span style={{ color: "#a855f7" }}>purple</span>. They are
+                      hidden by default; use the <strong>Rest Stops</strong>{" "}
+                      toggle button on the map to show them.
                     </li>
                     <li>
                       Clicking a split endpoint marker on the map opens a popup
@@ -435,20 +511,127 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                   </ul>
                 </Section>
 
+                <Section title="Elevation Profile">
+                  <p>
+                    When a GPX file is loaded, a full-course elevation chart
+                    appears below the map. The chart always shows the entire
+                    course at once, with each segment's range highlighted in its
+                    assigned color.
+                  </p>
+                  <ul>
+                    <li>
+                      <strong>Zooming</strong> — click any area of the chart to
+                      zoom into that split's distance range. The chart title
+                      updates to show what is currently in view (e.g.{" "}
+                      <em>Elevation: Segment 1 › Split 2</em>). Click a segment
+                      in the map legend to zoom the elevation profile to that
+                      segment; click the same segment again to reset.
+                    </li>
+                    <li>
+                      <strong>Reset</strong> — the <em>↺ Reset</em> button in
+                      the elevation header returns the chart to the full-course
+                      view.
+                    </li>
+                    <li>
+                      Zooming in reveals finer GPS detail — the chart samples up
+                      to 300 points from whatever range is in view, so a smaller
+                      range means higher resolution.
+                    </li>
+                  </ul>
+                </Section>
+
+                <Section title="Examples">
+                  <p>
+                    The <strong>Examples</strong> button in the top toolbar
+                    loads pre-built courses including their GPX routes. If you
+                    have unsaved data, the app will ask before overwriting it.
+                    Loading an example also sets a <code>?example=</code> URL
+                    parameter so the link is shareable.
+                  </p>
+                </Section>
+
+                <Section title="Quick Setup">
+                  <p>
+                    The <strong>⚡ Quick Setup</strong> button in the segments
+                    toolbar opens a dialog to rapidly build uniform segments.
+                    Choose the number of segments, splits per segment, distance
+                    per split, and sleep time per segment, then either{" "}
+                    <strong>Build Segments</strong> (replace all) or{" "}
+                    <strong>Append Segments</strong> (add to the end).
+                  </p>
+                </Section>
+
+                <Section title="Segment Pagination">
+                  <p>
+                    Large courses with many segments are paginated. Use the
+                    pagination bar above the segments list to navigate pages and
+                    set how many segments are shown per page (5, 10, or 20).
+                    Clicking <strong>↓ Go to split</strong> on the map
+                    automatically jumps to the correct page.
+                  </p>
+                </Section>
+
                 <Section title="Auto-Name from City Labels">
                   <p>
-                    Once city labels have loaded for all splits, you can
-                    automatically update segment and split names to describe
-                    their start and end cities — useful for quickly labeling a
-                    course after routing. Optional prefix templates support{" "}
-                    <code>{"{segment_num}"}</code> and{" "}
-                    <code>{"{split_num}"}</code> placeholders.
+                    Once city labels have loaded for all splits, the{" "}
+                    <strong>🏷️ Auto-Name</strong> button appears in the segments
+                    toolbar. It sets segment and split names to describe their
+                    start and end cities. Optional prefix templates support the
+                    following tokens:
+                  </p>
+                  <ul>
+                    <li>
+                      <code>{"{segment_num}"}</code> — segment number (1-based)
+                    </li>
+                    <li>
+                      <code>{"{split_num}"}</code> — split number within the
+                      segment (1-based)
+                    </li>
+                    <li>
+                      <code>{"{from_city}"}</code> — name of the starting city
+                    </li>
+                    <li>
+                      <code>{"{to_city}"}</code> — name of the ending city
+                    </li>
+                    <li>
+                      <code>{"{from_state}"}</code> — state/region of the
+                      starting city
+                    </li>
+                    <li>
+                      <code>{"{to_state}"}</code> — state/region of the ending
+                      city
+                    </li>
+                  </ul>
+                  <p>
+                    You can choose to append a <em>City A → City B</em> route
+                    label, rename only unnamed items, or overwrite all existing
+                    names.
                   </p>
                 </Section>
               </Category>
 
               {/* ── Disclaimers ── */}
               <Category title="⚠️ Disclaimers" catKey="disclaimers">
+                <Section title="Browser & Device Support">
+                  <p>
+                    This app requires a modern desktop or tablet browser.
+                    Minimum supported viewport width is <strong>390 px</strong>{" "}
+                    (iPhone 12/13/14 Pro portrait), but at that size some
+                    features are constrained — maps, elevation charts, and
+                    results tables are cramped.
+                  </p>
+                  <p>
+                    <strong>600 px or wider is strongly recommended</strong> for
+                    full access to all features. Anything narrower than 390 px
+                    is not supported and will likely produce layout issues.
+                  </p>
+                  <p>
+                    This app is not optimised for touch-only use. GPX file
+                    uploads, drag-to-zoom map interactions, and multi-column
+                    forms work best with a keyboard and pointer device.
+                  </p>
+                </Section>
+
                 <Section title="Data Accuracy">
                   <p>
                     Rest stop data, addresses, and open hours are supplied by{" "}
@@ -476,6 +659,22 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
               {/* ── Information ── */}
               <Category title="ℹ️ Information" catKey="information">
+                <Section title="Start Time & Timezone">
+                  <p>
+                    The <strong>Start Time</strong> field uses your course
+                    timezone, not the browser's local timezone. If the two
+                    differ, a hint line appears below the field showing the
+                    wall-clock interpretation — e.g.{" "}
+                    <em>Interpreted as 6:00 AM PDT</em>.
+                  </p>
+                  <p>
+                    When a GPX file is loaded the timezone is auto-detected from
+                    the track's first point. A <strong>Reset to auto</strong>{" "}
+                    button appears next to the Timezone field if the current
+                    value differs from what was detected.
+                  </p>
+                </Section>
+
                 <Section title="GPX Distance Indicators">
                   <p>
                     When a GPX file is loaded, the calculator knows the total
@@ -783,8 +982,17 @@ function Section({
   title: string;
   children: React.ReactNode;
 }) {
-  const { searchResult, catKey } = useContext(LegendSearchContext);
+  const { searchResult, catKey, expandAllSignal, collapseAllSignal } =
+    useContext(LegendSearchContext);
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (expandAllSignal > 0 && !searchResult) setOpen(true);
+  }, [expandAllSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (collapseAllSignal > 0 && !searchResult) setOpen(false);
+  }, [collapseAllSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When search is active, hide non-matching sections.
   if (searchResult && !searchResult.openSecs.has(`${catKey}:${title}`)) {
@@ -821,8 +1029,17 @@ function Category({
   catKey: string;
   children: React.ReactNode;
 }) {
-  const { searchResult } = useContext(LegendSearchContext);
+  const { searchResult, expandAllSignal, collapseAllSignal } =
+    useContext(LegendSearchContext);
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (expandAllSignal > 0 && !searchResult) setOpen(true);
+  }, [expandAllSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (collapseAllSignal > 0 && !searchResult) setOpen(false);
+  }, [collapseAllSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When search is active, hide categories with no matching sections.
   if (searchResult && !searchResult.openCats.has(catKey)) return null;
@@ -831,7 +1048,9 @@ function Category({
   const isOpen = searchResult ? true : open;
 
   return (
-    <LegendSearchContext.Provider value={{ searchResult, catKey }}>
+    <LegendSearchContext.Provider
+      value={{ searchResult, catKey, expandAllSignal, collapseAllSignal }}
+    >
       <div className="legend-category">
         <button
           type="button"

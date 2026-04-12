@@ -11,19 +11,15 @@ I built this calculator to answer those questions. It powered my race plan for M
 While the race is over, I continue to enhance this project. Since the race, the calculator has gained:
 
 - GPX route loading with per-split elevation analysis (gain, loss, grade, surface, steep %)
-- An embedded OSM map pin at each split endpoint
-- Nearby rest stop search powered by the OpenStreetMap Overpass API
+- A full-course elevation profile chart with segment color overlays and interactive zoom
+- An interactive Leaflet course map with full track visualization, color-coded segments, and split endpoint markers
+- A nearby rest stop search powered by the OpenStreetMap Overpass API
 - Automatic timezone detection from GPX coordinates
 - A natural language course summary with open-hours colour coding
 - Real-time auto-calculation as you type (no Calculate button)
-- Named courses, segments, and splits
-
-Potential future directions:
-
-- Interactive GPX route map (Leaflet.js) with full track visualization and multiple pins
-- Google / HERE Places API integration for richer rest stop data
-- Elevation profile chart per split
-- Shareable plan URLs (encode form state in URL hash)
+- Named courses, segments, and splits with auto-naming from city labels
+- Segment pagination and Quick Setup for large courses
+- Shareable example URLs via `?example=` query parameter
 
 This repository contains:
 
@@ -43,13 +39,19 @@ The frontend is a single-page React app located in [`frontend/`](./frontend). It
 - Imperial / metric toggle
 - Rest stop open hours with timezone-aware ETA badges (🟢 Open / 🟡 Near / 🔴 Closed)
 - Collapsible segments, splits, and results
-- Example courses (including the Mishigami Challenge)
+- Segment pagination — page through large courses (5 / 10 / 20 segments per page)
+- Quick Setup dialog — rapidly build uniform segments with a single dialog
+- Example courses with shareable `?example=` URL parameter
 - Import / export course definitions as JSON
 - GPX route loading with per-split elevation analysis (gain, loss, grade, surface)
+- Full-course elevation profile chart with segment color overlays and interactive split zoom
+- Interactive Leaflet course map with color-coded segments, split endpoint markers, and rest stop pins
 - GPX split export — download a trimmed GPX for any individual split from the Results section
 - OSM-powered nearby stop search at each split endpoint via the Overpass API
 - Nearby city labels on split distance inputs via the Nominatim reverse geocoding API
+- Auto-Name feature — populate segment and split names from resolved city labels using templates
 - Automatic timezone detection from GPX coordinates (no API call)
+- Start time interpreted in course timezone with a hint shown when it differs from the browser timezone
 - Natural language course summary with open-hours status
 - Real-time auto-calculation (no Calculate button needed)
 - Form state persisted to **localStorage**; GPX file persisted to **IndexedDB**
@@ -77,9 +79,10 @@ Both are restored automatically on page load. If you export a course JSON and la
 
 ### Query parameters
 
-| Parameter  | Values         | Default  | Description                                                                           |
-| ---------- | -------------- | -------- | ------------------------------------------------------------------------------------- |
-| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
+| Parameter  | Values         | Default  | Description                                                                                                                          |
+| ---------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend                                                |
+| `example`  | url name       | —        | Loads a named example on page open (e.g. `?example=mishigami`). Set automatically when an example is loaded from the Examples modal. |
 
 Example: `http://localhost:5173/?engine=api`
 
@@ -357,9 +360,46 @@ If a course name, segment name, or split name is provided in the form, the narra
 
 ---
 
-## 🧩 Example Courses
+## � Browser & Device Support
 
-The **Load Example** button (toolbar) opens a modal with pre-built course configurations. Loading an example completely replaces the current form state. The form auto-calculates immediately after loading.
+This app requires a modern desktop or tablet browser.
+
+| Viewport   | Support level                                                         |
+| ---------- | --------------------------------------------------------------------- |
+| ≥ 600 px   | Full — all features display correctly                                 |
+| 390–599 px | Limited — most features work but maps, charts, and tables are cramped |
+| < 390 px   | Not supported — layout issues expected                                |
+
+The app is **not optimised for touch-only use**. GPX file uploads, map interactions, and multi-column forms work best with a keyboard and pointer device.
+
+---
+
+## 🗺️ Course Map & Elevation Profile
+
+When a GPX file is loaded and split distances are configured, an interactive Leaflet map and elevation chart appear below the Course Settings form.
+
+### Course map
+
+- The full route is drawn as a colored polyline, with each segment shown in a distinct color matching the legend and segment collapse icon.
+- Portions of the route not yet covered by any split are shown in light gray.
+- Split endpoint markers are interactive — clicking one opens a popup with the split name, distance, and a **↓ Go to split** button that scrolls to and expands the corresponding form.
+- Rest stop markers (purple) are hidden by default; use the **Rest Stops** toggle button on the map to show them.
+- The **legend** is clickable: clicking a segment entry zooms the map to that segment's track portion and simultaneously zooms the elevation profile to that segment's distance range. Clicking the same entry again resets the elevation zoom.
+
+### Elevation profile
+
+- Always shows the **full course**, with each segment's range overlaid in its color.
+- Click any area of the chart to zoom into that split's distance range. The header title updates to show what is in view (e.g. _Elevation: Segment 1 › Split 2_).
+- The **↺ Reset** button returns the chart to the full-course view.
+- Zooming in increases resolution: the chart always samples up to 300 points from the visible range, so smaller ranges reveal finer GPS detail.
+
+---
+
+## �🧩 Example Courses
+
+The **Examples** button (toolbar) opens a modal with pre-built course configurations including their GPX routes. Loading an example replaces the current form state (with a confirmation prompt if you have unsaved data). The form auto-calculates immediately after loading.
+
+Loading an example also sets a `?example=<url_name>` query parameter so the URL is shareable — anyone who opens the link will automatically load the same example.
 
 ### Included examples
 
@@ -368,6 +408,7 @@ The **Load Example** button (toolbar) opens a modal with pre-built course config
 | **Simple Example**      | A single 100-mile segment split into two halves, demonstrating sub-split modes (even and fixed) and a real rest stop at Specialized Chicago with per-day hours.                                                   |
 | **Complex Example**     | A multi-segment course with sleep time between segments, per-segment speed/delta overrides, and multiple timezones.                                                                                               |
 | **Mishigami Challenge** | A two-segment, 1,121-mile plan modelled on the actual Mishigami ultra-endurance race across Michigan (Chicago → St Ignace → Chicago), with realistic speed delta settings, sleep windows, and timezone crossings. |
+| **Trans Am Classic**    | The Trans Am Bike Race route with full GPX, demonstrating a large multi-segment course with Auto-Name city labels and elevation profile zoom.                                                                     |
 
 Examples are defined as plain TypeScript objects in [`frontend/src/examples.ts`](./frontend/src/examples.ts). Adding a new example is as simple as adding an entry to the exported array — no build step or configuration change required.
 
