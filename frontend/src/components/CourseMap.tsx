@@ -54,6 +54,8 @@ interface CourseMapProps {
   gpxProfiles?: SplitGpxProfile[][] | null;
   /** Called when the user clicks the "Go to split" button in a popup */
   onMarkerClick?: (segIdx: number, splitIdx: number) => void;
+  /** Display name shown in the elevation panel header. */
+  courseName?: string;
 }
 
 /** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2–3k. */
@@ -388,6 +390,7 @@ export default function CourseMap({
   unitSystem,
   gpxProfiles,
   onMarkerClick,
+  courseName,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
   const toUserDist =
@@ -514,9 +517,12 @@ export default function CourseMap({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMarkers, setShowMarkers] = useState(true);
   const [showRestStops, setShowRestStops] = useState(true);
+  const [mapStyle, setMapStyle] = useState<"osm" | "topo">("osm");
   const [selectedSegIdx, setSelectedSegIdx] = useState<number | null>(null);
-  const [selectedSplitIdx, setSelectedSplitIdx] = useState<number | null>(null);
   const [hoverKm, setHoverKm] = useState<number | null>(null);
+  const [elevZoomRange, setElevZoomRange] = useState<[number, number] | null>(
+    null,
+  );
   const [, startSelectionTransition] = useTransition();
 
   // Throttle hover updates to one per animation frame — mousemove fires at
@@ -536,12 +542,12 @@ export default function CourseMap({
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
-  // When a segment is deleted, the selected segment/split index may no longer
-  // be valid — reset to full-course view so the elevation graph keeps working.
+  // When a segment is deleted the selected segment index may no longer be
+  // valid — reset it so handleClickKm doesn't accumulate stale state.
   useEffect(() => {
     if (selectedSegIdx !== null && selectedSegIdx >= formSegments.length) {
       setSelectedSegIdx(null);
-      setSelectedSplitIdx(null);
+      setElevZoomRange(null);
     }
   }, [formSegments.length, selectedSegIdx]);
 
@@ -613,7 +619,6 @@ export default function CourseMap({
             // Mark as low-priority so the current frame paints first.
             startSelectionTransition(() => {
               setSelectedSegIdx(si);
-              setSelectedSplitIdx(sj);
             });
             // Defer the expensive sliceTrackPoints call to after paint.
             requestAnimationFrame(() => fitToSplit(si, sj));
@@ -669,6 +674,23 @@ export default function CourseMap({
           }}
         >
           🛑
+        </button>
+        <button
+          className="map-topo-btn"
+          onClick={() => setMapStyle((s) => (s === "osm" ? "topo" : "osm"))}
+          title={
+            mapStyle === "osm"
+              ? "Switch to topographic map"
+              : "Switch to standard map"
+          }
+          aria-label={
+            mapStyle === "osm"
+              ? "Switch to topographic map"
+              : "Switch to standard map"
+          }
+          style={{ opacity: mapStyle === "topo" ? 1 : 0.6 }}
+        >
+          🗻
         </button>
         <button
           className="map-reset-btn"
@@ -727,11 +749,19 @@ export default function CourseMap({
           {showMarkers && (
             <ZoomableMarkers gpxTrack={gpxTrack} unitSystem={unitSystem} />
           )}
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            maxZoom={19}
-          />
+          {mapStyle === "osm" ? (
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              maxZoom={19}
+            />
+          ) : (
+            <TileLayer
+              url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+              attribution='Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+              maxZoom={17}
+            />
+          )}
           {/* Ghost track — always visible; covers sections with no splits assigned */}
           <Polyline
             positions={polyline as LatLngExpression[]}
@@ -844,116 +874,126 @@ export default function CourseMap({
                 fitToSegment(i);
                 startSelectionTransition(() => {
                   setSelectedSegIdx(i);
-                  setSelectedSplitIdx(null);
                 });
+                // Toggle elevation zoom to this segment's range.
+                const segProfiles = gpxProfiles?.[i];
+                if (segProfiles && segProfiles.length > 0) {
+                  const segStart = segProfiles[0].startKm;
+                  const segEnd = segProfiles[segProfiles.length - 1].endKm;
+                  setElevZoomRange((prev) =>
+                    prev && prev[0] === segStart && prev[1] === segEnd
+                      ? null
+                      : [segStart, segEnd],
+                  );
+                } else {
+                  // No profiles yet — clear any stale zoom.
+                  setElevZoomRange(null);
+                }
               }}
-              title={`Zoom to ${seg.name} · click to show elevation`}
+              title={`Zoom to ${seg.name}`}
             >
               <span className="cml-line" style={{ background: seg.color }} />
               <span className="cml-label">{seg.name}</span>
             </div>
           ))}
         </div>
-        {/* Elevation panel — visible whenever a GPX track is loaded.
-             When gpxProfiles is null (e.g. after form reset or before split
-             distances are entered) a synthetic full-track profile is used so
-             the terrain shape is still visible. */}
+        {/* Elevation panel — always shows the full course.
+             Segment ranges are colour-coded with their legend colour; any track
+             portion not covered by a segment uses the default neutral style.
+             Clicking a split section zooms the map to that split; clicks on
+             uncovered gaps have no effect. */}
         {(() => {
-          // Null-profiles fallback: synthesise a single full-track profile.
-          if (!gpxProfiles) {
-            const last = gpxTrack[gpxTrack.length - 1];
-            const syntheticProfile: SplitGpxProfile = {
-              elevGainM: 0,
-              elevLossM: 0,
-              avgGradePct: 0,
-              steepPct: 0,
-              surface: "unknown",
-              endLat: last.lat,
-              endLon: last.lon,
-              endTimezone: "",
-              startKm: 0,
-              endKm: last.cumDist,
-            };
-            return (
-              <div className="cml-elev-panel">
-                <div className="cml-elev-header">
-                  <span className="cml-elev-title">⛰ Full Course</span>
-                </div>
-                <Suspense fallback={null}>
-                  <ElevationProfile
-                    gpxTrack={gpxTrack}
-                    gpxProfiles={[syntheticProfile]}
-                    unitSystem={unitSystem}
-                    onHoverKm={handleHoverKm}
-                  />
-                </Suspense>
-              </div>
-            );
+          // Build the flat split list and per-segment colour ranges.
+          const flatProfiles: SplitGpxProfile[] = gpxProfiles?.flat() ?? [];
+          const activeSegColors = gpxProfiles
+            ? gpxProfiles.flatMap((seg, si) =>
+                seg.length > 0
+                  ? [
+                      {
+                        startKm: seg[0].startKm,
+                        endKm: seg[seg.length - 1].endKm,
+                        color: SEGMENT_COLORS[
+                          si % SEGMENT_COLORS.length
+                        ] as string,
+                      },
+                    ]
+                  : [],
+              )
+            : undefined;
+
+          // Derive the elevation panel title from the current zoom state.
+          let elevTitle = courseName ? `Elevation: ${courseName}` : "Elevation";
+          if (elevZoomRange && gpxProfiles) {
+            let zoomSegIdx: number | null = null;
+            let zoomSplitIdx: number | null = null;
+            outer: for (let si = 0; si < gpxProfiles.length; si++) {
+              const seg = gpxProfiles[si];
+              if (!seg.length) continue;
+              if (
+                Math.abs(seg[0].startKm - elevZoomRange[0]) < 0.01 &&
+                Math.abs(seg[seg.length - 1].endKm - elevZoomRange[1]) < 0.01
+              ) {
+                zoomSegIdx = si;
+                break;
+              }
+              for (let sj = 0; sj < seg.length; sj++) {
+                if (
+                  Math.abs(seg[sj].startKm - elevZoomRange[0]) < 0.01 &&
+                  Math.abs(seg[sj].endKm - elevZoomRange[1]) < 0.01
+                ) {
+                  zoomSegIdx = si;
+                  zoomSplitIdx = sj;
+                  break outer;
+                }
+              }
+            }
+            if (zoomSegIdx !== null) {
+              const segName =
+                legendSegments[zoomSegIdx]?.name ?? `Segment ${zoomSegIdx + 1}`;
+              if (zoomSplitIdx !== null) {
+                const rawSplitName =
+                  formSegments[zoomSegIdx]?.splits[zoomSplitIdx]?.name?.trim();
+                const splitLabel =
+                  rawSplitName ||
+                  (formSegments.length > 1
+                    ? `Seg ${zoomSegIdx + 1} · Split ${zoomSplitIdx + 1}`
+                    : `Split ${zoomSplitIdx + 1}`);
+                elevTitle = `Elevation: ${segName} > ${splitLabel}`;
+              } else {
+                elevTitle = `Elevation: ${segName}`;
+              }
+            }
           }
 
-          // Normal mode: use actual split profiles.
-          let activeProfiles: SplitGpxProfile[];
-          let activeLabel: string;
-          if (selectedSplitIdx !== null && selectedSegIdx !== null) {
-            const p = gpxProfiles[selectedSegIdx]?.[selectedSplitIdx];
-            activeProfiles = p ? [p] : [];
-            const splitName =
-              formSegments[selectedSegIdx]?.splits[
-                selectedSplitIdx
-              ]?.name?.trim();
-            const segName =
-              legendSegments[selectedSegIdx]?.name ??
-              `Segment ${selectedSegIdx + 1}`;
-            activeLabel = splitName
-              ? splitName
-              : formSegments.length > 1
-                ? `${segName} · Split ${selectedSplitIdx + 1}`
-                : `Split ${selectedSplitIdx + 1}`;
-          } else if (selectedSegIdx !== null) {
-            activeProfiles = gpxProfiles[selectedSegIdx] ?? [];
-            activeLabel =
-              legendSegments[selectedSegIdx]?.name ??
-              `Segment ${selectedSegIdx + 1}`;
-          } else {
-            activeProfiles = gpxProfiles.flat();
-            activeLabel = "Full Course";
-          }
-          const isFiltered =
-            selectedSegIdx !== null || selectedSplitIdx !== null;
-          return activeProfiles.length > 0 ? (
+          return (
             <div className="cml-elev-panel">
               <div className="cml-elev-header">
-                <span className="cml-elev-title">⛰ {activeLabel}</span>
-                {isFiltered && (
+                <span className="cml-elev-title">{elevTitle}</span>
+                {elevZoomRange && (
                   <button
                     type="button"
                     className="cml-elev-reset"
-                    onClick={() => {
-                      setSelectedSegIdx(null);
-                      setSelectedSplitIdx(null);
-                    }}
-                    title="Show full course elevation"
+                    onClick={() => setElevZoomRange(null)}
+                    title="Return to full course elevation"
                   >
-                    ↺ Full course
+                    ↺ Reset
                   </button>
                 )}
               </div>
               <Suspense fallback={null}>
                 <ElevationProfile
                   gpxTrack={gpxTrack}
-                  gpxProfiles={activeProfiles}
+                  gpxProfiles={flatProfiles}
                   unitSystem={unitSystem}
                   onHoverKm={handleHoverKm}
-                  onClickKm={handleClickKm}
-                  splitCountsPerSegment={
-                    !isFiltered
-                      ? gpxProfiles.map((seg) => seg.length)
-                      : undefined
-                  }
+                  onClickKm={gpxProfiles ? handleClickKm : undefined}
+                  segmentColors={activeSegColors}
+                  zoomRange={elevZoomRange}
+                  onZoomChange={setElevZoomRange}
                 />
               </Suspense>
             </div>
-          ) : null;
+          );
         })()}
       </div>
     </div>

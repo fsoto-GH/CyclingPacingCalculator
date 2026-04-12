@@ -13,20 +13,33 @@ import type { GpxTrackPoint, SplitGpxProfile, UnitSystem } from "../types";
 
 interface Props {
   gpxTrack: GpxTrackPoint[];
-  /** Ordered split profiles for this segment — used to get startKm/endKm boundaries */
+  /**
+   * Flat list of all split profiles, in course order. Used to draw split
+   * boundary lines and to determine which km positions are clickable.
+   * An empty array means no splits yet — the full track is still shown.
+   */
   gpxProfiles: SplitGpxProfile[];
   unitSystem: UnitSystem;
   /** Called with raw-km position while user hovers, null on mouse-leave. */
   onHoverKm?: (km: number | null) => void;
-  /** Called with raw-km position when user clicks a region. */
+  /**
+   * Called only when the clicked km falls within a defined split's range.
+   * Clicks on uncovered gaps (not part of any split) do not fire this.
+   */
   onClickKm?: (km: number) => void;
   /**
-   * Number of splits per segment, in order. When provided the alternating
-   * background shade resets at each segment boundary (prevents two adjacent
-   * splits from both getting the same shade when a segment has an odd split count).
-   * Pass this in full-course view; omit in single-segment / single-split view.
+   * Per-segment colour ranges. Each entry shades startKm→endKm with the
+   * segment's legend colour. Track portions not covered by any entry use
+   * the default neutral style.
    */
-  splitCountsPerSegment?: number[];
+  segmentColors?: { startKm: number; endKm: number; color: string }[];
+  /**
+   * Controlled zoom range [startKm, endKm]. When set the chart shows only that
+   * slice. Managed by the parent so the parent can show/hide a reset button.
+   */
+  zoomRange?: [number, number] | null;
+  /** Called when the user clicks a split to zoom in. */
+  onZoomChange?: (range: [number, number] | null) => void;
 }
 
 /** Max chart points after downsampling (keeps paint fast). */
@@ -141,27 +154,30 @@ const ElevationProfile = memo(function ElevationProfile({
   unitSystem,
   onHoverKm,
   onClickKm,
-  splitCountsPerSegment,
+  segmentColors,
+  zoomRange = null,
+  onZoomChange,
 }: Props) {
   // Track last hovered km so onClick can use it reliably (activePayload is often
   // empty at the moment of the click event in recharts).
   const lastHoverKm = useRef<number | null>(null);
 
-  const segStartKm = gpxProfiles[0]?.startKm ?? 0;
-  const segEndKm = gpxProfiles[gpxProfiles.length - 1]?.endKm ?? 0;
+  // Always render the full course — data range is independent of gpxProfiles.
+  const fullEndKm = gpxTrack[gpxTrack.length - 1]?.cumDist ?? 0;
+  const viewStart = zoomRange ? zoomRange[0] : 0;
+  const viewEnd = zoomRange ? zoomRange[1] : fullEndKm;
 
-  // Memoize the expensive slice+decimate — only recomputes when the track or
-  // active profile range changes, not on every hover state update.
   const data = useMemo(
-    () => sliceAndDecimate(gpxTrack, segStartKm, segEndKm, MAX_PTS),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gpxTrack, segStartKm, segEndKm],
+    () => sliceAndDecimate(gpxTrack, viewStart, viewEnd, MAX_PTS),
+    [gpxTrack, viewStart, viewEnd],
   );
 
-  if (gpxProfiles.length === 0 || data.length < 2) return null;
+  if (data.length < 2) return null;
 
-  // Split boundary vertical lines — one per internal boundary.
-  const splitLines = gpxProfiles.slice(0, -1).map((p) => p.endKm);
+  // Split boundary vertical lines — only those within the current view range.
+  const splitLines = gpxProfiles
+    .map((p) => p.endKm)
+    .filter((km) => km > viewStart + 0.01 && km < viewEnd - 0.01);
 
   const elevValues = data.map((d) => d.ele);
   const minEle = Math.min(...elevValues);
@@ -182,12 +198,18 @@ const ElevationProfile = memo(function ElevationProfile({
     <div
       className="elev-profile-container"
       style={onClickKm ? { cursor: "pointer" } : undefined}
-      title={onClickKm ? "Click a section to zoom to it" : undefined}
+      title={
+        zoomRange
+          ? "Viewing zoomed split — click the ↺ button to return to full course"
+          : onClickKm
+            ? "Click a split section to zoom in on it"
+            : undefined
+      }
     >
-      <ResponsiveContainer width="100%" height={130}>
+      <ResponsiveContainer width="100%" height={150}>
         <AreaChart
           data={data}
-          margin={{ top: 6, right: 8, left: 0, bottom: 0 }}
+          margin={{ top: 6, right: 8, left: 2, bottom: 6 }}
           onMouseMove={(state) => {
             // Also drive onHoverKm (map marker) from here as a best-effort;
             // the ref itself is updated more reliably inside CustomTooltip.render.
@@ -210,21 +232,51 @@ const ElevationProfile = memo(function ElevationProfile({
             onHoverKm?.(null);
           }}
           onClick={() => {
-            if (onClickKm && lastHoverKm.current != null) {
-              onClickKm(lastHoverKm.current);
+            if (lastHoverKm.current != null) {
+              const km = lastHoverKm.current;
+              // Find the split that was clicked.
+              const hit = gpxProfiles.find(
+                (p) => km >= p.startKm - 0.01 && km <= p.endKm + 0.01,
+              );
+              if (hit) {
+                onZoomChange?.([hit.startKm, hit.endKm]);
+                // Also notify the parent (map zoom) when a handler is provided.
+                onClickKm?.(km);
+              }
             }
           }}
         >
           <defs>
-            <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#4361ee" stopOpacity={0.45} />
-              <stop offset="95%" stopColor="#4361ee" stopOpacity={0.04} />
+            {/* Neutral base gradient — used for the full elevation fill.
+                 When segment colours are present this becomes a subtle backing;
+                 when there are no segments it acts as the primary fill. */}
+            <linearGradient id="elevGradBase" x1="0" y1="0" x2="0" y2="1">
+              <stop
+                offset="5%"
+                stopColor="#94a3b8"
+                stopOpacity={segmentColors?.length ? 0.18 : 0.45}
+              />
+              <stop offset="95%" stopColor="#94a3b8" stopOpacity={0.04} />
             </linearGradient>
+            {/* Per-segment gradient defs — referenced by ReferenceArea below */}
+            {segmentColors?.map(({ color }, i) => (
+              <linearGradient
+                key={i}
+                id={`elevSegGrad${i}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop offset="5%" stopColor={color} stopOpacity={0.55} />
+                <stop offset="95%" stopColor={color} stopOpacity={0.07} />
+              </linearGradient>
+            ))}
           </defs>
           <XAxis
             dataKey="dist"
             type="number"
-            domain={["dataMin", "dataMax"]}
+            domain={["dataMin", (v: number) => v + 0.0001]}
             tick={{ fontSize: 9, fill: "#64748b" }}
             tickLine={false}
             axisLine={false}
@@ -250,44 +302,22 @@ const ElevationProfile = memo(function ElevationProfile({
               strokeDasharray: "3 3",
             }}
           />
-          {/* Alternating subtle background per split — visual hint that regions are clickable.
-               Shade resets at segment boundaries so an odd split count in one segment
-               doesn't bleed into the next (e.g. splits 3 and 1 both being "odd"). */}
-          {gpxProfiles.length > 1 &&
-            (() => {
-              // Pre-compute a local-within-segment index for every profile entry.
-              const localIndices: number[] = [];
-              if (splitCountsPerSegment) {
-                let si = 0;
-                let local = 0;
-                for (let i = 0; i < gpxProfiles.length; i++) {
-                  // Move to next segment if we've consumed all splits in current one.
-                  if (
-                    si < splitCountsPerSegment.length &&
-                    local >= splitCountsPerSegment[si]
-                  ) {
-                    si++;
-                    local = 0;
-                  }
-                  localIndices.push(local++);
-                }
-              } else {
-                for (let i = 0; i < gpxProfiles.length; i++)
-                  localIndices.push(i);
-              }
-              return gpxProfiles.map((p, i) =>
-                localIndices[i] % 2 === 0 ? null : (
-                  <ReferenceArea
-                    key={p.startKm}
-                    x1={p.startKm}
-                    x2={p.endKm}
-                    fill="rgba(255,255,255,0.04)"
-                    fillOpacity={1}
-                    stroke="none"
-                  />
-                ),
-              );
-            })()}
+          {/* Per-segment colour overlays — map over the original array so the
+               gradient index i always matches the def id `elevSegGrad${i}`,
+               even when the view is zoomed and only a subset are visible. */}
+          {segmentColors?.map(({ startKm, endKm }, i) =>
+            endKm > viewStart && startKm < viewEnd ? (
+              <ReferenceArea
+                key={`sc-${startKm}`}
+                x1={Math.max(startKm, viewStart)}
+                x2={Math.min(endKm, viewEnd)}
+                fill={`url(#elevSegGrad${i})`}
+                fillOpacity={1}
+                stroke="none"
+                ifOverflow="visible"
+              />
+            ) : null,
+          )}
           {splitLines.map((km) => (
             <ReferenceLine
               key={km}
@@ -301,9 +331,9 @@ const ElevationProfile = memo(function ElevationProfile({
           <Area
             type="monotone"
             dataKey="ele"
-            stroke="#4361ee"
+            stroke={segmentColors?.length ? "#64748b" : "#4361ee"}
             strokeWidth={1.5}
-            fill="url(#elevGrad)"
+            fill="url(#elevGradBase)"
             dot={false}
             isAnimationActive={false}
           />

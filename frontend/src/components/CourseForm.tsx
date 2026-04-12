@@ -1,9 +1,10 @@
-﻿import {
+﻿import React, {
   useState,
   useEffect,
   useCallback,
   useMemo,
   useRef,
+  useDeferredValue,
   lazy,
   Suspense,
 } from "react";
@@ -38,6 +39,21 @@ import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
 const CourseMap = lazy(() => import("./CourseMap"));
+
+/** Thin wrapper that defers the two props that change on every keystroke so
+ *  the map renders at low priority and input fields stay responsive. */
+function CourseMapDeferred(props: React.ComponentProps<typeof CourseMap>) {
+  const deferredSplitBoundariesKm = useDeferredValue(props.splitBoundariesKm);
+  const deferredFormSegments = useDeferredValue(props.formSegments);
+  return (
+    <CourseMap
+      {...props}
+      splitBoundariesKm={deferredSplitBoundariesKm}
+      formSegments={deferredFormSegments}
+    />
+  );
+}
+
 const ResultsView = lazy(() => import("./ResultsView"));
 const LegendModal = lazy(() => import("./LegendModal"));
 const ExampleModal = lazy(() => import("./ExampleModal"));
@@ -254,10 +270,15 @@ export default function CourseForm() {
   const [mapNavSignals, setMapNavSignals] = useState<Record<string, number>>(
     {},
   );
+  // Ref so that handleMapMarkerClick always sees the current page size without
+  // needing to be recreated when the user changes it.
+  const segPageSizeRef = useRef(5);
   const handleMapMarkerClick = useCallback(
     (segIdx: number, splitIdx: number) => {
       const key = `${segIdx}-${splitIdx}`;
       setMapNavSignals((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+      // Jump to the page that contains the target segment.
+      setSegPage(Math.floor(segIdx / segPageSizeRef.current));
     },
     [],
   );
@@ -265,6 +286,15 @@ export default function CourseForm() {
   // Collapse/expand all segments and splits
   const [collapseAllSignal, setCollapseAllSignal] = useState(0);
   const [expandAllSignal, setExpandAllSignal] = useState(0);
+
+  // Segment pagination — show a page of segments at a time on large courses.
+  const [segPage, setSegPage] = useState(0);
+  const [segPageSize, setSegPageSize] = useState(5);
+  segPageSizeRef.current = segPageSize; // keep ref in sync
+  // Ensure page stays in bounds when segments are added / removed.
+  const totalSegPages = Math.ceil(form.segments.length / segPageSize);
+  const clampedSegPage = Math.min(segPage, Math.max(0, totalSegPages - 1));
+  if (clampedSegPage !== segPage) setSegPage(clampedSegPage);
 
   // Course settings card — collapsible + inline name editing
   const [courseCollapsed, setCourseCollapsed] = useState(false);
@@ -1703,63 +1733,138 @@ export default function CourseForm() {
                   </div>
                 </div>
                 <div className="segments-container">
-                  {form.segments.map((seg, i) => (
-                    <SegmentFormComponent
-                      key={i}
-                      segIndex={i}
-                      value={seg}
-                      onChange={(s) => updateSegment(i, s)}
-                      unitSystem={form.unitSystem}
-                      mode={form.mode}
-                      gpxProfiles={gpxProfiles?.[i] ?? null}
-                      gpxTrack={gpxTrack}
-                      courseTz={form.timezone}
-                      isLastSeg={i === form.segments.length - 1}
-                      splitStatuses={splitGpxStatuses[i]}
-                      cityLabels={cityLabels[i]}
-                      cityFetching={cityFetching[i]}
-                      cumulativeDists={splitCumulativeDists?.[i] ?? undefined}
-                      segmentStartDist={
-                        i === 0
-                          ? 0
-                          : (splitCumulativeDists?.[i - 1]?.[
-                              form.segments[i - 1].splits.length - 1
-                            ] ?? null)
-                      }
-                      gpxTotalDist={gpxTotalDistUser}
-                      segmentStartCity={
-                        i === 0
-                          ? gpxStartCity
-                          : (cityLabels[i - 1]?.[
-                              form.segments[i - 1].splits.length - 1
-                            ] ?? null)
-                      }
-                      expandSignal={(() => {
-                        // Any nav signal targeting a split in this segment should expand it
-                        return (
-                          form.segments[i].splits.reduce((max, _, j) => {
-                            const k = `${i}-${j}`;
-                            return Math.max(max, mapNavSignals[k] ?? 0);
-                          }, 0) || undefined
-                        );
-                      })()}
-                      expandSplitIdx={(() => {
-                        // Find which split has the most recent signal for this segment
-                        let best = -1;
-                        let bestVal = 0;
-                        form.segments[i].splits.forEach((_, j) => {
-                          const v = mapNavSignals[`${i}-${j}`] ?? 0;
-                          if (v > bestVal) {
-                            bestVal = v;
-                            best = j;
+                  {form.segments
+                    .slice(
+                      clampedSegPage * segPageSize,
+                      (clampedSegPage + 1) * segPageSize,
+                    )
+                    .map((seg, localIdx) => {
+                      const i = clampedSegPage * segPageSize + localIdx;
+                      return (
+                        <SegmentFormComponent
+                          key={i}
+                          segIndex={i}
+                          value={seg}
+                          onChange={(s) => updateSegment(i, s)}
+                          unitSystem={form.unitSystem}
+                          mode={form.mode}
+                          gpxProfiles={gpxProfiles?.[i] ?? null}
+                          gpxTrack={gpxTrack}
+                          courseTz={form.timezone}
+                          isLastSeg={i === form.segments.length - 1}
+                          splitStatuses={splitGpxStatuses[i]}
+                          cityLabels={cityLabels[i]}
+                          cityFetching={cityFetching[i]}
+                          cumulativeDists={
+                            splitCumulativeDists?.[i] ?? undefined
                           }
-                        });
-                        return best;
-                      })()}
-                      collapseSignal={collapseAllSignal || undefined}
-                      expandAllSignal={expandAllSignal || undefined}
-                    />
-                  ))}
+                          segmentStartDist={
+                            i === 0
+                              ? 0
+                              : (splitCumulativeDists?.[i - 1]?.[
+                                  form.segments[i - 1].splits.length - 1
+                                ] ?? null)
+                          }
+                          gpxTotalDist={gpxTotalDistUser}
+                          segmentStartCity={
+                            i === 0
+                              ? gpxStartCity
+                              : (cityLabels[i - 1]?.[
+                                  form.segments[i - 1].splits.length - 1
+                                ] ?? null)
+                          }
+                          expandSignal={(() => {
+                            // Any nav signal targeting a split in this segment should expand it
+                            return (
+                              form.segments[i].splits.reduce((max, _, j) => {
+                                const k = `${i}-${j}`;
+                                return Math.max(max, mapNavSignals[k] ?? 0);
+                              }, 0) || undefined
+                            );
+                          })()}
+                          expandSplitIdx={(() => {
+                            // Find which split has the most recent signal for this segment
+                            let best = -1;
+                            let bestVal = 0;
+                            form.segments[i].splits.forEach((_, j) => {
+                              const v = mapNavSignals[`${i}-${j}`] ?? 0;
+                              if (v > bestVal) {
+                                bestVal = v;
+                                best = j;
+                              }
+                            });
+                            return best;
+                          })()}
+                          collapseSignal={collapseAllSignal || undefined}
+                          expandAllSignal={expandAllSignal || undefined}
+                        />
+                      );
+                    })}
+                </div>
+                {/* Pagination controls — always present so page-size preference persists */}
+                <div className="seg-pagination">
+                  <button
+                    type="button"
+                    className="seg-page-btn"
+                    disabled={clampedSegPage === 0}
+                    onClick={() => setSegPage(0)}
+                    title="First page"
+                  >
+                    «
+                  </button>
+                  <button
+                    type="button"
+                    className="seg-page-btn"
+                    disabled={clampedSegPage === 0}
+                    onClick={() => setSegPage((p) => Math.max(0, p - 1))}
+                    title="Previous page"
+                  >
+                    ‹ Prev
+                  </button>
+                  <span className="seg-page-label">
+                    {totalSegPages > 1
+                      ? `Segments ${clampedSegPage * segPageSize + 1}–${Math.min(
+                          (clampedSegPage + 1) * segPageSize,
+                          form.segments.length,
+                        )} of ${form.segments.length}`
+                      : `${form.segments.length} segment${form.segments.length !== 1 ? "s" : ""}`}
+                  </span>
+                  <button
+                    type="button"
+                    className="seg-page-btn"
+                    disabled={clampedSegPage >= totalSegPages - 1}
+                    onClick={() =>
+                      setSegPage((p) => Math.min(totalSegPages - 1, p + 1))
+                    }
+                    title="Next page"
+                  >
+                    Next ›
+                  </button>
+                  <button
+                    type="button"
+                    className="seg-page-btn"
+                    disabled={clampedSegPage >= totalSegPages - 1}
+                    onClick={() => setSegPage(Math.max(0, totalSegPages - 1))}
+                    title="Last page"
+                  >
+                    »
+                  </button>
+                  <select
+                    className="seg-page-size"
+                    value={segPageSize}
+                    onChange={(e) => {
+                      const newSize = Number(e.target.value);
+                      // Keep the first visible segment on screen after resize.
+                      const firstVisible = clampedSegPage * segPageSize;
+                      setSegPageSize(newSize);
+                      setSegPage(Math.floor(firstVisible / newSize));
+                    }}
+                    title="Segments per page"
+                  >
+                    <option value={5}>5 / page</option>
+                    <option value={10}>10 / page</option>
+                    <option value={20}>20 / page</option>
+                  </select>
                 </div>
               </div>
             )}
@@ -2161,13 +2266,18 @@ export default function CourseForm() {
               <Suspense
                 fallback={<div className="map-loading">Loading map…</div>}
               >
-                <CourseMap
+                {/* Use deferred values for the two props that change on every
+                     keystroke. React renders the map at low priority — input
+                     fields stay responsive and the map catches up after the
+                     user pauses. */}
+                <CourseMapDeferred
                   gpxTrack={gpxTrack}
                   splitBoundariesKm={splitBoundariesKm}
                   formSegments={form.segments}
                   unitSystem={form.unitSystem}
                   gpxProfiles={gpxProfiles}
                   onMarkerClick={handleMapMarkerClick}
+                  courseName={form.name?.trim() || undefined}
                 />
               </Suspense>
             )}
