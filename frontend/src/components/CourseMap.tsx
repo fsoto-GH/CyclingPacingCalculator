@@ -516,7 +516,7 @@ export default function CourseMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMarkers, setShowMarkers] = useState(true);
-  const [showRestStops, setShowRestStops] = useState(true);
+  const [showRestStops, setShowRestStops] = useState(false);
   const [mapStyle, setMapStyle] = useState<"osm" | "topo">("osm");
   const [selectedSegIdx, setSelectedSegIdx] = useState<number | null>(null);
   const [hoverKm, setHoverKm] = useState<number | null>(null);

@@ -1463,25 +1463,30 @@ h4 {
 
 /* ── Segment GPX export footer ── */
 .segment-export-footer {
+  font-size: 0.72rem;
   display: flex;
   justify-content: flex-end;
-  padding: 0.5rem 0 0.25rem;
+  padding: 0.6rem 1rem;
   border-top: 1px solid #2e2e2e;
   margin-top: 0.75rem;
 }
 
 .segment-export-btn {
-  font-size: 0.78rem;
-  color: #93c5fd;
-  border-color: #3b5fc0;
-  padding: 0.3rem 0.75rem;
-  margin: 0.25rem 0;
+  background: none;
+  border: 1px solid #2d6a4f;
+  border-radius: 4px;
+  color: #6ee7b7;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .segment-export-btn:hover {
-  background: #1e2e50;
-  color: #bfdbfe;
-  border-color: #5880e8;
+  background: #2d6a4f;
+  border-color: #6ee7b7;
+  color: #fff;
 }
 
 /* ── GPX Export Modal ── */
@@ -2216,29 +2221,31 @@ h4 {
 }
 
 /* ── JSON ── */
-.json-section {
-  margin-top: 1.5rem;
-}
-
 .json-controls {
+  padding: 0.6rem 1rem;
+  font-size: 0.72rem;
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .json-section button {
-  padding: 0.4rem 1rem;
-  background: #333333;
-  color: #aaaaaa;
+  background: none;
   border: 1px solid #3a3a3a;
   border-radius: 4px;
+  color: #94a3b8;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .json-section button:hover {
-  background: #3a3a3a;
-  color: #ffffff;
+  background: #2e2e2e;
+  border-color: #60a5fa;
+  color: #e2e8f0;
 }
 
 .json-block {
@@ -2714,6 +2721,43 @@ dialog {
 
 .no-hours-confirm {
   max-width: 360px;
+}
+
+/* ── Confirm / alert modal ── */
+.confirm-modal {
+  max-width: 420px;
+}
+
+.confirm-modal__message {
+  margin: 0 0 1.25rem;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+.confirm-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.confirm-modal__confirm-btn {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.confirm-modal__confirm-btn:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* ── Start-time timezone hint ── */
+.start-time-tz-hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.77rem;
+  color: #94a3b8;
+  font-style: italic;
 }
 
 .no-hours-confirm__body {

@@ -22,6 +22,7 @@ import {
   speedLabel,
   distanceLabel,
   minutesToHms,
+  formatStartTimeHint,
 } from "../utils";
 import { makeDefaultSplit } from "../defaults";
 import { serializeCourse } from "../serialization";
@@ -58,6 +59,7 @@ const ResultsView = lazy(() => import("./ResultsView"));
 const LegendModal = lazy(() => import("./LegendModal"));
 const ExampleModal = lazy(() => import("./ExampleModal"));
 const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
+const ConfirmModal = lazy(() => import("./ConfirmModal"));
 import { EXAMPLES } from "../examples";
 import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
 import { FieldErrorContext, FieldError, AllErrorsContext } from "./FieldError";
@@ -193,6 +195,11 @@ export default function CourseForm() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [confirmExampleOpen, setConfirmExampleOpen] = useState(false);
+  const [pendingExampleLoad, setPendingExampleLoad] = useState<{
+    form: CourseFormState;
+    gpxUrl?: string;
+  } | null>(null);
   const [criteriaModalOpen, setCriteriaModalOpen] = useState(false);
   const [autoNameDialog, setAutoNameDialog] = useState<{
     open: boolean;
@@ -267,16 +274,20 @@ export default function CourseForm() {
 
   // Map popup navigation — incrementing the counter for a given seg/split
   // triggers that SegmentForm/SplitForm to expand and scroll into view.
-  const [mapNavSignals, setMapNavSignals] = useState<Record<string, number>>(
-    {},
-  );
+  // Last map-popup navigation target — rev increments on every click so the
+  // useEffect in SegmentForm/SplitForm always sees a changed value even when
+  // the same split or a sibling split in the same segment is clicked twice.
+  const [mapNavTarget, setMapNavTarget] = useState<{
+    segIdx: number;
+    splitIdx: number;
+    rev: number;
+  } | null>(null);
   // Ref so that handleMapMarkerClick always sees the current page size without
   // needing to be recreated when the user changes it.
   const segPageSizeRef = useRef(5);
   const handleMapMarkerClick = useCallback(
     (segIdx: number, splitIdx: number) => {
-      const key = `${segIdx}-${splitIdx}`;
-      setMapNavSignals((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+      setMapNavTarget((prev) => ({ segIdx, splitIdx, rev: (prev?.rev ?? 0) + 1 }));
       // Jump to the page that contains the target segment.
       setSegPage(Math.floor(segIdx / segPageSizeRef.current));
     },
@@ -530,11 +541,85 @@ export default function CourseForm() {
     const name = new URLSearchParams(window.location.search).get("example");
     if (!name) return;
     const entry = EXAMPLES.find((e) => e.url_name === name);
-    if (entry) handleLoadExample(entry.form, entry.gpxUrl);
+    if (!entry) {
+      // Unknown example — just clean the param.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("example");
+      window.history.replaceState({}, "", url.toString());
+      return;
+    }
+    // Check if the current form (from localStorage) has meaningful user data.
+    const dirty =
+      form.segments.length > 1 ||
+      (form.name?.trim() || "Course") !== "Course" ||
+      form.segments.some(
+        (seg) =>
+          seg.splits.some((split) => split.distance.trim() !== "") ||
+          (seg.name?.trim() ?? "") !== "",
+      );
+    if (dirty) {
+      setPendingExampleLoad({ form: entry.form, gpxUrl: entry.gpxUrl });
+      setConfirmExampleOpen(true);
+    } else {
+      handleLoadExample(entry.form, entry.gpxUrl);
+      // Keep the ?example= param so the URL remains shareable.
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Derived dirty flag — true when the form has meaningful user data that
+  // would be lost if an example is loaded without warning.
+  const isFormDirty = useMemo(
+    () =>
+      gpxTrack !== null ||
+      form.segments.length > 1 ||
+      (form.name?.trim() || "Course") !== "Course" ||
+      form.segments.some(
+        (seg) =>
+          seg.splits.some((split) => split.distance.trim() !== "") ||
+          (seg.name?.trim() ?? "") !== "",
+      ),
+    [form, gpxTrack],
+  );
+
+  // Guard that intercepts example loads when the form has data.
+  const handleLoadExampleGuarded = useCallback(
+    (example: CourseFormState, gpxUrl?: string, urlName?: string) => {
+      // Always update the URL param so the loaded example is shareable.
+      if (urlName) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("example", urlName);
+        window.history.replaceState({}, "", url.toString());
+      }
+      if (isFormDirty) {
+        setPendingExampleLoad({ form: example, gpxUrl });
+        setConfirmExampleOpen(true);
+      } else {
+        handleLoadExample(example, gpxUrl);
+      }
+    },
+    [isFormDirty, handleLoadExample],
+  );
+
+  const handleConfirmLoadExample = useCallback(() => {
+    if (pendingExampleLoad) {
+      handleLoadExample(pendingExampleLoad.form, pendingExampleLoad.gpxUrl);
+      // Keep the ?example= param so the URL remains shareable.
+    }
+    setConfirmExampleOpen(false);
+    setPendingExampleLoad(null);
+    setExamplesOpen(false);
+  }, [pendingExampleLoad, handleLoadExample]);
+
+  const handleCancelLoadExample = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("example");
+    window.history.replaceState({}, "", url.toString());
+    setConfirmExampleOpen(false);
+    setPendingExampleLoad(null);
+  }, []);
 
   const handleExport = useCallback(() => {
     // Embed the current GPX filename so an import on the same browser can
@@ -1368,7 +1453,7 @@ export default function CourseForm() {
               open={examplesOpen}
               onClose={() => setExamplesOpen(false)}
               examples={EXAMPLES}
-              onSelect={handleLoadExample}
+              onSelect={handleLoadExampleGuarded}
             />
             {criteriaModalOpen && (
               <FindNearbyModal
@@ -1376,6 +1461,15 @@ export default function CourseForm() {
                 onClose={() => setCriteriaModalOpen(false)}
               />
             )}
+            <ConfirmModal
+              open={confirmExampleOpen}
+              title="Load example?"
+              message="You have existing course data that will be replaced by the example. Do you want to continue?"
+              confirmLabel="Load example"
+              cancelLabel="Keep my data"
+              onConfirm={handleConfirmLoadExample}
+              onCancel={handleCancelLoadExample}
+            />
           </Suspense>
 
           {/* GPX banner */}
@@ -1643,6 +1737,18 @@ export default function CourseForm() {
                       value={form.start_time}
                       onChange={(e) => update({ start_time: e.target.value })}
                     />
+                    {form.timezone !== browserTimezone &&
+                      (() => {
+                        const hint = formatStartTimeHint(
+                          form.start_time,
+                          form.timezone,
+                        );
+                        return hint ? (
+                          <span className="start-time-tz-hint">
+                            Interpreted as {hint}
+                          </span>
+                        ) : null;
+                      })()}
                   </div>
 
                   <div className="field span-two-columns">
@@ -1732,75 +1838,6 @@ export default function CourseForm() {
                     </button>
                   </div>
                 </div>
-                <div className="segments-container">
-                  {form.segments
-                    .slice(
-                      clampedSegPage * segPageSize,
-                      (clampedSegPage + 1) * segPageSize,
-                    )
-                    .map((seg, localIdx) => {
-                      const i = clampedSegPage * segPageSize + localIdx;
-                      return (
-                        <SegmentFormComponent
-                          key={i}
-                          segIndex={i}
-                          value={seg}
-                          onChange={(s) => updateSegment(i, s)}
-                          unitSystem={form.unitSystem}
-                          mode={form.mode}
-                          gpxProfiles={gpxProfiles?.[i] ?? null}
-                          gpxTrack={gpxTrack}
-                          courseTz={form.timezone}
-                          isLastSeg={i === form.segments.length - 1}
-                          splitStatuses={splitGpxStatuses[i]}
-                          cityLabels={cityLabels[i]}
-                          cityFetching={cityFetching[i]}
-                          cumulativeDists={
-                            splitCumulativeDists?.[i] ?? undefined
-                          }
-                          segmentStartDist={
-                            i === 0
-                              ? 0
-                              : (splitCumulativeDists?.[i - 1]?.[
-                                  form.segments[i - 1].splits.length - 1
-                                ] ?? null)
-                          }
-                          gpxTotalDist={gpxTotalDistUser}
-                          segmentStartCity={
-                            i === 0
-                              ? gpxStartCity
-                              : (cityLabels[i - 1]?.[
-                                  form.segments[i - 1].splits.length - 1
-                                ] ?? null)
-                          }
-                          expandSignal={(() => {
-                            // Any nav signal targeting a split in this segment should expand it
-                            return (
-                              form.segments[i].splits.reduce((max, _, j) => {
-                                const k = `${i}-${j}`;
-                                return Math.max(max, mapNavSignals[k] ?? 0);
-                              }, 0) || undefined
-                            );
-                          })()}
-                          expandSplitIdx={(() => {
-                            // Find which split has the most recent signal for this segment
-                            let best = -1;
-                            let bestVal = 0;
-                            form.segments[i].splits.forEach((_, j) => {
-                              const v = mapNavSignals[`${i}-${j}`] ?? 0;
-                              if (v > bestVal) {
-                                bestVal = v;
-                                best = j;
-                              }
-                            });
-                            return best;
-                          })()}
-                          collapseSignal={collapseAllSignal || undefined}
-                          expandAllSignal={expandAllSignal || undefined}
-                        />
-                      );
-                    })}
-                </div>
                 {/* Pagination controls — always present so page-size preference persists */}
                 <div className="seg-pagination">
                   <button
@@ -1865,6 +1902,55 @@ export default function CourseForm() {
                     <option value={10}>10 / page</option>
                     <option value={20}>20 / page</option>
                   </select>
+                </div>
+                <div className="segments-container">
+                  {form.segments
+                    .slice(
+                      clampedSegPage * segPageSize,
+                      (clampedSegPage + 1) * segPageSize,
+                    )
+                    .map((seg, localIdx) => {
+                      const i = clampedSegPage * segPageSize + localIdx;
+                      return (
+                        <SegmentFormComponent
+                          key={i}
+                          segIndex={i}
+                          value={seg}
+                          onChange={(s) => updateSegment(i, s)}
+                          unitSystem={form.unitSystem}
+                          mode={form.mode}
+                          gpxProfiles={gpxProfiles?.[i] ?? null}
+                          gpxTrack={gpxTrack}
+                          courseTz={form.timezone}
+                          isLastSeg={i === form.segments.length - 1}
+                          splitStatuses={splitGpxStatuses[i]}
+                          cityLabels={cityLabels[i]}
+                          cityFetching={cityFetching[i]}
+                          cumulativeDists={
+                            splitCumulativeDists?.[i] ?? undefined
+                          }
+                          segmentStartDist={
+                            i === 0
+                              ? 0
+                              : (splitCumulativeDists?.[i - 1]?.[
+                                  form.segments[i - 1].splits.length - 1
+                                ] ?? null)
+                          }
+                          gpxTotalDist={gpxTotalDistUser}
+                          segmentStartCity={
+                            i === 0
+                              ? gpxStartCity
+                              : (cityLabels[i - 1]?.[
+                                  form.segments[i - 1].splits.length - 1
+                                ] ?? null)
+                          }
+                          expandSignal={mapNavTarget?.segIdx === i ? mapNavTarget.rev : undefined}
+                          expandSplitIdx={mapNavTarget?.segIdx === i ? mapNavTarget.splitIdx : -1}
+                          collapseSignal={collapseAllSignal || undefined}
+                          expandAllSignal={expandAllSignal || undefined}
+                        />
+                      );
+                    })}
                 </div>
               </div>
             )}

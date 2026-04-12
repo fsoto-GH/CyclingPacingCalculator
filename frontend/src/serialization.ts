@@ -8,6 +8,7 @@ import type {
   SegmentForm,
   DayHoursEntry,
 } from "./types";
+import { tzLocalStringToUtcIso } from "./utils";
 import { minutesToSeconds, parseOptionalFloat } from "./utils";
 
 /** Convert HH:MM (24h) to 12h "hh:mm AM/PM" string. */
@@ -112,6 +113,6 @@ export function serializeCourse(form: CourseForm): CoursePayload {
     min_moving_speed: parseFloat(form.min_moving_speed),
     down_time_ratio: parseFloat(form.down_time_ratio),
     split_delta: parseFloat(form.split_delta),
-    start_time: new Date(form.start_time).toISOString(),
+    start_time: tzLocalStringToUtcIso(form.start_time, form.timezone),
   };
 }

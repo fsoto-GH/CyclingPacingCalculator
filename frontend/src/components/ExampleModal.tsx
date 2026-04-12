@@ -14,7 +14,7 @@ interface ExampleModalProps {
   open: boolean;
   onClose: () => void;
   examples: ExampleEntry[];
-  onSelect: (form: CourseFormState, gpxUrl?: string) => void;
+  onSelect: (form: CourseFormState, gpxUrl?: string, urlName?: string) => void;
 }
 
 export default function ExampleModal({
@@ -32,8 +32,12 @@ export default function ExampleModal({
     else if (!open && el.open) el.close();
   }, [open]);
 
-  function handleSelect(form: CourseFormState, gpxUrl?: string) {
-    onSelect(form, gpxUrl);
+  function handleSelect(
+    form: CourseFormState,
+    gpxUrl?: string,
+    urlName?: string,
+  ) {
+    onSelect(form, gpxUrl, urlName);
     onClose();
   }
 
@@ -56,7 +60,7 @@ export default function ExampleModal({
               <button
                 type="button"
                 className="ghost-btn"
-                onClick={() => handleSelect(ex.form, ex.gpxUrl)}
+                onClick={() => handleSelect(ex.form, ex.gpxUrl, ex.url_name)}
               >
                 Load
               </button>

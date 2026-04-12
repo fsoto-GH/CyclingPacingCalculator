@@ -521,7 +521,7 @@ function SegmentSection({
             <div className="segment-export-footer">
               <button
                 type="button"
-                className="nav-btn segment-export-btn"
+                className="segment-export-btn"
                 onClick={() => setShowExportModal(true)}
               >
                 Export GPX splits
