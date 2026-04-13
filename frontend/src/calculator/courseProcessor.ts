@@ -190,6 +190,7 @@ function computeSplitDetail(
   downTimeRatio: number,
   noEndDownTime: boolean,
   startDistance: number,
+  startTz: string | null,
 ): SplitResult {
   const movingMs = (split.distance / movingSpeed) * 3_600_000;
 
@@ -220,6 +221,8 @@ function computeSplitDetail(
 
   const detail: SplitDetail = {
     name: split.name ?? null,
+    start_timezone: startTz,
+    end_timezone: split.end_timezone ?? null,
     distance: split.distance,
     start_time: new Date(startTimeMs).toISOString(),
     end_time: new Date(endTimeMs).toISOString(),
@@ -261,7 +264,8 @@ function computeSegmentDetail(
   downTimeRatio: number,
   splitDelta: number,
   startDistance: number,
-): SegmentDetail {
+  startTz: string | null,
+): { segDetail: SegmentDetail; endTz: string | null } {
   // Apply segment-level overrides
   let currSpeed = seg.moving_speed ?? movingSpeed;
   const currMin = seg.min_moving_speed ?? minMovingSpeed;
@@ -280,6 +284,7 @@ function computeSegmentDetail(
   let totalMovingMs = 0;
   let totalDownMs = 0;
   let totalAdjustMs = 0;
+  let currTz = startTz;
 
   for (let i = 0; i < seg.splits.length; i++) {
     const split = seg.splits[i];
@@ -298,6 +303,7 @@ function computeSegmentDetail(
       currDtr,
       seg.no_end_down_time,
       currDist,
+      currTz,
     );
 
     splitDetails.push(detail);
@@ -306,6 +312,8 @@ function computeSegmentDetail(
     totalAdjustMs += adjustMs;
     currDist += split.distance;
     currTimeMs += activeMs;
+    // Advance current tz: if this split defines an endpoint tz, use it going forward
+    if (split.end_timezone) currTz = split.end_timezone;
 
     // Apply speed delta for the next split, clamped to min
     currSpeed = Math.max(currSpeed + currDelta, currMin);
@@ -317,29 +325,32 @@ function computeSegmentDetail(
   const segDist = currDist - startDistance;
 
   return {
-    split_details: splitDetails,
-    start_time: new Date(startTimeMs).toISOString(),
-    end_time: new Date(currTimeMs).toISOString(),
-    end_moving_speed: currSpeed,
-    distance: segDist,
-    start_distance: startDistance,
-    moving_time: secondsToString(totalMovingMs / 1000),
-    down_time: secondsToString(totalDownMs / 1000),
-    sleep_time: secondsToString(sleepMs / 1000),
-    adjustment_time: secondsToString(totalAdjustMs / 1000),
-    elapsed_time: secondsToString(elapsedMs / 1000),
-    active_time: secondsToString(activeMs / 1000),
-    span: [startDistance, currDist],
-    pace: segDist / msToHours(activeMs),
-    moving_time_hours: msToHours(totalMovingMs),
-    down_time_hours: msToHours(totalDownMs),
-    adjustment_time_hours: msToHours(totalAdjustMs),
-    elapsed_time_hours: msToHours(elapsedMs),
-    active_time_hours: msToHours(activeMs),
-    sleep_time_hours: msToHours(sleepMs),
-    moving_speed: null,
-    adjustment_start: null,
-    name: seg.name ?? null,
+    segDetail: {
+      split_details: splitDetails,
+      start_time: new Date(startTimeMs).toISOString(),
+      end_time: new Date(currTimeMs).toISOString(),
+      end_moving_speed: currSpeed,
+      distance: segDist,
+      start_distance: startDistance,
+      moving_time: secondsToString(totalMovingMs / 1000),
+      down_time: secondsToString(totalDownMs / 1000),
+      sleep_time: secondsToString(sleepMs / 1000),
+      adjustment_time: secondsToString(totalAdjustMs / 1000),
+      elapsed_time: secondsToString(elapsedMs / 1000),
+      active_time: secondsToString(activeMs / 1000),
+      span: [startDistance, currDist],
+      pace: segDist / msToHours(activeMs),
+      moving_time_hours: msToHours(totalMovingMs),
+      down_time_hours: msToHours(totalDownMs),
+      adjustment_time_hours: msToHours(totalAdjustMs),
+      elapsed_time_hours: msToHours(elapsedMs),
+      active_time_hours: msToHours(activeMs),
+      sleep_time_hours: msToHours(sleepMs),
+      moving_speed: null,
+      adjustment_start: null,
+      name: seg.name ?? null,
+    },
+    endTz: currTz,
   };
 }
 
@@ -371,9 +382,10 @@ export function processCourse(payload: CoursePayload): CourseDetail {
   let totalDownMs = 0;
   let totalAdjustMs = 0;
   let totalSleepMs = 0;
+  let currTz: string | null = normalized.course_timezone ?? null;
 
   for (const seg of normalized.segments) {
-    const segDetail = computeSegmentDetail(
+    const { segDetail, endTz } = computeSegmentDetail(
       seg,
       currTimeMs,
       currSpeed,
@@ -381,6 +393,7 @@ export function processCourse(payload: CoursePayload): CourseDetail {
       normalized.down_time_ratio,
       normalized.split_delta,
       currDist,
+      currTz,
     );
 
     segmentDetails.push(segDetail);
@@ -394,6 +407,7 @@ export function processCourse(payload: CoursePayload): CourseDetail {
 
     currSpeed = segDetail.end_moving_speed;
     currDist += segDetail.distance;
+    currTz = endTz;
     // Advance time past the segment, then add sleep before next segment starts
     currTimeMs = new Date(segDetail.end_time).getTime() + sleepMs;
   }

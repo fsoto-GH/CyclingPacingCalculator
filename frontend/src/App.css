@@ -652,6 +652,7 @@ h4 {
 /* Container query: collapse grid to single column when the box is narrow */
 .optional-fields.fields-grid {
   container-type: inline-size;
+  grid-template-columns: repeat(3, 1fr);
 }
 
 @container (max-width: 370px) {
@@ -1222,6 +1223,41 @@ h4 {
 }
 
 /* Notes in result detail */
+/* ── Weather section in split detail ── */
+.split-weather-section {
+  padding: 0.55rem 1rem 0.75rem;
+  background: #1a1a2e;
+  border-top: 1px solid #2e2e3e;
+}
+
+.split-weather-section h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: #6b8aff;
+}
+
+.weather-grid {
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 0.5rem 1rem !important;
+}
+
+@media (max-width: 860px) {
+  .weather-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+.weather-hint {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.72rem;
+  background: rgba(107, 138, 255, 0.1);
+  border-radius: 3px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .split-notes-result {
   padding: 0.55rem 1rem 0.75rem;
   background: #1a1a2e;
@@ -3171,10 +3207,12 @@ dialog {
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .hours-range input[type="time"] {
-  width: 7.5rem;
+  flex: 1;
+  min-width: 0;
   padding: 0.25rem 0.4rem;
   background: #2a2a2a;
   border: 1px solid #444;
@@ -3845,7 +3883,7 @@ dialog {
 
 .split-map-col {
   flex: 1;
-  min-width: 0;
+  min-width: 120px;
   display: flex;
   flex-direction: column;
   padding: 0.5rem 0.5rem 0.5rem 0;

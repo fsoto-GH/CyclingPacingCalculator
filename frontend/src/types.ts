@@ -46,6 +46,7 @@ export interface SplitPayload {
   down_time?: number | null; // seconds
   moving_speed?: number | null;
   adjustment_time?: number; // seconds
+  end_timezone?: string | null; // IANA tz at split endpoint
 }
 
 export interface SegmentPayload {
@@ -67,6 +68,7 @@ export interface CoursePayload {
   down_time_ratio: number;
   split_delta: number;
   start_time: string; // ISO 8601
+  course_timezone?: string | null; // IANA tz for the course start
 }
 
 // ── Form state types (mirrors form inputs, not API) ──
@@ -167,6 +169,8 @@ export interface SubSplitDetail {
 
 export interface SplitDetail extends SubSplitDetail {
   name?: string | null;
+  start_timezone?: string | null;
+  end_timezone?: string | null;
   sub_splits: SubSplitDetail[];
   adjustment_start: string;
   adjustment_time: string;

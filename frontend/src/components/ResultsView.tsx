@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import type {
   CourseDetail,
   SegmentDetail,
@@ -12,6 +12,13 @@ import type {
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
 import CourseSummaryNarrative from "./CourseSummaryNarrative";
+import type { SplitWeather } from "../calculator/weather";
+import {
+  fetchSplitWeather,
+  weatherCodeLabel,
+  weatherCodeIcon,
+  windDirectionLabel,
+} from "../calculator/weather";
 const GpxExportModal = lazy(() => import("./GpxExportModal"));
 
 /** Convert HH:MM to minutes since midnight. */
@@ -202,6 +209,79 @@ export default function ResultsView({
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
 
+  // ── Weather data fetch ──
+  const [weatherData, setWeatherData] = useState<
+    (SplitWeather | null)[][] | null
+  >(null);
+
+  useEffect(() => {
+    if (!gpxProfiles || !result) {
+      setWeatherData(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    // Build a flat list of { lat, lon, endTimeIso } for all splits that have
+    // GPX profile data, then unflatten the response back to [seg][split].
+    const flatSplits: { lat: number; lon: number; endTimeIso: string }[] = [];
+    const segLengths: number[] = [];
+
+    for (let si = 0; si < result.segment_details.length; si++) {
+      const seg = result.segment_details[si];
+      segLengths.push(seg.split_details.length);
+      for (let sj = 0; sj < seg.split_details.length; sj++) {
+        const profile = gpxProfiles[si]?.[sj];
+        if (profile) {
+          flatSplits.push({
+            lat: profile.endLat,
+            lon: profile.endLon,
+            endTimeIso: seg.split_details[sj].end_time,
+          });
+        } else {
+          // Placeholder so indices stay aligned
+          flatSplits.push({ lat: 0, lon: 0, endTimeIso: "" });
+        }
+      }
+    }
+
+    // Only fetch if we have real coordinates
+    const hasCoords = flatSplits.some((s) => s.lat !== 0 || s.lon !== 0);
+    if (!hasCoords) {
+      setWeatherData(null);
+      return;
+    }
+
+    fetchSplitWeather(
+      flatSplits.filter((s) => s.lat !== 0 || s.lon !== 0),
+    ).then((flat) => {
+      if (cancelled) return;
+      // Unflatten: map back using the original indices
+      let fi = 0;
+      const nested: (SplitWeather | null)[][] = [];
+      let idx = 0;
+      for (const len of segLengths) {
+        const row: (SplitWeather | null)[] = [];
+        for (let j = 0; j < len; j++) {
+          const s = flatSplits[idx];
+          if (s.lat !== 0 || s.lon !== 0) {
+            row.push(flat[fi] ?? null);
+            fi++;
+          } else {
+            row.push(null);
+          }
+          idx++;
+        }
+        nested.push(row);
+      }
+      setWeatherData(nested);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [result, gpxProfiles]);
+
   return (
     <div className="results-view">
       <div className="results-view-inner">
@@ -317,6 +397,7 @@ export default function ResultsView({
             splitBoundariesKm={splitBoundariesKm}
             gpxProfiles={gpxProfiles}
             unitSystem={unitSystem}
+            splitWeather={weatherData?.[i] ?? null}
           />
         ))}
 
@@ -358,6 +439,7 @@ function SegmentSection({
   gpxTrack,
   splitBoundariesKm,
   gpxProfiles,
+  splitWeather,
 }: {
   segment: SegmentDetail;
   index: number;
@@ -370,6 +452,7 @@ function SegmentSection({
   gpxTrack?: GpxTrackPoint[] | null;
   splitBoundariesKm?: [number, number][][] | null;
   gpxProfiles?: SplitGpxProfile[][] | null;
+  splitWeather?: (SplitWeather | null)[] | null;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -512,6 +595,8 @@ function SegmentSection({
                     formSegments={formSegments}
                     courseTz={courseTz}
                     nearbyCity={cityLabels?.[j] ?? null}
+                    weather={splitWeather?.[j] ?? null}
+                    unitSystem={unitSystem}
                   />
                 ))}
               </tbody>
@@ -559,6 +644,8 @@ function SplitRow({
   formSegments,
   courseTz,
   nearbyCity,
+  weather,
+  unitSystem,
 }: {
   split: SplitDetail;
   splitNumber: number;
@@ -569,16 +656,20 @@ function SplitRow({
   formSegments: SegmentForm[];
   courseTz: string;
   nearbyCity?: string | null;
+  weather?: SplitWeather | null;
+  unitSystem: UnitSystem;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const splitTimeHours = split.moving_time_hours + split.down_time_hours;
 
   const formSplit = formSegments[segIdx]?.splits[splitIdx];
-  const splitTz =
-    formSplit?.differentTimezone && formSplit.timezone
+  const splitEndTz =
+    split.end_timezone ||
+    (formSplit?.differentTimezone && formSplit.timezone
       ? formSplit.timezone
-      : null;
+      : null);
+  const splitStartTz = split.start_timezone || null;
 
   const etaInfo = split.rest_stop?.arrival_date
     ? getEtaStatus(
@@ -667,7 +758,20 @@ function SplitRow({
           })}
           )
         </td>
-        <td className="time-span-cell">{timeSpan}</td>
+        <td className="time-span-cell">
+          {timeSpan}
+          {weather && (
+            <span
+              className="weather-hint"
+              title={`${weatherCodeLabel(weather.weatherCode)}, ${unitSystem === "imperial" ? Math.round((weather.temperature * 9) / 5 + 32) + "°F" : Math.round(weather.temperature) + "°C"}, Wind ${unitSystem === "imperial" ? Math.round(weather.windSpeed * 0.621371) + " mph" : Math.round(weather.windSpeed) + " km/h"} ${windDirectionLabel(weather.windDirection)}`}
+            >
+              {weatherCodeIcon(weather.weatherCode, weather.isDay)}{" "}
+              {unitSystem === "imperial"
+                ? `${Math.round((weather.temperature * 9) / 5 + 32)}°`
+                : `${Math.round(weather.temperature)}°`}
+            </span>
+          )}
+        </td>
         <td>{split.pace.toFixed(2)}</td>
       </tr>
       {expanded && (
@@ -711,15 +815,22 @@ function SplitRow({
               </div>
               <div>
                 <dt>Start</dt>
-                <dd>{fmtInTz(split.start_time, courseTz)}</dd>
+                <dd>
+                  {fmtInTz(split.start_time, splitStartTz ?? courseTz)}
+                  {splitStartTz && splitStartTz !== courseTz && (
+                    <span className="split-end-tz">
+                      {fmtInTz(split.start_time, courseTz)}
+                    </span>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt>End</dt>
                 <dd>
-                  {fmtInTz(split.end_time, courseTz)}
-                  {splitTz && (
+                  {fmtInTz(split.end_time, splitEndTz ?? courseTz)}
+                  {splitEndTz && splitEndTz !== courseTz && (
                     <span className="split-end-tz">
-                      {fmtInTz(split.end_time, splitTz)}
+                      {fmtInTz(split.end_time, courseTz)}
                     </span>
                   )}
                 </dd>
@@ -827,11 +938,10 @@ function SplitRow({
                               {etaInfo.status === "closed" && "✗ Closed"}
                             </span>
                           )}
-                          {splitTz
-                            ? fmtInTz(split.rest_stop.arrival_date, splitTz)
-                            : new Date(
-                                split.rest_stop.arrival_date,
-                              ).toLocaleString(undefined, dateOpts)}
+                          {fmtInTz(
+                            split.rest_stop.arrival_date,
+                            splitEndTz ?? courseTz,
+                          )}
                         </dd>
                       </div>
                     )}
@@ -847,6 +957,65 @@ function SplitRow({
                 )}
               </div>
             </div>
+            {weather && (
+              <div className="split-weather-section">
+                <h4>
+                  {weatherCodeIcon(weather.weatherCode, weather.isDay)} Weather
+                  at Endpoint
+                </h4>
+                <dl className="summary-grid weather-grid">
+                  <div>
+                    <dt>Conditions</dt>
+                    <dd>{weatherCodeLabel(weather.weatherCode)}</dd>
+                  </div>
+                  <div>
+                    <dt>Temperature</dt>
+                    <dd>
+                      {unitSystem === "imperial"
+                        ? `${Math.round((weather.temperature * 9) / 5 + 32)}°F`
+                        : `${Math.round(weather.temperature)}°C`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Feels Like</dt>
+                    <dd>
+                      {unitSystem === "imperial"
+                        ? `${Math.round((weather.apparentTemperature * 9) / 5 + 32)}°F`
+                        : `${Math.round(weather.apparentTemperature)}°C`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Wind</dt>
+                    <dd>
+                      {unitSystem === "imperial"
+                        ? `${Math.round(weather.windSpeed * 0.621371)} mph`
+                        : `${Math.round(weather.windSpeed)} km/h`}{" "}
+                      {windDirectionLabel(weather.windDirection)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Gusts</dt>
+                    <dd>
+                      {unitSystem === "imperial"
+                        ? `${Math.round(weather.windGusts * 0.621371)} mph`
+                        : `${Math.round(weather.windGusts)} km/h`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Precip. Chance</dt>
+                    <dd>{weather.precipitationProbability}%</dd>
+                  </div>
+                  <div>
+                    <dt>Humidity</dt>
+                    <dd>{weather.humidity}%</dd>
+                  </div>
+                  <div>
+                    <dt>Cloud Cover</dt>
+                    <dd>{weather.cloudCover}%</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
             {formSegments[segIdx]?.splits[splitIdx]?.notes?.trim() && (
               <div className="split-notes-result">
                 <h4>Notes</h4>

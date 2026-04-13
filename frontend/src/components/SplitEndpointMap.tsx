@@ -175,19 +175,26 @@ function ZoomableMarkers({
   const [zoom, setZoom] = useState(() => map.getZoom());
   const [viewport, setViewport] = useState(() => {
     const b = map.getBounds();
-    return { s: b.getSouth(), n: b.getNorth(), w: b.getWest(), e: b.getEast() };
+    const s = b.getSouth(),
+      n = b.getNorth(),
+      w = b.getWest(),
+      e = b.getEast();
+    if (isNaN(s) || isNaN(n) || isNaN(w) || isNaN(e)) {
+      return { s: -90, n: 90, w: -180, e: 180 };
+    }
+    return { s, n, w, e };
   });
 
   useEffect(() => {
     const update = () => {
       setZoom(map.getZoom());
       const b = map.getBounds();
-      setViewport({
-        s: b.getSouth(),
-        n: b.getNorth(),
-        w: b.getWest(),
-        e: b.getEast(),
-      });
+      const s = b.getSouth(),
+        n = b.getNorth(),
+        w = b.getWest(),
+        e = b.getEast();
+      if (isNaN(s) || isNaN(n) || isNaN(w) || isNaN(e)) return;
+      setViewport({ s, n, w, e });
     };
     map.on("zoomend moveend", update);
     return () => {
