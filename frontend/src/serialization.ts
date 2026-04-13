@@ -8,6 +8,7 @@ import type {
   SegmentForm,
   DayHoursEntry,
 } from "./types";
+import { tzLocalStringToUtcIso } from "./utils";
 import { minutesToSeconds, parseOptionalFloat } from "./utils";
 
 /** Convert HH:MM (24h) to 12h "hh:mm AM/PM" string. */
@@ -50,6 +51,7 @@ function serializeRestStop(split: SplitForm): RestStopPayload | null {
 
 function serializeSplit(split: SplitForm): SplitPayload {
   const payload: SplitPayload = {
+    name: split.name?.trim() || null,
     distance: parseFloat(split.distance),
     sub_split_mode: split.sub_split_mode,
     adjustment_time: minutesToSeconds(split.adjustment_time) ?? 0,
@@ -82,6 +84,7 @@ function serializeSplit(split: SplitForm): SplitPayload {
 
 function serializeSegment(seg: SegmentForm): SegmentPayload {
   const payload: SegmentPayload = {
+    name: seg.name?.trim() || null,
     splits: seg.splits.map(serializeSplit),
     sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
     no_end_down_time: !seg.include_end_down_time,
@@ -90,8 +93,8 @@ function serializeSegment(seg: SegmentForm): SegmentPayload {
   const dtr = parseOptionalFloat(seg.down_time_ratio);
   if (dtr !== null) payload.down_time_ratio = dtr;
 
-  const sd = parseOptionalFloat(seg.split_decay);
-  if (sd !== null) payload.split_decay = sd;
+  const sd = parseOptionalFloat(seg.split_delta);
+  if (sd !== null) payload.split_delta = sd;
 
   const ms = parseOptionalFloat(seg.moving_speed);
   if (ms !== null) payload.moving_speed = ms;
@@ -109,7 +112,7 @@ export function serializeCourse(form: CourseForm): CoursePayload {
     init_moving_speed: parseFloat(form.init_moving_speed),
     min_moving_speed: parseFloat(form.min_moving_speed),
     down_time_ratio: parseFloat(form.down_time_ratio),
-    split_decay: parseFloat(form.split_decay),
-    start_time: new Date(form.start_time).toISOString(),
+    split_delta: parseFloat(form.split_delta),
+    start_time: tzLocalStringToUtcIso(form.start_time, form.timezone),
   };
 }

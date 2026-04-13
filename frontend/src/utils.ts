@@ -1,5 +1,17 @@
 import type { UnitSystem } from "./types";
 
+/** Deterministic per-segment accent colours; cycles if more segments than entries. */
+export const SEGMENT_COLORS = [
+  "#4361ee", // indigo
+  "#f72585", // hot pink
+  "#4cc9f0", // sky
+  "#06d6a0", // mint
+  "#fb8500", // orange
+  "#7209b7", // violet
+  "#ef233c", // red
+  "#80b918", // lime
+] as const;
+
 /** Convert minutes (float) to total seconds for the API. Returns undefined if blank. */
 export function minutesToSeconds(minutes: string): number | undefined {
   if (minutes.trim() === "") return undefined;
@@ -28,6 +40,70 @@ export function nowLocalDatetime(): string {
   const offset = now.getTimezoneOffset();
   const local = new Date(now.getTime() - offset * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+/**
+ * Convert a datetime-local string ("YYYY-MM-DDTHH:MM") treated as wall-clock
+ * time in `tz` to a UTC ISO 8601 string.
+ *
+ * The browser's `new Date("YYYY-MM-DDTHH:MM")` interprets the value as the
+ * browser's *local* timezone. This function instead treats it as belonging to
+ * the IANA timezone supplied, so "06:00 America/Los_Angeles" always becomes
+ * 13:00 UTC regardless of where the browser is running.
+ */
+export function tzLocalStringToUtcIso(localStr: string, tz: string): string {
+  // Normalise to full ISO (add seconds so sv-SE formatter round-trips cleanly).
+  const isoStr = localStr.length === 16 ? localStr + ":00" : localStr;
+
+  // Step 1 — treat the naive datetime as if it were UTC.
+  const asUtc = new Date(isoStr + "Z");
+
+  // Step 2 — find what the target TZ reads for that UTC instant.
+  // sv-SE gives "YYYY-MM-DD HH:MM:SS" which is easy to re-parse.
+  const inTzStr = asUtc.toLocaleString("sv-SE", { timeZone: tz });
+
+  // Step 3 — re-parse that string as UTC to measure the TZ offset.
+  const inTzAsUtc = new Date(inTzStr.replace(" ", "T") + "Z");
+
+  // Step 4 — the offset is the amount we need to add to the naive-UTC value.
+  // Positive for west-of-UTC zones (e.g. Americas).
+  const offsetMs = asUtc.getTime() - inTzAsUtc.getTime();
+
+  // Step 5 — shift the naive-UTC instant by the offset to get real UTC.
+  return new Date(asUtc.getTime() + offsetMs).toISOString();
+}
+
+/**
+ * Return a short display string for a datetime-local value interpreted in `tz`.
+ * e.g. "6:00 AM PDT" — used as a hint when the course timezone differs from
+ * the browser timezone.
+ */
+export function formatStartTimeHint(
+  localStr: string,
+  tz: string,
+): string | null {
+  if (!localStr) return null;
+  try {
+    const [datePart, timePart] = localStr.split("T");
+    if (!datePart || !timePart) return null;
+    const [y, m, d] = datePart.split("-").map(Number);
+    const [h, min] = timePart.split(":").map(Number);
+    // Build a Date.UTC value with the raw fields to query TZ abbreviation at
+    // this calendar date without browser-tz distortion.
+    const ref = new Date(Date.UTC(y, m - 1, d, h, min));
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "short",
+    }).formatToParts(ref);
+    const tzAbbr = parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
+    // Format the time fields ourselves (h/min come straight from the input).
+    const hour12 = h % 12 || 12;
+    const ampm = h < 12 ? "AM" : "PM";
+    const minStr = String(min).padStart(2, "0");
+    return `${hour12}:${minStr} ${ampm} ${tzAbbr}`;
+  } catch {
+    return null;
+  }
 }
 
 /** Speed unit label based on unit system. */

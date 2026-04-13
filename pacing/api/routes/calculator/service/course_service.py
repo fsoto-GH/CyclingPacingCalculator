@@ -71,16 +71,18 @@ def course_to_dto(course: Course) -> CourseDto:
                     rest_stop=rest_stop_to_dto(split),
                     down_time=split.down_time,
                     moving_speed=split.moving_speed,
-                    adjustment_time=split.adjustment_time
+                    adjustment_time=split.adjustment_time,
+                    name=split.name
                 )
                 for split in segment.splits
             ],
             down_time_ratio=segment.down_time_ratio,
-            split_decay=segment.split_decay,
+            split_delta=segment.split_delta,
             moving_speed=segment.moving_speed,
             min_moving_speed=segment.min_moving_speed,
             sleep_time=segment.sleep_time,
-            no_end_down_time=segment.no_end_down_time
+            no_end_down_time=segment.no_end_down_time,
+            name=segment.name
         )
         for segment in course.segments
     ]
@@ -91,7 +93,7 @@ def course_to_dto(course: Course) -> CourseDto:
         init_moving_speed=course.init_moving_speed,
         min_moving_speed=course.min_moving_speed,
         down_time_ratio=course.down_time_ratio,
-        split_decay=course.split_decay,
+        split_delta=course.split_delta,
         start_time=course.start_time
     )
 

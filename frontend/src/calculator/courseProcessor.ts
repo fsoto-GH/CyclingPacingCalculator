@@ -219,6 +219,7 @@ function computeSplitDetail(
   );
 
   const detail: SplitDetail = {
+    name: split.name ?? null,
     distance: split.distance,
     start_time: new Date(startTimeMs).toISOString(),
     end_time: new Date(endTimeMs).toISOString(),
@@ -258,14 +259,14 @@ function computeSegmentDetail(
   movingSpeed: number,
   minMovingSpeed: number,
   downTimeRatio: number,
-  splitDecay: number,
+  splitDelta: number,
   startDistance: number,
 ): SegmentDetail {
   // Apply segment-level overrides
   let currSpeed = seg.moving_speed ?? movingSpeed;
   const currMin = seg.min_moving_speed ?? minMovingSpeed;
   const currDtr = seg.down_time_ratio ?? downTimeRatio;
-  const currDecay = seg.split_decay ?? splitDecay;
+  const currDelta = seg.split_delta ?? splitDelta;
 
   if (currSpeed < currMin) {
     throw new CalcError(
@@ -306,8 +307,8 @@ function computeSegmentDetail(
     currDist += split.distance;
     currTimeMs += activeMs;
 
-    // Decay speed for the next split, clamped to min
-    currSpeed = Math.max(currSpeed - currDecay, currMin);
+    // Apply speed delta for the next split, clamped to min
+    currSpeed = Math.max(currSpeed + currDelta, currMin);
   }
 
   const activeMs = currTimeMs - startTimeMs;
@@ -338,7 +339,7 @@ function computeSegmentDetail(
     sleep_time_hours: msToHours(sleepMs),
     moving_speed: null,
     adjustment_start: null,
-    name: null,
+    name: seg.name ?? null,
   };
 }
 
@@ -378,7 +379,7 @@ export function processCourse(payload: CoursePayload): CourseDetail {
       currSpeed,
       normalized.min_moving_speed,
       normalized.down_time_ratio,
-      normalized.split_decay,
+      normalized.split_delta,
       currDist,
     );
 

@@ -14,6 +14,6 @@ class Course(BaseModel):
     init_moving_speed: float
     min_moving_speed: float
     down_time_ratio: float = 0
-    split_decay: float = 0
+    split_delta: float = 0
     start_time: datetime = datetime.today()
 

@@ -14,6 +14,7 @@ class SplitDetail(SubSplitDetail):
     adjustment_start: datetime  # represents when adjustment time starts
     adjustment_time: serialized_timedelta
     rest_stop: RestStop | None = None
+    name: str | None = None
 
     @computed_field
     @property

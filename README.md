@@ -1,4 +1,4 @@
-# 🚴‍♂️ CyclingPacingCalculator
+# 🚴‍♂️ Ultra Cycling Planner
 
 ## 🧠 Why I Built This
 
@@ -8,11 +8,17 @@ Before Mishigami 2025—a 1,121-mile race across Michigan—I needed a way to mo
 
 I built this calculator to answer those questions. It powered my race plan for Mishigami, where I finished 2nd place—the first Chicagoan ever to complete the race in under 4 days.
 
-While the race is over, I plan to continue enhancing this project. I'd like to ultimately have:
+While the race is over, I continue to enhance this project. Since the race, the calculator has gained:
 
-- GPX route support to split and visualize the route
-- Allow for GPX route analysis (insights into elevation gain — hilly segments or splits) to aid in planning
-- A way to, on-the-fly, find and select rest stops to ultimately export
+- GPX route loading with per-split elevation analysis (gain, loss, grade, surface, steep %)
+- A full-course elevation profile chart with segment color overlays and interactive zoom
+- An interactive Leaflet course map with full track visualization, color-coded segments, and split endpoint markers
+- A nearby rest stop search powered by the OpenStreetMap Overpass API
+- Automatic timezone detection from GPX coordinates
+- A natural language course summary with open-hours colour coding
+- Real-time auto-calculation as you type (no Calculate button)
+- Named courses, segments, and splits with auto-naming from city labels
+- Segment pagination and Quick Setup for large courses
 
 This repository contains:
 
@@ -28,13 +34,26 @@ The frontend is a single-page React app located in [`frontend/`](./frontend). It
 
 ### Features
 
-- Multi-segment, multi-split course builder
+- Multi-segment, multi-split course builder with Distance and Target Distance modes
 - Imperial / metric toggle
-- Rest stop open hours with timezone-aware ETA badges
-- Collapsible segments and splits
-- Example courses (including the Mishigami Challenge)
+- Rest stop open hours with timezone-aware ETA badges (🟢 Open / 🟡 Near / 🔴 Closed)
+- Collapsible segments, splits, and results
+- Segment pagination — page through large courses (5 / 10 / 20 segments per page)
+- Quick Setup dialog — rapidly build uniform segments with a single dialog
+- Example courses (including the Mishigami Challenge and Trans Am Classic)
 - Import / export course definitions as JSON
-- Results table with sub-split detail
+- GPX route loading with per-split elevation analysis (gain, loss, grade, surface)
+- Full-course elevation profile chart with segment color overlays and interactive split zoom
+- Interactive Leaflet course map with color-coded segments, split endpoint markers, and rest stop pins
+- GPX split export — download a trimmed GPX for any individual split from the Results section
+- OSM-powered nearby stop search at each split endpoint via the Overpass API
+- Nearby city labels on split distance inputs via the Nominatim reverse geocoding API
+- Auto-Name feature — populate segment and split names from resolved city labels using templates
+- Automatic timezone detection from GPX coordinates (no API call)
+- Start time interpreted in course timezone with a hint shown when it differs from the browser timezone
+- Natural language course summary with open-hours status
+- Real-time auto-calculation (no Calculate button needed)
+- Form state persisted to **localStorage**; GPX file persisted to **IndexedDB**
 
 ### Run the frontend locally (dev mode)
 
@@ -46,25 +65,26 @@ npm run dev
 
 Opens at `http://localhost:5173`. The Vite dev server proxies `/v1/...` requests to `http://localhost:8000` if you want to test against the API.
 
-### Build the frontend (production)
+### Browser persistence
 
-```bash
-cd frontend
-npm install
-npm run build
-```
+The frontend uses two browser-local storage mechanisms — no server, no account required:
 
-Output goes to `../static/`. The resulting files are a fully static site — host them on GitHub Pages, Netlify, Cloudflare Pages, S3, or anywhere that serves static files.
+| Storage      | What is stored                   | Lifetime                              |
+| ------------ | -------------------------------- | ------------------------------------- |
+| localStorage | Full form state (JSON, compact)  | Until cleared manually or Reset       |
+| IndexedDB    | Raw GPX file (keyed by filename) | Until Remove / Reset or browser clear |
+
+Both are restored automatically on page load. If you export a course JSON and later import it on the same browser, the referenced GPX file (if still present in IndexedDB) is restored without re-uploading.
 
 ### Query parameters
 
-| Parameter | Values            | Default  | Description                                                                           |
-| --------- | ----------------- | -------- | ------------------------------------------------------------------------------------- |
-| `engine`  | `client` \| `api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
+| Parameter  | Values         | Default  | Description                                                                           |
+| ---------- | -------------- | -------- | ------------------------------------------------------------------------------------- |
+| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
 
 Example: `http://localhost:5173/?engine=api`
 
-When `engine=api` is active, the Calculate button label renders in gold to indicate the API path is being used.
+When `engine=api` is active, the Calculate button label renders in gold to indicate the API path is being used. _Note: Functionality in the API is no longer fully in parity with the backend, so functionality on the front end is no longer guaranteed_
 
 ---
 
@@ -185,9 +205,222 @@ http://localhost:8000/docs
   "init_moving_speed": 20,
   "min_moving_speed": 16.0,
   "down_time_ratio": 0.05,
-  "split_decay": 0.25,
+  "split_delta": -0.25,
   "start_time": "2026-03-04T08:10:00"
 }
 ```
 
 See the Swagger UI at `/docs` for the full request/response schema.
+
+---
+
+## 🗺️ GPX Route Loading
+
+You can load a `.gpx` file exported from Garmin, Komoot, RideWithGPS, Strava, or any standard GPS device. The file is parsed entirely in the browser — no server upload occurs.
+
+### Parsing
+
+The parser reads either `<trkpt>` (track) or `<rtept>` (route) elements, extracting latitude, longitude, and elevation. Cumulative distance is computed incrementally via the **Haversine formula** as each point is read, so no second pass is needed. A dominant surface tag is also extracted from `<extensions>` elements emitted by apps like Komoot and OsmAnd.
+
+### Elevation computation
+
+Raw GPS elevation data is notoriously noisy. A naïve cumulative-sum approach can produce wildly inflated gain/loss figures. The calculator uses a two-step algorithm that matches the output of [gpx.studio](https://gpx.studio):
+
+1. **Ramer–Douglas–Peucker (RDP) simplification** is run on the `(cumulative distance, elevation)` 2D plane with a 20 m perpendicular-distance tolerance. This identifies _significant terrain anchors_ — the peaks and valleys that represent genuine changes in slope — while discarding GPS jitter between them.
+
+2. **100 m sliding-window smoothing** is then applied _between each pair of adjacent anchors_. A running sum maintains the window average in O(1) per step (the window start and end pointers advance monotonically), so the overall pass is O(n) rather than O(n·w). The raw GPS elevation is forced at each anchor endpoint to prevent drift.
+
+3. Gain and loss are accumulated on the smoothed signal.
+
+This produces results close to Garmin and Strava, and identical to gpx.studio for the same file.
+
+### Per-split profiles
+
+Once the full track is processed, it is _sliced_ by split. Each split's start and end kilometre positions are resolved with **binary search** (O(log n)), avoiding a linear scan across potentially 30 000+ track points per split. The slice then receives its own elevation computation, average grade, percentage of distance with grade > 5 %, and a dominant surface tag.
+
+In `target_distance` mode (where split distances are cumulative course markers rather than chunks), the profile computation normalises to chunk distances before slicing — mirroring the same normalisation done in the calculator engine.
+
+The results are **debounced** (400 ms after the user stops editing distances) so that the expensive GPX slicing + timezone lookup doesn't fire on every keystroke.
+
+### Per-split display
+
+Each expanded split shows:
+
+- ⬆ elevation gain / ⬇ elevation loss (converted to ft or m based on unit system)
+- Average grade %
+- Percentage of distance with grade > 5 % (marked 🟡 steep)
+- Dominant surface (e.g. `asphalt`, `gravel`)
+- An embedded OpenStreetMap iframe centred on the split endpoint with a pin
+- Nearest city label (fetched in the background via Nominatim with 1 req/s rate limiting)
+
+### GPX split export
+
+From the **Results** section, each segment has an **Export GPX splits** button that opens a modal listing all splits with their elevation statistics. You can select individual splits or the full segment and download a trimmed GPX. The exported file contains course waypoints only — any device-specific extensions or metadata from the original file are not preserved.
+
+### GPX distance indicators
+
+When a GPX file is loaded, the calculator checks your split configuration against the GPX total distance:
+
+- **Red \*** on a segment header or split — cumulative distance at that point exceeds the GPX course distance.
+- **Yellow \*** on the final segment — total configured distance falls short of the GPX course distance.
+
+---
+
+## 📍 OSM Nearby Stop Search
+
+When a GPX is loaded, each split endpoint gains a **"Find Nearby Stops"** button. Clicking it opens a panel that immediately queries the [Overpass API](https://overpass-api.de) (OpenStreetMap's read API, no key required) for amenities within 1 km of the split's endpoint coordinates.
+
+### Query design
+
+The query is kept deliberately lean:
+
+- **Nodes only** — `way` elements are skipped. The overwhelming majority of gas stations, convenience stores, pharmacies, and cafés are mapped as OSM nodes, so the query covers nearly all useful results at a fraction of the server cost.
+- **1 km radius** — balances coverage against response size (area scales with r²).
+- **`[timeout:10][maxsize:1048576]`** — the server aborts rather than streaming an oversized payload.
+- **Amenity filter**: `fuel`, `supermarket`, `convenience`, `pharmacy`, `fast_food`, `cafe`, `restaurant`.
+
+### Results display
+
+Results are sorted by distance (ascending), with stops that have known hours ranked above those without. Each item shows:
+
+- Icon + name
+- Distance from the split endpoint in the course's unit system (mi/ft or km/m)
+- Amenity type and address (built from OSM `addr:*` tags)
+- Raw `opening_hours` string from OSM
+- Coordinates (lat, lon to 5 decimal places ≈ 1 m resolution)
+
+### Hours parsing
+
+OSM `opening_hours` strings are parsed with a lightweight built-in parser that handles the most common patterns (`24/7`, `Mo-Fr 08:00-20:00; Sa-Su 09:00-18:00`, `off`, etc.) without pulling in the 130 KB `opening_hours.js` library. Successfully parsed hours are imported directly into the split's rest stop schedule.
+
+### Selecting a result
+
+Clicking a result pre-fills the rest stop form: name, address, and parsed open hours (if available) are applied. The split's open-hours ETA badge then immediately reflects the imported schedule.
+
+### Future improvement
+
+The Overpass API is a community dataset and coverage varies by region. A potential upgrade would integrate the **Google Places API** or **HERE Places API**, which offer richer commercial data (phone numbers, photos, real-time open/closed status) at the cost of an API key and per-request billing.
+
+---
+
+## 🌐 Timezone Handling
+
+### Course timezone
+
+Every course has a primary IANA timezone (e.g. `America/Chicago`). All start times, ETA calculations, and open-hours checks use this timezone as the default throughout.
+
+### Per-split timezone override
+
+Individual splits can be assigned a different IANA timezone via the _Different timezone?_ checkbox. This is useful for routes that cross timezone boundaries mid-segment (common on long-distance events like Mishigami, which crosses entre Michigan).
+
+When a GPX file is loaded, each split's endpoint timezone is **automatically detected** using the [tz-lookup](https://www.npmjs.com/package/tz-lookup) library, which performs a point-in-polygon lookup against a compact boundary dataset entirely in the browser — no geocoding API call required.
+
+### Timezone-aware ETA badges
+
+The results table checks each rest stop's open hours against the predicted arrival time in the _correct_ timezone for that split. Badges show:
+
+| Badge     | Meaning                                          |
+| --------- | ------------------------------------------------ |
+| 🟢 Open   | Arriving well within open hours (>30 min margin) |
+| 🟡 Near   | Arriving within 30 minutes of opening or closing |
+| 🔴 Closed | Arriving outside open hours                      |
+
+### Narrative timezone shifts
+
+The natural language summary detects when a segment crosses a timezone boundary (e.g. CDT → ET) and appends a note inline: _(crosses time zones: CDT → ET)_. This uses `Intl.DateTimeFormat` to resolve the short abbreviation of each split's end time in the appropriate IANA zone.
+
+---
+
+## 🟢 Open Hours & Rest Stop Configuration
+
+Each split can have a rest stop with per-day open hours. Hours can be set identically for every day or configured per day of the week (Mon–Sun). The mode options are:
+
+- **Hours** — opens/closes at specific times
+- **24h** — open around the clock
+- **Closed** — always closed on that day
+
+The ETA badge in results reflects which day of the week the calculator predicts you'll arrive, resolved in the split's effective timezone. This means a stop that is open Monday–Friday 08:00–20:00 will correctly show as closed if your pacing puts you there on a Saturday night.
+
+---
+
+## 📖 Natural Language Course Summary
+
+After calculation, a prose summary is rendered above the detailed results table. It aims to give an at-a-glance read of the whole plan — useful for sharing or sanity-checking — rather than requiring the reader to interpret a table.
+
+The summary is built from three layers of information:
+
+1. **Course shape** — total distance, number of segments, start time and timezone.
+2. **Per-segment narrative** — distance covered, rest stop names coloured by open/near/closed status, and a timezone-shift note when the segment crosses a boundary.
+3. **Sleep bridges** — when segments are separated by sleep time, a sentence describes the rest duration and the time the next segment begins.
+4. **Closing line** — predicted finish time and total elapsed time (coloured blue).
+
+If a course name, segment name, or split name is provided in the form, the narrative uses those names rather than generic labels like "Segment 1".
+
+---
+
+## � Browser & Device Support
+
+This app requires a modern desktop or tablet browser.
+
+| Viewport   | Support level                                                         |
+| ---------- | --------------------------------------------------------------------- |
+| ≥ 600 px   | Full — all features display correctly                                 |
+| 390–599 px | Limited — most features work but maps, charts, and tables are cramped |
+| < 390 px   | Not supported — layout issues expected                                |
+
+The app is **not optimised for touch-only use**. GPX file uploads, map interactions, and multi-column forms work best with a keyboard and pointer device.
+
+---
+
+## 🗺️ Course Map & Elevation Profile
+
+When a GPX file is loaded and split distances are configured, an interactive Leaflet map and elevation chart appear below the Course Settings form.
+
+### Course map
+
+- The full route is drawn as a colored polyline, with each segment shown in a distinct color matching the legend and segment collapse icon.
+- Portions of the route not yet covered by any split are shown in light gray.
+- Split endpoint markers are interactive — clicking one opens a popup with the split name, distance, and a **↓ Go to split** button that scrolls to and expands the corresponding form.
+- Rest stop markers (purple) are hidden by default; use the **Rest Stops** toggle button on the map to show them.
+- The **legend** is clickable: clicking a segment entry zooms the map to that segment's track portion and simultaneously zooms the elevation profile to that segment's distance range. Clicking the same entry again resets the elevation zoom.
+
+### Elevation profile
+
+- Always shows the **full course**, with each segment's range overlaid in its color.
+- Click any area of the chart to zoom into that split's distance range. The header title updates to show what is in view (e.g. _Elevation: Segment 1 › Split 2_).
+- The **↺ Reset** button returns the chart to the full-course view.
+- Zooming in increases resolution: the chart always samples up to 300 points from the visible range, so smaller ranges reveal finer GPS detail.
+
+---
+
+## �🧩 Example Courses
+
+The **Examples** button (toolbar) opens a modal with pre-built course configurations including their GPX routes. Loading an example replaces the current form state (with a confirmation prompt if you have unsaved data). The form auto-calculates immediately after loading.
+
+### Included examples
+
+| Example                 | Description                                                                                                                                                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Simple Example**      | A single 100-mile segment split into two halves, demonstrating sub-split modes (even and fixed) and a real rest stop at Specialized Chicago with per-day hours.                                                   |
+| **Complex Example**     | A multi-segment course with sleep time between segments, per-segment speed/delta overrides, and multiple timezones.                                                                                               |
+| **Mishigami Challenge** | A two-segment, 1,121-mile plan modelled on the actual Mishigami ultra-endurance race across Michigan (Chicago → St Ignace → Chicago), with realistic speed delta settings, sleep windows, and timezone crossings. |
+| **Trans Am Classic**    | The Trans Am Bike Race route with full GPX, demonstrating a large multi-segment course with Auto-Name city labels and elevation profile zoom.                                                                     |
+
+Examples are defined as plain TypeScript objects in [`frontend/src/examples.ts`](./frontend/src/examples.ts). Adding a new example is as simple as adding an entry to the exported array — no build step or configuration change required.
+
+---
+
+## 🌍 APIs & External Services Used
+
+The frontend uses the following third-party APIs and services. All are free and open, and no API key is required for any of them.
+
+| Service           | Used for                                                               | Docs / Policy                                                                                                     |
+| ----------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **OpenStreetMap** | Map tiles in the embedded split-endpoint iframe                        | [osmfoundation.org](https://osmfoundation.org/wiki/Tile_Usage_Policy)                                             |
+| **Overpass API**  | Nearby rest stop / amenity search at split endpoints                   | [overpass-api.de](https://overpass-api.de)                                                                        |
+| **Nominatim**     | Reverse geocoding — nearest city label per split                       | [nominatim.org](https://nominatim.org) · [Usage Policy](https://operations.osmfoundation.org/policies/nominatim/) |
+| **tz-lookup**     | Browser-side timezone detection from GPS coordinates (no network call) | [npmjs.com/package/tz-lookup](https://www.npmjs.com/package/tz-lookup)                                            |
+
+### Nominatim rate limiting
+
+Nominatim's usage policy requires a maximum of **1 request per second**. The calculator enforces this with a sequential queue — city labels load one at a time with a 1.1 s gap between network requests. Coordinates that have been fetched in the current session are cached in memory and resolve instantly without a new request.

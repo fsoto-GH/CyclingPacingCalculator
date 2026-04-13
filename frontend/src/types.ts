@@ -1,6 +1,28 @@
 // ── Unit system (display-only toggle) ──
 export type UnitSystem = "imperial" | "metric";
 
+// ── GPX / elevation profile types ──
+
+export interface GpxTrackPoint {
+  lat: number;
+  lon: number;
+  ele: number; // metres
+  cumDist: number; // km from track start
+}
+
+export interface SplitGpxProfile {
+  elevGainM: number;
+  elevLossM: number;
+  avgGradePct: number;
+  steepPct: number; // % of distance with grade > 5%
+  surface: string; // e.g. "paved" | "gravel" | "unknown"
+  endLat: number;
+  endLon: number;
+  endTimezone: string; // IANA tz at endpoint
+  startKm: number;
+  endKm: number;
+}
+
 // ── API request types ──
 export type Mode = "distance" | "target_distance";
 export type SubSplitMode = "even" | "fixed" | "custom";
@@ -13,6 +35,7 @@ export interface RestStopPayload {
 }
 
 export interface SplitPayload {
+  name?: string | null;
   distance: number;
   sub_split_mode: SubSplitMode;
   sub_split_count?: number | null;
@@ -26,9 +49,10 @@ export interface SplitPayload {
 }
 
 export interface SegmentPayload {
+  name?: string | null;
   splits: SplitPayload[];
   down_time_ratio?: number | null;
-  split_decay?: number | null;
+  split_delta?: number | null;
   moving_speed?: number | null;
   min_moving_speed?: number | null;
   sleep_time?: number; // seconds
@@ -41,7 +65,7 @@ export interface CoursePayload {
   init_moving_speed: number;
   min_moving_speed: number;
   down_time_ratio: number;
-  split_decay: number;
+  split_delta: number;
   start_time: string; // ISO 8601
 }
 
@@ -78,6 +102,7 @@ export interface RestStopForm {
 }
 
 export interface SplitForm {
+  name?: string;
   distance: string;
   sub_split_mode: SubSplitMode;
   sub_split_count: string;
@@ -90,13 +115,16 @@ export interface SplitForm {
   adjustment_time: string; // minutes
   differentTimezone: boolean;
   timezone: string; // IANA timezone override
+  tzManuallySet?: boolean; // true when the user explicitly chose the tz (auto-detection will not override)
+  notes?: string; // freeform rider notes, displayed in results
 }
 
 export interface SegmentForm {
+  name?: string;
   sleep_time: string; // minutes
   include_end_down_time: boolean; // inverts to no_end_down_time
   down_time_ratio: string;
-  split_decay: string;
+  split_delta: string;
   moving_speed: string;
   min_moving_speed: string;
   splitCount: string;
@@ -104,13 +132,15 @@ export interface SegmentForm {
 }
 
 export interface CourseForm {
+  name?: string;
+  gpxFileName?: string; // filename (no .gpx) of the associated GPX, for IDB restore on import
   unitSystem: UnitSystem;
   mode: Mode;
   timezone: string; // IANA timezone
   init_moving_speed: string;
   min_moving_speed: string;
   down_time_ratio: string;
-  split_decay: string;
+  split_delta: string;
   start_time: string;
   segmentCount: string;
   segments: SegmentForm[];
@@ -136,6 +166,7 @@ export interface SubSplitDetail {
 }
 
 export interface SplitDetail extends SubSplitDetail {
+  name?: string | null;
   sub_splits: SubSplitDetail[];
   adjustment_start: string;
   adjustment_time: string;

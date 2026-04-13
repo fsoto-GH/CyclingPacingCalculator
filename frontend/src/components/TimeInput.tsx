@@ -1,5 +1,6 @@
 import { minutesToHms } from "../utils";
 import { FieldError } from "./FieldError";
+import NumberInput from "./NumberInput";
 
 interface TimeInputProps {
   id: string;
@@ -17,7 +18,6 @@ export default function TimeInput({
   label,
   value,
   onChange,
-  optional,
   allowNegative,
   disabled,
   disabledTitle,
@@ -27,21 +27,19 @@ export default function TimeInput({
     <div className="field">
       <label htmlFor={id} title={disabled ? disabledTitle : undefined}>
         {label} (min)
-        {optional && <span className="optional"> — optional</span>}
-        {hms && !disabled && <span className="time-aside"> = {hms}</span>}
       </label>
-      <input
+      <NumberInput
         id={id}
-        type="number"
         step="any"
         {...(allowNegative ? {} : { min: "0" })}
         value={disabled ? "" : value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(v) => onChange(v)}
         placeholder={disabled ? "N/A" : "0"}
         disabled={disabled}
         title={disabled ? disabledTitle : undefined}
       />
       <FieldError fieldId={id} />
+      {hms && !disabled && <span className="time-aside">{hms}</span>}
     </div>
   );
 }

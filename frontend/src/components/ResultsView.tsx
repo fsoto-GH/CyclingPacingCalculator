@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import type {
   CourseDetail,
   SegmentDetail,
@@ -7,8 +7,12 @@ import type {
   UnitSystem,
   SegmentForm,
   DayHoursEntry,
+  GpxTrackPoint,
+  SplitGpxProfile,
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
+import CourseSummaryNarrative from "./CourseSummaryNarrative";
+const GpxExportModal = lazy(() => import("./GpxExportModal"));
 
 /** Convert HH:MM to minutes since midnight. */
 function timeToMin(t: string): number {
@@ -169,18 +173,16 @@ function getArrivalDayHours(
   return { dayLabel: dayName, hoursLabel };
 }
 
-/** Compact time cell with full-precision hover tooltip. */
-function TimeCell({ hours }: { hours: number | null | undefined }) {
-  return (
-    <td title={formatHours(hours, "full")}>{formatHours(hours, "compact")}</td>
-  );
-}
-
 interface ResultsViewProps {
   result: CourseDetail;
   unitSystem: UnitSystem;
   formSegments: SegmentForm[];
   courseTz: string;
+  courseName?: string;
+  cityLabels?: (string | null)[][];
+  gpxTrack?: GpxTrackPoint[] | null;
+  splitBoundariesKm?: [number, number][][] | null;
+  gpxProfiles?: SplitGpxProfile[][] | null;
 }
 
 export default function ResultsView({
@@ -188,120 +190,157 @@ export default function ResultsView({
   unitSystem,
   formSegments,
   courseTz,
+  courseName,
+  cityLabels,
+  gpxTrack,
+  splitBoundariesKm,
+  gpxProfiles,
 }: ResultsViewProps) {
   const [showJson, setShowJson] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [narrativeExpanded, setNarrativeExpanded] = useState(false);
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
 
   return (
     <div className="results-view">
-      <h2>Results</h2>
-
-      {/* Course Summary */}
-      <div className="course-summary">
-        <h3>Course Summary</h3>
-        <dl className="summary-grid">
-          <div>
-            <dt>Total Distance</dt>
-            <dd>
-              {result.distance.toFixed(2)} {dLabel}
-            </dd>
+      <div className="results-view-inner">
+        {/* Narrative with collapse/expand */}
+        <div className="narrative-wrapper">
+          <div
+            className={`narrative-section${narrativeExpanded ? " narrative-section--expanded" : ""}`}
+          >
+            <CourseSummaryNarrative
+              result={result}
+              formSegments={formSegments}
+              courseTz={courseTz}
+              unitSystem={unitSystem}
+              courseName={courseName}
+            />
           </div>
-          <div>
-            <dt>Start Time</dt>
-            <dd>
-              {new Date(result.start_time).toLocaleString(undefined, {
-                weekday: "short",
-                month: "numeric",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-                timeZone: courseTz,
-                timeZoneName: "short",
-              })}
-            </dd>
-          </div>
-          <div>
-            <dt>End Time</dt>
-            <dd>
-              {new Date(result.end_time).toLocaleString(undefined, {
-                weekday: "short",
-                month: "numeric",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-                timeZone: courseTz,
-                timeZoneName: "short",
-              })}
-            </dd>
-          </div>
-          <div>
-            <dt>Elapsed Time</dt>
-            <dd title={formatHours(result.elapsed_time_hours, "full")}>
-              {formatHours(result.elapsed_time_hours)}
-            </dd>
-          </div>
-          <div>
-            <dt>Moving Time</dt>
-            <dd title={formatHours(result.moving_time_hours, "full")}>
-              {formatHours(result.moving_time_hours)}
-            </dd>
-          </div>
-          <div>
-            <dt>Down Time</dt>
-            <dd title={formatHours(result.down_time_hours, "full")}>
-              {formatHours(result.down_time_hours)}
-            </dd>
-          </div>
-          <div>
-            <dt>Sleep Time</dt>
-            <dd title={formatHours(result.sleep_time_hours, "full")}>
-              {formatHours(result.sleep_time_hours)}
-            </dd>
-          </div>
-          <div>
-            <dt>Adjustment Time</dt>
-            <dd title={formatHours(result.adjustment_time_hours, "full")}>
-              {formatHours(result.adjustment_time_hours)}
-            </dd>
-          </div>
-        </dl>
-      </div>
-
-      {/* Segments */}
-      {result.segment_details.map((seg, i) => (
-        <SegmentSection
-          key={i}
-          segment={seg}
-          index={i}
-          sLabel={sLabel}
-          dLabel={dLabel}
-          formSegments={formSegments}
-          courseTz={courseTz}
-        />
-      ))}
-
-      {/* Raw JSON */}
-      <div className="json-section">
-        <div className="json-controls">
-          <button type="button" onClick={() => setShowJson(!showJson)}>
-            {showJson ? "Hide" : "Show"} Raw JSON
-          </button>
           <button
             type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
+            className="results-expand-btn"
+            onClick={() => setNarrativeExpanded((v) => !v)}
           >
-            {copied ? "Copied!" : "Copy JSON"}
+            {narrativeExpanded ? "▲ Show less" : "▼ Show more"}
           </button>
         </div>
-        {showJson && (
-          <pre className="json-block">{JSON.stringify(result, null, 2)}</pre>
-        )}
+
+        {/* Course Summary */}
+        <div className="course-summary">
+          <h3>Course Summary</h3>
+          <dl className="summary-grid">
+            <div>
+              <dt>Total Distance</dt>
+              <dd>
+                {result.distance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                {dLabel}
+              </dd>
+            </div>
+            <div>
+              <dt>Start Time</dt>
+              <dd>
+                {new Date(result.start_time).toLocaleString(undefined, {
+                  weekday: "short",
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  timeZone: courseTz,
+                  timeZoneName: "short",
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt>End Time</dt>
+              <dd>
+                {new Date(result.end_time).toLocaleString(undefined, {
+                  weekday: "short",
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  timeZone: courseTz,
+                  timeZoneName: "short",
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt>Elapsed Time</dt>
+              <dd title={formatHours(result.elapsed_time_hours, "full")}>
+                {formatHours(result.elapsed_time_hours)}
+              </dd>
+            </div>
+            <div>
+              <dt>Moving Time</dt>
+              <dd title={formatHours(result.moving_time_hours, "full")}>
+                {formatHours(result.moving_time_hours)}
+              </dd>
+            </div>
+            <div>
+              <dt>Down Time</dt>
+              <dd title={formatHours(result.down_time_hours, "full")}>
+                {formatHours(result.down_time_hours)}
+              </dd>
+            </div>
+            <div>
+              <dt>Sleep Time</dt>
+              <dd title={formatHours(result.sleep_time_hours, "full")}>
+                {formatHours(result.sleep_time_hours)}
+              </dd>
+            </div>
+            <div>
+              <dt>Adjustment Time</dt>
+              <dd title={formatHours(result.adjustment_time_hours, "full")}>
+                {formatHours(result.adjustment_time_hours)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Segments */}
+        {result.segment_details.map((seg, i) => (
+          <SegmentSection
+            key={i}
+            segment={seg}
+            index={i}
+            sLabel={sLabel}
+            dLabel={dLabel}
+            formSegments={formSegments}
+            courseTz={courseTz}
+            cityLabels={cityLabels?.[i]}
+            gpxTrack={gpxTrack}
+            splitBoundariesKm={splitBoundariesKm}
+            gpxProfiles={gpxProfiles}
+            unitSystem={unitSystem}
+          />
+        ))}
+
+        {/* Raw JSON */}
+        <div className="json-section">
+          <div className="json-controls">
+            <button type="button" onClick={() => setShowJson(!showJson)}>
+              {showJson ? "Hide" : "Show"} Raw JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "Copied!" : "Copy JSON"}
+            </button>
+          </div>
+          {showJson && (
+            <pre className="json-block">{JSON.stringify(result, null, 2)}</pre>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -312,17 +351,28 @@ function SegmentSection({
   index,
   sLabel,
   dLabel,
+  unitSystem,
   formSegments,
   courseTz,
+  cityLabels,
+  gpxTrack,
+  splitBoundariesKm,
+  gpxProfiles,
 }: {
   segment: SegmentDetail;
   index: number;
   sLabel: string;
   dLabel: string;
+  unitSystem: UnitSystem;
   formSegments: SegmentForm[];
   courseTz: string;
+  cityLabels?: (string | null)[];
+  gpxTrack?: GpxTrackPoint[] | null;
+  splitBoundariesKm?: [number, number][][] | null;
+  gpxProfiles?: SplitGpxProfile[][] | null;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   return (
     <div className="segment-result">
@@ -333,8 +383,11 @@ function SegmentSection({
         <span className="collapse-icon">{collapsed ? "▶" : "▼"}</span>
         <h3>
           {segment.name ?? `Segment ${index + 1}`} —{" "}
-          {segment.distance.toFixed(2)} {dLabel},{" "}
-          {formatHours(segment.elapsed_time_hours)}
+          {segment.distance.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}{" "}
+          {dLabel}, {formatHours(segment.elapsed_time_hours)}
         </h3>
       </div>
       {!collapsed && (
@@ -344,13 +397,25 @@ function SegmentSection({
             <div>
               <dt>Distance</dt>
               <dd>
-                {segment.distance.toFixed(2)} {dLabel}
+                {segment.distance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                {dLabel}
               </dd>
             </div>
             <div>
               <dt>Span</dt>
               <dd>
-                {segment.span[0].toFixed(2)} – {segment.span[1].toFixed(2)}{" "}
+                {segment.span[0].toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                –{" "}
+                {segment.span[1].toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
                 {dLabel}
               </dd>
             </div>
@@ -428,9 +493,10 @@ function SegmentSection({
                   <th title="Split distance and span (start – end)">
                     Distance ({dLabel})
                   </th>
-                  <th title="Moving speed for this split">Speed ({sLabel})</th>
+                  <th title="Start to end time with active duration">
+                    Time Span ({sLabel})
+                  </th>
                   <th title="Average pace including decay">Pace ({sLabel})</th>
-                  <th title="Split time + adjustment time">Active</th>
                 </tr>
               </thead>
               <tbody>
@@ -440,16 +506,44 @@ function SegmentSection({
                     split={split}
                     splitNumber={j + 1}
                     dLabel={dLabel}
+                    sLabel={sLabel}
                     segIdx={index}
                     splitIdx={j}
                     formSegments={formSegments}
                     courseTz={courseTz}
+                    nearbyCity={cityLabels?.[j] ?? null}
                   />
                 ))}
               </tbody>
             </table>
           </div>
+          {gpxTrack && (
+            <div className="segment-export-footer">
+              <button
+                type="button"
+                className="segment-export-btn"
+                onClick={() => setShowExportModal(true)}
+              >
+                Export GPX splits
+              </button>
+            </div>
+          )}
         </>
+      )}
+      {gpxTrack && showExportModal && (
+        <Suspense fallback={null}>
+          <GpxExportModal
+            open={showExportModal}
+            onClose={() => setShowExportModal(false)}
+            segIndex={index}
+            segName={formSegments[index]?.name}
+            splits={formSegments[index]?.splits ?? []}
+            gpxTrack={gpxTrack}
+            splitBoundariesKm={splitBoundariesKm?.[index] ?? []}
+            gpxProfiles={gpxProfiles?.[index] ?? []}
+            unitSystem={unitSystem}
+          />
+        </Suspense>
       )}
     </div>
   );
@@ -459,18 +553,22 @@ function SplitRow({
   split,
   splitNumber,
   dLabel,
+  sLabel,
   segIdx,
   splitIdx,
   formSegments,
   courseTz,
+  nearbyCity,
 }: {
   split: SplitDetail;
   splitNumber: number;
   dLabel: string;
+  sLabel: string;
   segIdx: number;
   splitIdx: number;
   formSegments: SegmentForm[];
   courseTz: string;
+  nearbyCity?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -526,6 +624,19 @@ function SplitRow({
     });
   }
 
+  /** Format a date compactly (no weekday, short month) in course timezone. */
+  function fmtSpanDate(iso: string) {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: courseTz,
+    });
+  }
+
+  const timeSpan = `${fmtSpanDate(split.start_time)}\u2009—\u2009${fmtSpanDate(split.end_time)} (${split.active_time_hours.toFixed(2)}h)`;
+
   return (
     <>
       <tr
@@ -537,12 +648,27 @@ function SplitRow({
           {splitNumber}
         </td>
         <td>
-          {split.distance.toFixed(2)} ({split.span[0].toFixed(1)} –{" "}
-          {split.span[1].toFixed(1)})
+          {split.name && (
+            <span className="split-name-label">{split.name} — </span>
+          )}
+          {split.distance.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}{" "}
+          (
+          {split.span[0].toLocaleString(undefined, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}{" "}
+          –{" "}
+          {split.span[1].toLocaleString(undefined, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}
+          )
         </td>
-        <td>{split.moving_speed.toFixed(2)}</td>
+        <td className="time-span-cell">{timeSpan}</td>
         <td>{split.pace.toFixed(2)}</td>
-        <TimeCell hours={split.active_time_hours} />
       </tr>
       {expanded && (
         <tr className="split-detail-row">
@@ -578,31 +704,30 @@ function SplitRow({
                   </div>
                 )}
               <div>
-                <dt>Start</dt>
+                <dt>Speed</dt>
                 <dd>
-                  {splitTz
-                    ? fmtInTz(split.start_time, courseTz)
-                    : new Date(split.start_time).toLocaleString(
-                        undefined,
-                        dateOpts,
-                      )}
+                  {split.moving_speed.toFixed(2)} {sLabel}
                 </dd>
+              </div>
+              <div>
+                <dt>Start</dt>
+                <dd>{fmtInTz(split.start_time, courseTz)}</dd>
               </div>
               <div>
                 <dt>End</dt>
                 <dd>
-                  {splitTz
-                    ? fmtInTz(split.end_time, courseTz)
-                    : new Date(split.end_time).toLocaleString(
-                        undefined,
-                        dateOpts,
-                      )}
+                  {fmtInTz(split.end_time, courseTz)}
+                  {splitTz && (
+                    <span className="split-end-tz">
+                      {fmtInTz(split.end_time, splitTz)}
+                    </span>
+                  )}
                 </dd>
               </div>
-              {splitTz && (
+              {nearbyCity && (
                 <div>
-                  <dt>End ({splitTz.split("/").pop()?.replace(/_/g, " ")})</dt>
-                  <dd>{fmtInTz(split.end_time, splitTz)}</dd>
+                  <dt>Nearest City</dt>
+                  <dd>{nearbyCity}</dd>
                 </div>
               )}
             </dl>
@@ -614,11 +739,12 @@ function SplitRow({
                     <thead>
                       <tr>
                         <th title="Sub-split number">#</th>
-                        <th title="Sub-split distance">Distance ({dLabel})</th>
-                        <th title="Start – end position along the course">
-                          Span
+                        <th title="Sub-split distance and span (start – end)">
+                          Distance ({dLabel})
                         </th>
-                        <th title="Moving time + down time">Split Time</th>
+                        <th title="Moving time">Moving</th>
+                        <th title="Down time">Down</th>
+                        <th title="Moving time + down time">Split</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -721,6 +847,14 @@ function SplitRow({
                 )}
               </div>
             </div>
+            {formSegments[segIdx]?.splits[splitIdx]?.notes?.trim() && (
+              <div className="split-notes-result">
+                <h4>Notes</h4>
+                <p className="split-notes-result-text">
+                  {formSegments[segIdx].splits[splitIdx].notes!.trim()}
+                </p>
+              </div>
+            )}
           </td>
         </tr>
       )}
@@ -733,9 +867,28 @@ function SubSplitRow({ sub, index }: { sub: SubSplitDetail; index: number }) {
   return (
     <tr>
       <td className="num-col">{index}</td>
-      <td>{sub.distance.toFixed(2)}</td>
       <td>
-        {sub.span[0].toFixed(2)} – {sub.span[1].toFixed(2)}
+        {sub.distance.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}{" "}
+        (
+        {sub.span[0].toLocaleString(undefined, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })}{" "}
+        –
+        {sub.span[1].toLocaleString(undefined, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })}
+        )
+      </td>
+      <td title={formatHours(sub.moving_time_hours, "full")}>
+        {formatHours(sub.moving_time_hours)}
+      </td>
+      <td title={formatHours(sub.down_time_hours, "full")}>
+        {formatHours(sub.down_time_hours)}
       </td>
       <td title={formatHours(subSplitTime, "full")}>
         {formatHours(subSplitTime)}

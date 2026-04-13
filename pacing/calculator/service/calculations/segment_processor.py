@@ -12,7 +12,7 @@ def process_segment(segment: Segment,
                     min_moving_speed: float,
                     start_time: datetime,
                     down_time_ratio: float,
-                    split_decay: float,
+                    split_delta: float,
                     distance: float,
                     ) -> SegmentDetail:
     is_valid = __validate_segment(segment, moving_speed, min_moving_speed)
@@ -26,7 +26,7 @@ def process_segment(segment: Segment,
                                     moving_speed=moving_speed,
                                     min_moving_speed=min_moving_speed,
                                     down_time_ratio=down_time_ratio,
-                                    split_decay=split_decay,
+                                    split_delta=split_delta,
                                     distance=distance)
 
 
@@ -44,7 +44,7 @@ def __normalize_segment(segment: Segment) -> Segment:
     return Segment(
         splits=segment.splits,
         down_time_ratio=segment.down_time_ratio,
-        split_decay=segment.split_decay,
+        split_delta=segment.split_delta,
         moving_speed=segment.moving_speed,
         min_moving_speed=segment.min_moving_speed,
         sleep_time=segment.sleep_time,
@@ -57,7 +57,7 @@ def __compute_segment_detail(segment: Segment,
                              moving_speed: float,
                              min_moving_speed: float,
                              down_time_ratio: float,
-                             split_decay: float,
+                             split_delta: float,
                              distance: float,
                              ) -> SegmentDetail:
     split_details: list[SplitDetail] = []
@@ -70,7 +70,7 @@ def __compute_segment_detail(segment: Segment,
     # at the start of a new segment the following are applied by the course-level settings:
     #   - min_moving_speed
     #   - moving speed,
-    #   - split_decay
+    #   - split_delta
     #   - down_time_ratio
     # however, the segment's defined values override them, so here we apply them if defined,
     if segment.min_moving_speed is not None:
@@ -79,8 +79,8 @@ def __compute_segment_detail(segment: Segment,
     if segment.moving_speed is not None:
         curr_moving_speed = segment.moving_speed
 
-    if segment.split_decay is not None:
-        split_decay = segment.split_decay
+    if segment.split_delta is not None:
+        split_delta = segment.split_delta
 
     if segment.down_time_ratio is not None:
         down_time_ratio = segment.down_time_ratio
@@ -124,6 +124,7 @@ def __compute_segment_detail(segment: Segment,
             pace=split.distance / (active_time.total_seconds() / 3600),
             start_distance=curr_distance,
             rest_stop=split.rest_stop,
+            name=split.name,
             sub_splits=__compute_sub_split_detail(
                 split=split,
                 start_distance=curr_distance,
@@ -138,9 +139,9 @@ def __compute_segment_detail(segment: Segment,
         # Shifting start time, updating subsequent moving speed, etc.
 
         # decay split moving speed for next split, limit to min_moving_speed
-        next_decayed_moving_speed = curr_moving_speed - split_decay
+        next_delta_moving_speed = curr_moving_speed + split_delta
 
-        curr_moving_speed = max(next_decayed_moving_speed, min_moving_speed)
+        curr_moving_speed = max(next_delta_moving_speed, min_moving_speed)
         curr_distance += split.distance
         curr_start_time += active_time
 
