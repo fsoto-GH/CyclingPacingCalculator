@@ -668,6 +668,8 @@ export default function CourseForm() {
                   try {
                     setGpxTrack(parseGpx(record.xml));
                     setGpxSurface(extractSurfaceFromXml(record.xml));
+                    // Update the "current" key so the GPX survives a page refresh.
+                    saveGpx(record.fileName, record.xml).catch(() => {});
                   } catch {
                     setGpxFileName(null);
                     setGpxMissingWarning(
