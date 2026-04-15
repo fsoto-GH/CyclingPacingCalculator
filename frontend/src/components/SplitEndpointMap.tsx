@@ -522,7 +522,7 @@ export default function SplitEndpointMap({
         .filter(Boolean);
       const all = [...searchTypes, ...custom];
       if (all.length === 0) {
-        setSearchError("No stop types selected. Configure criteria first.");
+        setSearchError("NO_TYPES");
         return;
       }
 
@@ -862,7 +862,23 @@ export default function SplitEndpointMap({
       {/* Search error — shown when a search fails */}
       {searchError && (
         <div className="split-map-search-error">
-          {searchError}
+          {searchError === "NO_TYPES" ? (
+            <>
+              No stop types selected.{" "}
+              <button
+                type="button"
+                className="split-map-configure-link"
+                onClick={() => {
+                  setSearchError(null);
+                  setModalOpen(true);
+                }}
+              >
+                Configure criteria first.
+              </button>
+            </>
+          ) : (
+            searchError
+          )}
           <button
             type="button"
             className="split-map-search-error-close"

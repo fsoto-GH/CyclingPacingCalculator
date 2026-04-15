@@ -4222,7 +4222,6 @@ dialog {
 .split-map-search-error {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: #2d1515;
@@ -4241,6 +4240,33 @@ dialog {
   opacity: 0.7;
 }
 .split-map-search-error-close:hover { opacity: 1; }
+
+/* "Configure criteria" action within the error banner */
+.split-map-configure-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font: inherit;
+  padding: 0;
+  transition: color 0.15s;
+}
+.split-map-configure-link:hover {
+  color: #fde68a;
+}
+
+/* Pulsing animation for the FAB while searching */
+.split-map-nearby-fab:disabled {
+  cursor: wait;
+  animation: fab-pulse 1.2s ease-in-out infinite;
+}
+@keyframes fab-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
 
 /* "Scout in Google Maps" link inside the amenity header actions */
 .split-map-amenity-scout-link {

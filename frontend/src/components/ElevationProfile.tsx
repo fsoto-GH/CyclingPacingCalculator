@@ -175,9 +175,14 @@ const ElevationProfile = memo(function ElevationProfile({
   if (data.length < 2) return null;
 
   // Split boundary vertical lines — only those within the current view range.
-  const splitLines = gpxProfiles
-    .map((p) => p.endKm)
-    .filter((km) => km > viewStart + 0.01 && km < viewEnd - 0.01);
+  // Deduplicate so zero-distance splits don't produce duplicate React keys.
+  const splitLines = [
+    ...new Set(
+      gpxProfiles
+        .map((p) => p.endKm)
+        .filter((km) => km > viewStart + 0.01 && km < viewEnd - 0.01),
+    ),
+  ];
 
   const elevValues = data.map((d) => d.ele);
   const minEle = Math.min(...elevValues);

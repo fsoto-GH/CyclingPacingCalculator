@@ -172,7 +172,7 @@ def __compute_sub_split_detail(split: Split,
                                down_time: timedelta,
                                moving_speed: float,
                                no_end_down_time: bool) -> list[SubSplitDetail]:
-    sub_split_distances = split.sub_split_mode.sub_splits(split.distance)
+    sub_split_distances = split.sub_split_mode.sub_splits(split.distance, moving_speed)
     res: list[SubSplitDetail] = []
 
     # avoid technical computations and evenly split down_time

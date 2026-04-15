@@ -25,7 +25,7 @@ export interface SplitGpxProfile {
 
 // ── API request types ──
 export type Mode = "distance" | "target_distance";
-export type SubSplitMode = "even" | "fixed" | "custom";
+export type SubSplitMode = "even" | "fixed" | "custom" | "hour";
 
 export interface RestStopPayload {
   name: string;

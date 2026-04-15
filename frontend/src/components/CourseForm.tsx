@@ -627,7 +627,7 @@ export default function CourseForm() {
     setPendingExampleLoad(null);
   }, []);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     // Embed the current GPX filename so an import on the same browser can
     // attempt to restore the file from IndexedDB.
     const exportData = gpxFileName
@@ -635,6 +635,29 @@ export default function CourseForm() {
       : { ...form, gpxFileName: undefined };
     const json = JSON.stringify(exportData, null, 2);
     const blob = new Blob([json], { type: "application/json" });
+
+    if ("showOpenFilePicker" in self) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: `pacing-${new Date().toISOString().slice(0, 10)}.json`,
+          types: [
+            {
+              description: "JSON File",
+              accept: { "application/json": [".json"] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (err) {
+        // User cancelled the save dialog — do nothing.
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        // Unexpected API error — fall through to legacy download.
+      }
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

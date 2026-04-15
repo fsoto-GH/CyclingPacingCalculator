@@ -4,7 +4,10 @@ import type { SplitPayload } from "../types";
  * Given a split's sub-split configuration and its (per-split, normalized) distance,
  * returns an array of individual sub-split distances.
  */
-export function computeSubSplitDistances(split: SplitPayload): number[] {
+export function computeSubSplitDistances(
+  split: SplitPayload,
+  movingSpeed?: number,
+): number[] {
   const { distance } = split;
 
   switch (split.sub_split_mode) {
@@ -35,5 +38,22 @@ export function computeSubSplitDistances(split: SplitPayload): number[] {
 
     case "custom":
       return split.sub_split_distances ?? [distance];
+
+    case "hour": {
+      if (!movingSpeed || movingSpeed <= 0) return [distance];
+
+      const distPerHour = movingSpeed; // speed is in distance/hour
+      const fullCount = Math.floor(distance / distPerHour);
+
+      if (fullCount === 0) return [distance];
+
+      const splits = Array.from({ length: fullCount }, () => distPerHour);
+      const residual = distance - fullCount * distPerHour;
+      if (residual > 1e-9) {
+        splits.push(residual);
+      }
+
+      return splits;
+    }
   }
 }

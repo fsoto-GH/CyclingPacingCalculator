@@ -481,7 +481,7 @@ export default function SplitFormComponent({
                 </label>
                 <NumberInput
                   id={`${prefix}-distance`}
-                  step="any"
+                  step="0.5"
                   min="0"
                   value={value.distance}
                   onChange={(v) => update({ distance: v })}
@@ -506,6 +506,7 @@ export default function SplitFormComponent({
                     <option value="even">Even</option>
                     <option value="fixed">Fixed Size</option>
                     <option value="custom">Custom</option>
+                    <option value="hour">Hourly</option>
                   </select>
                 </div>
 

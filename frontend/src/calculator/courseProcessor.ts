@@ -135,7 +135,7 @@ function computeSubSplitDetails(
   movingSpeed: number,
   startDistance: number,
 ): SubSplitDetail[] {
-  const subDistances = computeSubSplitDistances(split);
+  const subDistances = computeSubSplitDistances(split, movingSpeed);
   const downPerSubMs =
     splitDownTimeMs !== 0 ? splitDownTimeMs / subDistances.length : 0;
 
