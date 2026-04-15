@@ -417,7 +417,7 @@ export default function SplitEndpointMap({
 
   // Geocode the rest stop address via Nominatim — debounced 600 ms, cached by address
   useEffect(() => {
-    const addr = restStop?.address?.trim() ?? "";
+    const addr = restStop?.enabled ? (restStop.address?.trim() ?? "") : "";
     if (!addr) {
       setRestStopCoords(null);
       return;
@@ -463,7 +463,7 @@ export default function SplitEndpointMap({
         )
         .catch(() => {});
     }, 600);
-  }, [restStop?.address]);
+  }, [restStop?.enabled, restStop?.address]);
 
   // Track slice: ±SLICE_KM around the endpoint
   const polyline = useMemo(() => {
@@ -692,7 +692,7 @@ export default function SplitEndpointMap({
           )}
 
           {/* Rest stop marker — purple, geocoded from address */}
-          {restStopCoords && (
+          {restStop?.enabled && restStopCoords && (
             <CircleMarker
               center={[restStopCoords.lat, restStopCoords.lon]}
               radius={9}
