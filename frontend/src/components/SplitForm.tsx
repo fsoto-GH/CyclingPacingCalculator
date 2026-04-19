@@ -132,7 +132,7 @@ export default function SplitFormComponent({
   // Only active when GPX is loaded + endpoint coords are available + distance set.
   type LayoutState = "form" | "both" | "map";
   const [layoutState, setLayoutState] = useState<LayoutState>("form");
-  const [formColWidth, setFormColWidth] = useState(500);
+  const [formColWidth, setFormColWidth] = useState(350);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
@@ -141,7 +141,7 @@ export default function SplitFormComponent({
   // Seed from actual window width so mobile first-render is already stacked
   // (prevents Leaflet from initialising into a 0-height container)
   const [isNarrow, setIsNarrow] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < 520,
+    () => typeof window !== "undefined" && window.innerWidth < 900,
   );
 
   // Track container width to auto-stack the "both" layout when narrow.
@@ -153,7 +153,7 @@ export default function SplitFormComponent({
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       if (document.fullscreenElement) return;
-      setIsNarrow(entry.contentRect.width < 520);
+      setIsNarrow(entry.contentRect.width < 700);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -200,7 +200,7 @@ export default function SplitFormComponent({
       if (!isDragging.current) return;
       const delta = e.clientX - dragStartX.current;
       setFormColWidth(
-        Math.min(700, Math.max(350, dragStartWidth.current + delta)),
+        Math.min(539, Math.max(350, dragStartWidth.current + delta)),
       );
     }
     function onMouseUp() {
@@ -481,7 +481,7 @@ export default function SplitFormComponent({
                 </label>
                 <NumberInput
                   id={`${prefix}-distance`}
-                  step="any"
+                  step="0.5"
                   min="0"
                   value={value.distance}
                   onChange={(v) => update({ distance: v })}
@@ -506,6 +506,7 @@ export default function SplitFormComponent({
                     <option value="even">Even</option>
                     <option value="fixed">Fixed Size</option>
                     <option value="custom">Custom</option>
+                    <option value="hour">Hourly</option>
                   </select>
                 </div>
 

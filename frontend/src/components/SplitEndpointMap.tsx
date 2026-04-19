@@ -44,7 +44,13 @@ const SLICE_KM = 16.0934;
 // Module-level cache — persists across remounts so the same address is never re-fetched
 const geocodeCache = new Map<
   string,
-  { lat: number; lon: number; type?: string; placeClass?: string } | null
+  {
+    lat: number;
+    lon: number;
+    type?: string;
+    placeClass?: string;
+    name?: string;
+  } | null
 >();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -175,19 +181,26 @@ function ZoomableMarkers({
   const [zoom, setZoom] = useState(() => map.getZoom());
   const [viewport, setViewport] = useState(() => {
     const b = map.getBounds();
-    return { s: b.getSouth(), n: b.getNorth(), w: b.getWest(), e: b.getEast() };
+    const s = b.getSouth(),
+      n = b.getNorth(),
+      w = b.getWest(),
+      e = b.getEast();
+    if (isNaN(s) || isNaN(n) || isNaN(w) || isNaN(e)) {
+      return { s: -90, n: 90, w: -180, e: 180 };
+    }
+    return { s, n, w, e };
   });
 
   useEffect(() => {
     const update = () => {
       setZoom(map.getZoom());
       const b = map.getBounds();
-      setViewport({
-        s: b.getSouth(),
-        n: b.getNorth(),
-        w: b.getWest(),
-        e: b.getEast(),
-      });
+      const s = b.getSouth(),
+        n = b.getNorth(),
+        w = b.getWest(),
+        e = b.getEast();
+      if (isNaN(s) || isNaN(n) || isNaN(w) || isNaN(e)) return;
+      setViewport({ s, n, w, e });
     };
     map.on("zoomend moveend", update);
     return () => {
@@ -364,6 +377,7 @@ export default function SplitEndpointMap({
     lon: number;
     type?: string;
     placeClass?: string;
+    name?: string;
   } | null>(null);
   const geocodeAbortRef = useRef<AbortController | null>(null);
   const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -410,14 +424,18 @@ export default function SplitEndpointMap({
 
   // Geocode the rest stop address via Nominatim — debounced 600 ms, cached by address
   useEffect(() => {
-    const addr = restStop?.address?.trim() ?? "";
+    const addr = restStop?.enabled ? (restStop.address?.trim() ?? "") : "";
     if (!addr) {
       setRestStopCoords(null);
       return;
     }
     // Hit the cache first — avoids re-fetching across remounts or unchanged values
     if (geocodeCache.has(addr)) {
-      setRestStopCoords(geocodeCache.get(addr) ?? null);
+      const cached = geocodeCache.get(addr) ?? null;
+      setRestStopCoords(cached);
+      if (cached?.name && !restStop?.name?.trim()) {
+        onSelectStop({ name: cached.name });
+      }
       return;
     }
     // Debounce: coalesce rapid keystrokes into a single request
@@ -438,6 +456,7 @@ export default function SplitEndpointMap({
               lon: string;
               type?: string;
               class?: string;
+              name?: string;
             }>,
           ) => {
             if (ctrl.signal.aborted) return;
@@ -448,15 +467,19 @@ export default function SplitEndpointMap({
                     lon: +res[0].lon,
                     type: res[0].type,
                     placeClass: res[0].class,
+                    name: res[0].name,
                   }
                 : null;
             geocodeCache.set(addr, coords);
             setRestStopCoords(coords);
+            if (coords?.name && !restStop?.name?.trim()) {
+              onSelectStop({ name: coords.name });
+            }
           },
         )
         .catch(() => {});
     }, 600);
-  }, [restStop?.address]);
+  }, [restStop?.enabled, restStop?.address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track slice: ±SLICE_KM around the endpoint
   const polyline = useMemo(() => {
@@ -515,7 +538,7 @@ export default function SplitEndpointMap({
         .filter(Boolean);
       const all = [...searchTypes, ...custom];
       if (all.length === 0) {
-        setSearchError("No stop types selected. Configure criteria first.");
+        setSearchError("NO_TYPES");
         return;
       }
 
@@ -685,7 +708,7 @@ export default function SplitEndpointMap({
           )}
 
           {/* Rest stop marker — purple, geocoded from address */}
-          {restStopCoords && (
+          {restStop?.enabled && restStopCoords && (
             <CircleMarker
               center={[restStopCoords.lat, restStopCoords.lon]}
               radius={9}
@@ -855,7 +878,23 @@ export default function SplitEndpointMap({
       {/* Search error — shown when a search fails */}
       {searchError && (
         <div className="split-map-search-error">
-          {searchError}
+          {searchError === "NO_TYPES" ? (
+            <>
+              No stop types selected.{" "}
+              <button
+                type="button"
+                className="split-map-configure-link"
+                onClick={() => {
+                  setSearchError(null);
+                  setModalOpen(true);
+                }}
+              >
+                Configure criteria first.
+              </button>
+            </>
+          ) : (
+            searchError
+          )}
           <button
             type="button"
             className="split-map-search-error-close"

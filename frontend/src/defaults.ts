@@ -4,6 +4,7 @@ import { browserTimezone } from "./components/TimezoneSelect";
 
 export const DEFAULT_REST_STOP: RestStopForm = {
   enabled: false,
+  backup: false,
   name: "",
   address: "",
   alt: "",

@@ -10,7 +10,7 @@ from pacing.api.routes.calculator.dto.rest_stop import RestStop
 @dataclass
 class Split(BaseModel):
     distance: float
-    sub_split_mode: Literal['even', 'fixed', 'custom']
+    sub_split_mode: Literal['even', 'fixed', 'custom', 'hour']
     sub_split_count: int | None = None
     sub_split_distance: float | None = None
     last_sub_split_threshold: float | None = None

@@ -652,6 +652,7 @@ h4 {
 /* Container query: collapse grid to single column when the box is narrow */
 .optional-fields.fields-grid {
   container-type: inline-size;
+  grid-template-columns: repeat(3, 1fr);
 }
 
 @container (max-width: 370px) {
@@ -1195,6 +1196,18 @@ h4 {
   gap: 0.4rem;
 }
 
+.rs-backup-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  cursor: pointer;
+}
+.rs-backup-label input[type="checkbox"] {
+  accent-color: #a855f7;
+}
+
 /* ── Split notes ── */
 .split-notes-field {
   margin-top: 0.5rem;
@@ -1222,6 +1235,66 @@ h4 {
 }
 
 /* Notes in result detail */
+/* ── Weather section in split detail ── */
+.split-weather-section {
+  padding: 0.55rem 1rem 0.75rem;
+  background: #1a1a2e;
+  border-top: 1px solid #2e2e3e;
+}
+
+.split-weather-section h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: #6b8aff;
+}
+
+.weather-grid {
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 0.5rem 1rem !important;
+}
+
+@media (max-width: 860px) {
+  .weather-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+.weather-hint {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.72rem;
+  background: rgba(107, 138, 255, 0.1);
+  border-radius: 3px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.weather-fetch-row {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.weather-fetch-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  border: 1px solid #3e3e5e;
+  border-radius: 4px;
+  background: #1e1e2e;
+  color: #c7d4f0;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.weather-fetch-btn:hover:not(:disabled) {
+  background: #2a2a42;
+  border-color: #6b8aff;
+}
+.weather-fetch-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .split-notes-result {
   padding: 0.55rem 1rem 0.75rem;
   background: #1a1a2e;
@@ -3171,10 +3244,12 @@ dialog {
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .hours-range input[type="time"] {
-  width: 7.5rem;
+  flex: 1;
+  min-width: 0;
   padding: 0.25rem 0.4rem;
   background: #2a2a2a;
   border: 1px solid #444;
@@ -3845,7 +3920,7 @@ dialog {
 
 .split-map-col {
   flex: 1;
-  min-width: 0;
+  min-width: 120px;
   display: flex;
   flex-direction: column;
   padding: 0.5rem 0.5rem 0.5rem 0;
@@ -4184,7 +4259,6 @@ dialog {
 .split-map-search-error {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: #2d1515;
@@ -4203,6 +4277,33 @@ dialog {
   opacity: 0.7;
 }
 .split-map-search-error-close:hover { opacity: 1; }
+
+/* "Configure criteria" action within the error banner */
+.split-map-configure-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font: inherit;
+  padding: 0;
+  transition: color 0.15s;
+}
+.split-map-configure-link:hover {
+  color: #fde68a;
+}
+
+/* Pulsing animation for the FAB while searching */
+.split-map-nearby-fab:disabled {
+  cursor: wait;
+  animation: fab-pulse 1.2s ease-in-out infinite;
+}
+@keyframes fab-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
 
 /* "Scout in Google Maps" link inside the amenity header actions */
 .split-map-amenity-scout-link {
@@ -4402,6 +4503,12 @@ dialog {
   line-height: 1;
   display: block;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+.stop-marker-backup {
+  border: 2px dashed #94a3b8;
+  padding: 1px;
+  opacity: 0.75;
 }
 
 /* ── Collapsible results wrapper ── */

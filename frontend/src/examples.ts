@@ -48,6 +48,7 @@ const SIMPLE_EXAMPLE_FORM: CourseFormState = {
           sub_split_distance: "20",
           last_sub_split_threshold: "20",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Specialized Chicago",
             address: "925 W Lake St Ste 1100/1110, Chicago, IL 60607",
@@ -95,6 +96,7 @@ const COMPLEX_EXAMPLE_FORM: CourseFormState = {
           sub_split_mode: "even",
           sub_split_count: "3",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Taqueria El Sol",
             address: "3100 14th St NW, Washington, DC 20010",
@@ -120,6 +122,7 @@ const COMPLEX_EXAMPLE_FORM: CourseFormState = {
           differentTimezone: true,
           timezone: "America/New_York",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "McDonald's",
             address: "1539 Pennsylvania Ave. SE, Washington, DC",
@@ -161,6 +164,7 @@ const COMPLEX_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "10",
           adjustment_time: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Home",
             address: "1600 Pennsylvania Ave NW, Washington, DC 20500",
@@ -216,6 +220,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "McDonald's",
             address: "7170 N Teutonia Ave, Milwaukee, WI 53209",
@@ -247,6 +252,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Shell Gas Station",
             address: "1010 S Broadway, De Pere, WI 54115",
@@ -278,6 +284,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "bp",
             address: "W365 US-2 #41, Harris, MI 49845",
@@ -309,6 +316,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "bp",
             address: "1223 US-2, Gulliver, MI 49840",
@@ -340,6 +348,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Best Western Harbour Pointe Lakefront",
             address: "797 N State St, St Ignace, MI 49781",
@@ -384,6 +393,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Mobil",
             address: "100 First Street, Elk Rapids, MI",
@@ -415,6 +425,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Wesco",
             address: "75 Cypress St, Manistee, MI 49660",
@@ -446,6 +457,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "McDonald's",
             address: "213 N River Ave, Holland, MI 49424",
@@ -477,6 +489,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Barney's",
             address: "10 N Thompson St, New Buffalo, MI 49117",
@@ -508,6 +521,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           last_sub_split_threshold: "15",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -565,6 +579,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Shell",
             address: "45.559099, -123.915158",
@@ -630,6 +645,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Domino's",
             address: "44.848694, -123.232835",
@@ -695,6 +711,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "McDonald's",
             address: "91027 Coburg Industrial Way, Coburg, OR",
@@ -760,6 +777,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Bi-Mart",
             address: "445 West Highway 20, Sisters, OR",
@@ -837,6 +855,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Chevron",
             address: "44.302737, -120.850253",
@@ -902,6 +921,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Subway",
             address: "44.415564, -118.952484",
@@ -967,6 +987,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Maverik",
             address: "44.781929, -117.822698",
@@ -1032,6 +1053,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Blake's",
             address: "44.571691, -116.677110",
@@ -1109,6 +1131,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Chevron",
             address: "44.971442, -116.281697",
@@ -1174,6 +1197,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: true,
             name: "Subway",
             address: "179 Greenacres Lane, Grangeville, ID",
@@ -1239,6 +1263,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1304,6 +1329,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1381,6 +1407,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1446,6 +1473,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1511,6 +1539,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1576,6 +1605,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1653,6 +1683,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1718,6 +1749,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1783,6 +1815,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1848,6 +1881,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1925,6 +1959,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -1990,6 +2025,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2055,6 +2091,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2120,6 +2157,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2197,6 +2235,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2262,6 +2301,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2327,6 +2367,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2392,6 +2433,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2469,6 +2511,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2534,6 +2577,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2599,6 +2643,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2664,6 +2709,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2741,6 +2787,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2806,6 +2853,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2871,6 +2919,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -2936,6 +2985,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3013,6 +3063,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3078,6 +3129,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3143,6 +3195,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3208,6 +3261,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3285,6 +3339,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3350,6 +3405,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3415,6 +3471,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3480,6 +3537,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3557,6 +3615,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3622,6 +3681,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3687,6 +3747,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3752,6 +3813,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3829,6 +3891,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3894,6 +3957,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -3959,6 +4023,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4024,6 +4089,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4101,6 +4167,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4166,6 +4233,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4231,6 +4299,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4296,6 +4365,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4373,6 +4443,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4438,6 +4509,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4503,6 +4575,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4568,6 +4641,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4645,6 +4719,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4710,6 +4785,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4775,6 +4851,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4840,6 +4917,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4917,6 +4995,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -4982,6 +5061,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",
@@ -5047,6 +5127,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
           last_sub_split_threshold: "20",
           sub_split_distances: "",
           rest_stop: {
+            backup: false,
             enabled: false,
             name: "",
             address: "",

@@ -110,6 +110,7 @@ function migrateRestStop(rs: any): RestStopFormType {
   })) as RestStopFormType["perDay"];
 
   return {
+    backup: rs.backup ?? false,
     enabled: rs.enabled ?? false,
     name: rs.name ?? "",
     address: rs.address ?? "",
@@ -627,7 +628,7 @@ export default function CourseForm() {
     setPendingExampleLoad(null);
   }, []);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     // Embed the current GPX filename so an import on the same browser can
     // attempt to restore the file from IndexedDB.
     const exportData = gpxFileName
@@ -635,6 +636,30 @@ export default function CourseForm() {
       : { ...form, gpxFileName: undefined };
     const json = JSON.stringify(exportData, null, 2);
     const blob = new Blob([json], { type: "application/json" });
+
+    if ("showOpenFilePicker" in self) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: `pacing-${new Date().toISOString().slice(0, 10)}.json`,
+          startIn: "downloads",
+          types: [
+            {
+              description: "JSON File",
+              accept: { "application/json": [".json"] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (err) {
+        // User cancelled the save dialog — do nothing.
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        // Unexpected API error — fall through to legacy download.
+      }
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -668,6 +693,8 @@ export default function CourseForm() {
                   try {
                     setGpxTrack(parseGpx(record.xml));
                     setGpxSurface(extractSurfaceFromXml(record.xml));
+                    // Update the "current" key so the GPX survives a page refresh.
+                    saveGpx(record.fileName, record.xml).catch(() => {});
                   } catch {
                     setGpxFileName(null);
                     setGpxMissingWarning(

@@ -44,6 +44,7 @@ interface RouteMarker {
   segIdx: number;
   splitIdx: number;
   notes?: string;
+  backup?: boolean;
 }
 
 interface CourseMapProps {
@@ -331,12 +332,12 @@ function StopMarker({
   const icon = useMemo(
     () =>
       divIcon({
-        html: `<div class="stop-marker-icon">🛑</div>`,
+        html: `<div class="stop-marker-icon${m.backup ? " stop-marker-backup" : ""}">🛑</div>`,
         className: "",
         iconSize: [22, 22],
         iconAnchor: [11, 26],
       }),
-    [],
+    [m.backup],
   );
   const canNav = onMarkerClick != null && m.splitIdx >= 0;
   return (
@@ -504,6 +505,7 @@ export default function CourseMap({
           segIdx: si,
           splitIdx: sj,
           role: "stop",
+          backup: rs.backup,
         });
       }
     }

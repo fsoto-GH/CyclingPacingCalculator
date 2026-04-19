@@ -45,6 +45,16 @@ export default function RestStopFormComponent({
 
       {value.enabled && (
         <div className="rs-section-body">
+          {/* Backup toggle */}
+          <label className="rs-backup-label">
+            <input
+              type="checkbox"
+              checked={value.backup}
+              onChange={(e) => update({ backup: e.target.checked })}
+            />
+            Backup stop
+          </label>
+
           {/* Name + Alt URL on same row */}
           <div className="fields-grid fields-grid--2col">
             <div className="field">

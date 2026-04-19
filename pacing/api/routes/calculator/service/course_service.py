@@ -111,6 +111,9 @@ def sub_split_to_dto(split: Split) -> SubSplitMode:
         return FixedDistanceSubSplitMode(sub_split_distance=split.sub_split_distance,
                                          last_sub_split_threshold=split.last_sub_split_threshold)
 
+    if split.sub_split_mode == 'hour':
+        return HourSubSplitMode()
+
 
 def rest_stop_to_dto(split: Split) -> RestStopDto | None:
     if split.rest_stop is None:
@@ -136,9 +139,9 @@ def rest_stop_to_dto(split: Split) -> RestStopDto | None:
 def __valid_sub_split_mode(seg_i, split_j, split: Split) -> str | None:
     mode = split.sub_split_mode
 
-    if mode not in ("custom", "even", "fixed"):
+    if mode not in ("custom", "even", "fixed", "hour"):
         return f"(Segment {seg_i}, Split {split_j}) has invalid sub_split_mode '{mode}'. " \
-               f"Valid modes are 'custom', 'even', 'fixed'."
+               f"Valid modes are 'custom', 'even', 'fixed', 'hour'."
 
     if mode == "custom" and split.sub_split_distances is None:
         return f"(Segment {seg_i}, Split {split_j}) has 'custom' sub_split_mode but no sub_split_distances provided."

@@ -79,6 +79,10 @@ function serializeSplit(split: SplitForm): SplitPayload {
   const speed = parseOptionalFloat(split.moving_speed);
   if (speed !== null) payload.moving_speed = speed;
 
+  if (split.differentTimezone && split.timezone) {
+    payload.end_timezone = split.timezone;
+  }
+
   return payload;
 }
 
@@ -114,5 +118,6 @@ export function serializeCourse(form: CourseForm): CoursePayload {
     down_time_ratio: parseFloat(form.down_time_ratio),
     split_delta: parseFloat(form.split_delta),
     start_time: tzLocalStringToUtcIso(form.start_time, form.timezone),
+    course_timezone: form.timezone,
   };
 }
