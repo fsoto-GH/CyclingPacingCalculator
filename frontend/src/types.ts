@@ -87,6 +87,7 @@ export function makeDefaultDayHours(): DayHoursEntry {
 
 export interface RestStopForm {
   enabled: boolean;
+  backup: boolean;
   name: string;
   address: string;
   alt: string;

@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useCallback, lazy, Suspense } from "react";
 import type {
   CourseDetail,
   SegmentDetail,
@@ -209,18 +209,20 @@ export default function ResultsView({
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
 
-  // ── Weather data fetch ──
+  // ── Weather data fetch (manual) ──
   const [weatherData, setWeatherData] = useState<
     (SplitWeather | null)[][] | null
   >(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
 
-  useEffect(() => {
-    if (!gpxProfiles || !result) {
-      setWeatherData(null);
-      return;
-    }
+  // Check if start date is within 16 days of now
+  const startDate = new Date(result.start_time);
+  const maxForecast = new Date();
+  maxForecast.setDate(maxForecast.getDate() + 16);
+  const weatherAvailable = !!gpxProfiles && startDate <= maxForecast;
 
-    let cancelled = false;
+  const handleFetchWeather = useCallback(() => {
+    if (!gpxProfiles || !result) return;
 
     // Build a flat list of { lat, lon, endTimeIso } for all splits that have
     // GPX profile data, then unflatten the response back to [seg][split].
@@ -247,39 +249,35 @@ export default function ResultsView({
 
     // Only fetch if we have real coordinates
     const hasCoords = flatSplits.some((s) => s.lat !== 0 || s.lon !== 0);
-    if (!hasCoords) {
-      setWeatherData(null);
-      return;
-    }
+    if (!hasCoords) return;
 
-    fetchSplitWeather(
-      flatSplits.filter((s) => s.lat !== 0 || s.lon !== 0),
-    ).then((flat) => {
-      if (cancelled) return;
-      // Unflatten: map back using the original indices
-      let fi = 0;
-      const nested: (SplitWeather | null)[][] = [];
-      let idx = 0;
-      for (const len of segLengths) {
-        const row: (SplitWeather | null)[] = [];
-        for (let j = 0; j < len; j++) {
-          const s = flatSplits[idx];
-          if (s.lat !== 0 || s.lon !== 0) {
-            row.push(flat[fi] ?? null);
-            fi++;
-          } else {
-            row.push(null);
+    setWeatherLoading(true);
+    fetchSplitWeather(flatSplits.filter((s) => s.lat !== 0 || s.lon !== 0))
+      .then((flat) => {
+        // Unflatten: map back using the original indices
+        let fi = 0;
+        const nested: (SplitWeather | null)[][] = [];
+        let idx = 0;
+        for (const len of segLengths) {
+          const row: (SplitWeather | null)[] = [];
+          for (let j = 0; j < len; j++) {
+            const s = flatSplits[idx];
+            if (s.lat !== 0 || s.lon !== 0) {
+              row.push(flat[fi] ?? null);
+              fi++;
+            } else {
+              row.push(null);
+            }
+            idx++;
           }
-          idx++;
+          nested.push(row);
         }
-        nested.push(row);
-      }
-      setWeatherData(nested);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+        setWeatherData(nested);
+        setWeatherLoading(false);
+      })
+      .catch(() => {
+        setWeatherLoading(false);
+      });
   }, [result, gpxProfiles]);
 
   return (
@@ -381,6 +379,22 @@ export default function ResultsView({
             </div>
           </dl>
         </div>
+
+        {/* Weather fetch button */}
+        {weatherAvailable && !weatherData && (
+          <div className="weather-fetch-row">
+            <button
+              type="button"
+              className="weather-fetch-btn"
+              onClick={handleFetchWeather}
+              disabled={weatherLoading}
+            >
+              {weatherLoading
+                ? "Loading forecast…"
+                : "🌤️ Load Weather Forecast"}
+            </button>
+          </div>
+        )}
 
         {/* Segments */}
         {result.segment_details.map((seg, i) => (

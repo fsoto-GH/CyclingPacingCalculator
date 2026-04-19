@@ -44,7 +44,13 @@ const SLICE_KM = 16.0934;
 // Module-level cache — persists across remounts so the same address is never re-fetched
 const geocodeCache = new Map<
   string,
-  { lat: number; lon: number; type?: string; placeClass?: string } | null
+  {
+    lat: number;
+    lon: number;
+    type?: string;
+    placeClass?: string;
+    name?: string;
+  } | null
 >();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -371,6 +377,7 @@ export default function SplitEndpointMap({
     lon: number;
     type?: string;
     placeClass?: string;
+    name?: string;
   } | null>(null);
   const geocodeAbortRef = useRef<AbortController | null>(null);
   const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -424,7 +431,11 @@ export default function SplitEndpointMap({
     }
     // Hit the cache first — avoids re-fetching across remounts or unchanged values
     if (geocodeCache.has(addr)) {
-      setRestStopCoords(geocodeCache.get(addr) ?? null);
+      const cached = geocodeCache.get(addr) ?? null;
+      setRestStopCoords(cached);
+      if (cached?.name && !restStop?.name?.trim()) {
+        onSelectStop({ name: cached.name });
+      }
       return;
     }
     // Debounce: coalesce rapid keystrokes into a single request
@@ -445,6 +456,7 @@ export default function SplitEndpointMap({
               lon: string;
               type?: string;
               class?: string;
+              name?: string;
             }>,
           ) => {
             if (ctrl.signal.aborted) return;
@@ -455,15 +467,19 @@ export default function SplitEndpointMap({
                     lon: +res[0].lon,
                     type: res[0].type,
                     placeClass: res[0].class,
+                    name: res[0].name,
                   }
                 : null;
             geocodeCache.set(addr, coords);
             setRestStopCoords(coords);
+            if (coords?.name && !restStop?.name?.trim()) {
+              onSelectStop({ name: coords.name });
+            }
           },
         )
         .catch(() => {});
     }, 600);
-  }, [restStop?.enabled, restStop?.address]);
+  }, [restStop?.enabled, restStop?.address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track slice: ±SLICE_KM around the endpoint
   const polyline = useMemo(() => {

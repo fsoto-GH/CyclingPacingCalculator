@@ -110,6 +110,7 @@ function migrateRestStop(rs: any): RestStopFormType {
   })) as RestStopFormType["perDay"];
 
   return {
+    backup: rs.backup ?? false,
     enabled: rs.enabled ?? false,
     name: rs.name ?? "",
     address: rs.address ?? "",
@@ -640,6 +641,7 @@ export default function CourseForm() {
       try {
         const handle = await (window as any).showSaveFilePicker({
           suggestedName: `pacing-${new Date().toISOString().slice(0, 10)}.json`,
+          startIn: "downloads",
           types: [
             {
               description: "JSON File",

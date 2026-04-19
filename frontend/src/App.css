@@ -1196,6 +1196,18 @@ h4 {
   gap: 0.4rem;
 }
 
+.rs-backup-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  cursor: pointer;
+}
+.rs-backup-label input[type="checkbox"] {
+  accent-color: #a855f7;
+}
+
 /* ── Split notes ── */
 .split-notes-field {
   margin-top: 0.5rem;
@@ -1256,6 +1268,31 @@ h4 {
   border-radius: 3px;
   white-space: nowrap;
   vertical-align: middle;
+}
+
+.weather-fetch-row {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.weather-fetch-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  border: 1px solid #3e3e5e;
+  border-radius: 4px;
+  background: #1e1e2e;
+  color: #c7d4f0;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.weather-fetch-btn:hover:not(:disabled) {
+  background: #2a2a42;
+  border-color: #6b8aff;
+}
+.weather-fetch-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .split-notes-result {
@@ -4466,6 +4503,12 @@ dialog {
   line-height: 1;
   display: block;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+.stop-marker-backup {
+  border: 2px dashed #94a3b8;
+  padding: 1px;
+  opacity: 0.75;
 }
 
 /* ── Collapsible results wrapper ── */
