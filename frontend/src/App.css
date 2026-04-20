@@ -3486,13 +3486,6 @@ dialog {
   margin: 0;
 }
 
-.split-results-tz-also {
-  display: block;
-  color: #64748b;
-  font-size: 0.78rem;
-  margin-top: 0.1rem;
-}
-
 /* ETA status in results panel */
 .split-results-eta {
   font-weight: 600;
@@ -3523,6 +3516,19 @@ dialog {
   padding: 0.05rem 0.35rem;
   font-size: 0.7rem;
   line-height: 1.4;
+}
+
+/* Rest stop hours and near-detail shown next to ETA badge in results panel */
+.split-results-hours {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.split-results-near-detail {
+  display: block;
+  font-size: 0.78rem;
+  color: #fbbf24;
+  margin-top: 0.15rem;
 }
 
 /* ── Sub-splits collapsible in inline results panel ── */

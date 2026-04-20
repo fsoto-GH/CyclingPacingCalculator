@@ -20,6 +20,8 @@ function timeToMin(t: string): number {
 interface EtaInfo {
   status: "open" | "near" | "closed";
   label: string;
+  hoursLabel: string; // e.g. "6:00 AM – 10:00 PM" or "24 hours" or "Closed"
+  nearDetail: string | null; // e.g. "5 min before opening" or "10 min after closing"
 }
 
 function checkArrivalVsHours(
@@ -338,12 +340,77 @@ export default function SplitFormComponent({
       : rs.perDay[dayIdx];
     const status = checkArrivalVsHours(splitResult.end_time, entry, tz);
     if (!status) return null;
+
+    // Build human-readable hours label
+    function fmt12h(hhmm: string): string {
+      const [hStr, mStr] = hhmm.split(":");
+      let h = parseInt(hStr, 10);
+      const ampm = h >= 12 ? "PM" : "AM";
+      if (h === 0) h = 12;
+      else if (h > 12) h -= 12;
+      return `${h}:${mStr} ${ampm}`;
+    }
+    let hoursLabel: string;
+    if (entry.mode === "24h") hoursLabel = "24 hours";
+    else if (entry.mode === "closed") hoursLabel = "Closed";
+    else hoursLabel = `${fmt12h(entry.opens)} – ${fmt12h(entry.closes)}`;
+
+    // Compute near-detail delta
+    let nearDetail: string | null = null;
+    if (status === "near" && entry.mode === "hours") {
+      const arrivalStr = arrival.toLocaleTimeString("en-US", {
+        timeZone: tz,
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const arrMin = timeToMin(arrivalStr);
+      const openMin = timeToMin(entry.opens);
+      const closeMin = timeToMin(entry.closes);
+      // Determine which boundary is closest
+      const MARGIN = 30;
+      const minsFromOpen = (arrMin - openMin + 1440) % 1440;
+      const minsToClose = (closeMin - arrMin + 1440) % 1440;
+      if (minsFromOpen < MARGIN) {
+        const mins = minsFromOpen;
+        nearDetail =
+          mins === 0
+            ? "Arriving exactly at opening"
+            : mins === 1
+              ? "1 min after opening"
+              : `${mins} min after opening`;
+      } else if (minsToClose < MARGIN) {
+        const mins = minsToClose;
+        nearDetail =
+          mins === 0
+            ? "Arriving exactly at closing"
+            : mins === 1
+              ? "1 min before closing"
+              : `${mins} min before closing`;
+      } else {
+        // Before open: compute how many minutes until open
+        const minsToOpen = (openMin - arrMin + 1440) % 1440;
+        if (minsToOpen <= MARGIN) {
+          nearDetail =
+            minsToOpen === 1
+              ? "1 min before opening"
+              : `${minsToOpen} min before opening`;
+        } else {
+          const minsAfterClose = (arrMin - closeMin + 1440) % 1440;
+          nearDetail =
+            minsAfterClose === 1
+              ? "1 min after closing"
+              : `${minsAfterClose} min after closing`;
+        }
+      }
+    }
+
     const labels: Record<string, string> = {
       open: "Open at ETA",
       near: "Near open/close time",
       closed: "Closed at ETA",
     };
-    return { status, label: labels[status] };
+    return { status, label: labels[status], hoursLabel, nearDetail };
   })();
 
   // Timezone badge — shown whenever a split timezone override is active,
@@ -857,54 +924,67 @@ export default function SplitFormComponent({
           ) : null;
 
           // ── Results panel content ──
-          const paceMin = Math.floor(splitResult?.pace ?? 0);
-          const paceSec = Math.round(((splitResult?.pace ?? 0) - paceMin) * 60);
-          const paceStr = splitResult
-            ? `${paceMin}:${String(paceSec).padStart(2, "0")} /${sLabel === "mph" ? "mi" : "km"}`
-            : null;
 
           const resultsContent = splitResult ? (
             <div className="split-results-panel">
               <dl className="split-results-grid">
                 <div>
-                  <dt>Start</dt>
+                  <dt title="Split start time">Start</dt>
                   <dd>
                     {fmtInTz(splitResult.start_time, splitStartTz ?? courseTz)}
                     {splitStartTz && splitStartTz !== courseTz && (
-                      <span className="split-results-tz-also">
+                      <span className="split-end-tz">
                         {" "}
-                        ({fmtInTz(splitResult.start_time, courseTz)})
+                        {fmtInTz(splitResult.start_time, courseTz)}
                       </span>
                     )}
                   </dd>
                 </div>
                 <div>
-                  <dt>End</dt>
+                  <dt title="Split end time (arrival at rest stop or next split)">
+                    End
+                  </dt>
                   <dd>
                     {fmtInTz(splitResult.end_time, splitEndTz ?? courseTz)}
                     {splitEndTz && splitEndTz !== courseTz && (
-                      <span className="split-results-tz-also">
+                      <span className="split-end-tz">
                         {" "}
-                        ({fmtInTz(splitResult.end_time, courseTz)})
+                        {fmtInTz(splitResult.end_time, courseTz)}
                       </span>
                     )}
                   </dd>
                 </div>
                 <div>
-                  <dt>Active</dt>
-                  <dd>{formatHours(splitResult.active_time_hours)}</dd>
+                  <dt title="Time spent actively riding or moving">Active</dt>
+                  <dd
+                    title={formatHours(splitResult.active_time_hours, "full")}
+                  >
+                    {formatHours(splitResult.active_time_hours)}
+                  </dd>
                 </div>
                 <div>
-                  <dt>Moving</dt>
-                  <dd>{formatHours(splitResult.moving_time_hours)}</dd>
+                  <dt title="Time spent moving (excludes down time)">Moving</dt>
+                  <dd
+                    title={formatHours(splitResult.moving_time_hours, "full")}
+                  >
+                    {formatHours(splitResult.moving_time_hours)}
+                  </dd>
                 </div>
                 <div>
-                  <dt>Down</dt>
-                  <dd>{formatHours(splitResult.down_time_hours)}</dd>
+                  <dt title="Time stopped or inactive">Down</dt>
+                  <dd title={formatHours(splitResult.down_time_hours, "full")}>
+                    {formatHours(splitResult.down_time_hours)}
+                  </dd>
                 </div>
                 <div>
-                  <dt>Split Time</dt>
-                  <dd>
+                  <dt title="Moving time + down time">Split Time</dt>
+                  <dd
+                    title={formatHours(
+                      splitResult.moving_time_hours +
+                        splitResult.down_time_hours,
+                      "full",
+                    )}
+                  >
                     {formatHours(
                       splitResult.moving_time_hours +
                         splitResult.down_time_hours,
@@ -913,31 +993,52 @@ export default function SplitFormComponent({
                 </div>
                 {etaInfo && (
                   <div style={{ gridColumn: "1 / -1" }}>
-                    <dt>ETA Status</dt>
+                    <dt title="Whether the rest stop is open at your estimated arrival">
+                      ETA Status
+                    </dt>
                     <dd>
                       <span className={`eta-badge eta-${etaInfo.status}`}>
                         {etaInfo.status === "open" && "✓ Open"}
                         {etaInfo.status === "near" && "⚠ Near close"}
                         {etaInfo.status === "closed" && "✗ Closed"}
+                      </span>{" "}
+                      <span className="split-results-hours">
+                        {etaInfo.hoursLabel}
                       </span>
+                      {etaInfo.nearDetail && (
+                        <span className="split-results-near-detail">
+                          {etaInfo.nearDetail}
+                        </span>
+                      )}
                     </dd>
                   </div>
                 )}
                 <div>
-                  <dt>Speed</dt>
+                  <dt title="Average moving speed across this split">Speed</dt>
                   <dd>
-                    {splitResult.moving_speed.toFixed(1)} {sLabel}
+                    {splitResult.moving_speed.toFixed(2)} {sLabel}
                   </dd>
                 </div>
                 <div>
-                  <dt>Pace</dt>
-                  <dd>{paceStr}</dd>
+                  <dt title="Average pace across this split">Pace</dt>
+                  <dd>
+                    {splitResult.pace.toFixed(2)} {sLabel}
+                  </dd>
                 </div>
                 {splitResult.adjustment_time_hours != null &&
                   splitResult.adjustment_time_hours !== 0 && (
                     <div>
-                      <dt>Adj. Time</dt>
-                      <dd>{formatHours(splitResult.adjustment_time_hours)}</dd>
+                      <dt title="Manual time adjustment applied to this split">
+                        Adj. Time
+                      </dt>
+                      <dd
+                        title={formatHours(
+                          splitResult.adjustment_time_hours,
+                          "full",
+                        )}
+                      >
+                        {formatHours(splitResult.adjustment_time_hours)}
+                      </dd>
                     </div>
                   )}
               </dl>
