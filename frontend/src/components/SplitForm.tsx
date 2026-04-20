@@ -1045,12 +1045,7 @@ export default function SplitFormComponent({
             );
           }
 
-          if (!hasFormOrMap) {
-            // Results only
-            return <div className="split-body">{resultsContent}</div>;
-          }
-
-          // Results row above form/map
+          // Results row, always in split-stacked-layout (with or without form/map below)
           return (
             <div className="split-stacked-layout">
               <div className="split-results-row">{resultsContent}</div>

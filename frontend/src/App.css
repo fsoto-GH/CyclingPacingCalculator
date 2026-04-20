@@ -3438,10 +3438,21 @@ dialog {
   border-bottom: 2px solid #2e2e2e;
 }
 
+/* No orphan border when results is the only panel */
+.split-results-row:last-child {
+  border-bottom: none;
+}
+
 /* ── Inline split results panel ── */
 .split-results-panel {
   padding: 0.75rem 1rem 1rem;
   overflow-y: auto;
+}
+
+/* When results is the only panel it sits in split-body which adds its own padding;
+   cancel the panel's padding to avoid double-padding. */
+.split-body > .split-results-panel {
+  padding: 0;
 }
 
 .split-results-panel--empty {
