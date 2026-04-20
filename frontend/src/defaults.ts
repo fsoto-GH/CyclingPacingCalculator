@@ -33,7 +33,8 @@ function cloneRestStop(): RestStopForm {
 
 export const DEFAULT_SPLIT: SplitForm = {
   distance: "",
-  sub_split_mode: "even",
+  sub_split_mode: "hour",
+  sub_split_override: false,
   sub_split_count: "1",
   sub_split_distance: "",
   last_sub_split_threshold: "20",

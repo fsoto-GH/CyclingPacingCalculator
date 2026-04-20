@@ -6,6 +6,8 @@ import type {
   Mode,
   SplitGpxProfile,
   GpxTrackPoint,
+  SplitDetail,
+  SubSplitMode,
 } from "../types";
 import {
   speedLabel,
@@ -52,6 +54,10 @@ interface SegmentFormProps {
   collapseSignal?: number;
   /** Increment to expand this segment and all its splits without scrolling. */
   expandAllSignal?: number;
+  /** Calculated split results for inline display inside each SplitForm. */
+  splitResults?: (SplitDetail | null)[];
+  /** Course-level sub-split mode default; splits may override. */
+  courseSplitMode: SubSplitMode;
 }
 
 export default function SegmentFormComponent({
@@ -75,6 +81,8 @@ export default function SegmentFormComponent({
   expandSplitIdx = -1,
   collapseSignal,
   expandAllSignal,
+  splitResults,
+  courseSplitMode,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -119,6 +127,10 @@ export default function SegmentFormComponent({
         block: "start",
       });
     });
+    return () => {
+      // Reset on unmount so fresh mounts (StrictMode remount or page flip) can fire again
+      lastFiredExpandRef.current = undefined;
+    };
   }, [expandSignal]);
 
   useEffect(() => {
@@ -560,6 +572,7 @@ export default function SegmentFormComponent({
                 unitSystem={unitSystem}
                 isLast={j === value.splits.length - 1}
                 isLastOverall={isLastSeg && j === value.splits.length - 1}
+                segColor={segColor}
                 splitDistUser={(() => {
                   const cum = cumulativeDists?.[j] ?? null;
                   const prev =
@@ -582,6 +595,8 @@ export default function SegmentFormComponent({
                 expandSignal={expandSplitIdx === j ? expandSignal : undefined}
                 collapseSignal={splitCollapseSignal || undefined}
                 expandAllSignal={undefined}
+                splitResult={splitResults?.[j] ?? null}
+                courseSplitMode={courseSplitMode}
               />
             ))}
           </div>

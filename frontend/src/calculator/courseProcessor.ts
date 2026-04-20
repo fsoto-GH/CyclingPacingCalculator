@@ -246,7 +246,6 @@ function computeSplitDetail(
           name: split.rest_stop.name,
           address: split.rest_stop.address,
           alt: split.rest_stop.alt ?? null,
-          arrival_date: new Date(endTimeMs).toISOString(),
         }
       : null,
   };

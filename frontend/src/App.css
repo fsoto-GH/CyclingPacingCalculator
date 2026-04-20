@@ -824,6 +824,13 @@ h4 {
   margin-top: 0.1rem;
 }
 
+.split-header-city-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+
 /* Flat meta row — elev details + tz badge in header */
 .split-header-meta {
   display: flex;
@@ -1206,6 +1213,10 @@ h4 {
 }
 .rs-backup-label input[type="checkbox"] {
   accent-color: #a855f7;
+}
+
+.rs-header-name .eta-badge {
+  margin-left: 0.3rem;
 }
 
 /* ── Split notes ── */
@@ -2285,7 +2296,6 @@ h4 {
 .collapse-icon-sm {
   font-size: 0.65rem;
   margin-right: 0.3rem;
-  color: #666666;
 }
 
 .segment-result {
@@ -3418,6 +3428,149 @@ dialog {
   color: #f87171;
 }
 
+/* ── Inline split results panel ── */
+.split-results-panel {
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid #2e2e2e;
+  overflow-y: auto;
+}
+
+.split-results-panel--empty {
+  color: #888;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 4rem;
+}
+
+/* ── dl-based results list ── */
+.split-results-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.18rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  font-size: 0.83rem;
+}
+
+.split-results-dl dt {
+  color: #94a3b8;
+  font-weight: 500;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.split-results-dl dd {
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.split-results-tz-also {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+/* ETA status in results panel */
+.split-results-eta {
+  font-weight: 600;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  display: inline-block;
+  font-size: 0.78rem;
+}
+
+.split-results-eta--open {
+  background: #1a472a;
+  color: #4ade80;
+}
+
+.split-results-eta--near {
+  background: #4a3a10;
+  color: #fbbf24;
+}
+
+.split-results-eta--closed {
+  background: #4a1a1a;
+  color: #f87171;
+}
+
+/* ETA badge modifier for split header (compact) */
+.eta-badge--header {
+  margin-right: 0;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+/* ── Sub-splits collapsible in inline results panel ── */
+.split-sub-splits {
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.split-sub-splits summary {
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  user-select: none;
+  margin-bottom: 0.35rem;
+}
+
+.split-sub-splits-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+
+.split-sub-splits-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #94a3b8;
+  border-bottom: 1px solid #2e2e2e;
+  padding: 2px 6px 4px 0;
+}
+
+.split-sub-splits-table td {
+  padding: 2px 6px 2px 0;
+  border-bottom: 1px solid #1e1e1e;
+}
+
+.split-results-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem 1.5rem;
+  padding: 0;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.split-results-grid > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.split-results-grid dt {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: #aaaaaa;
+  margin-bottom: 0.1rem;
+}
+
+.split-results-grid dd {
+  margin: 0;
+  color: #ffffff;
+}
+
+@media (max-width: 480px) {
+  .split-results-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Disabled state for slider labels when GPX is unavailable - REMOVED */
+
 /* ── GPX elevation in split header ── */
 .split-header-badges {
   margin-left: auto;
@@ -3799,63 +3952,42 @@ dialog {
   margin: 0.5rem 0.75rem;
 }
 
-/* ── Split layout slider (Form | Both | Map) ── */
+/* ── Split layout button toggles ── */
 
 .split-view-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 5px 10px;
   background: #252525;
   border-bottom: 1px solid #3a3a3a;
 }
 
-.split-tri-slider {
-  position: relative;
-  width: 156px;
-  height: 26px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.split-tri-track {
-  position: absolute;
-  inset: 0;
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.09);
-  border: 0.5px solid rgba(255, 255, 255, 0.15);
-}
-
-.split-tri-thumb {
-  position: absolute;
-  top: 2px;
-  height: 22px;
-  width: 50px;
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.18);
-  border: 0.5px solid rgba(255, 255, 255, 0.30);
-  transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  pointer-events: none;
-}
-
-.split-tri-labels {
-  position: absolute;
-  inset: 0;
+.split-layout-toggles {
   display: flex;
-  align-items: center;
-  pointer-events: none;
+  gap: 4px;
 }
 
-.split-tri-label {
-  flex: 1;
-  text-align: center;
+.split-layout-btn {
+  padding: 2px 10px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  transition: color 0.15s;
+  border-radius: 11px;
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
   user-select: none;
+  line-height: 20px;
 }
 
-.split-tri-label.active {
+.split-layout-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.split-layout-btn.active {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.30);
   color: rgba(255, 255, 255, 0.95);
   font-weight: 500;
 }

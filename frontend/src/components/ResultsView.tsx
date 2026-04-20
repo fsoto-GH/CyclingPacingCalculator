@@ -685,19 +685,13 @@ function SplitRow({
       : null);
   const splitStartTz = split.start_timezone || null;
 
-  const etaInfo = split.rest_stop?.arrival_date
-    ? getEtaStatus(
-        split.rest_stop.arrival_date,
-        formSegments,
-        segIdx,
-        splitIdx,
-        courseTz,
-      )
+  const etaInfo = split.rest_stop
+    ? getEtaStatus(split.end_time, formSegments, segIdx, splitIdx, courseTz)
     : null;
 
-  const arrivalHours = split.rest_stop?.arrival_date
+  const arrivalHours = split.rest_stop
     ? getArrivalDayHours(
-        split.rest_stop.arrival_date,
+        split.end_time,
         formSegments,
         segIdx,
         splitIdx,
@@ -938,24 +932,19 @@ function SplitRow({
                         </dd>
                       </div>
                     )}
-                    {split.rest_stop.arrival_date && (
+                    {etaInfo && (
                       <div>
                         <dt>ETA</dt>
                         <dd>
-                          {etaInfo && (
-                            <span
-                              className={`eta-badge eta-${etaInfo.status}`}
-                              title={etaInfo.label}
-                            >
-                              {etaInfo.status === "open" && "✓ Open"}
-                              {etaInfo.status === "near" && "⚠ Near close"}
-                              {etaInfo.status === "closed" && "✗ Closed"}
-                            </span>
-                          )}
-                          {fmtInTz(
-                            split.rest_stop.arrival_date,
-                            splitEndTz ?? courseTz,
-                          )}
+                          <span
+                            className={`eta-badge eta-${etaInfo.status}`}
+                            title={etaInfo.label}
+                          >
+                            {etaInfo.status === "open" && "✓ Open"}
+                            {etaInfo.status === "near" && "⚠ Near close"}
+                            {etaInfo.status === "closed" && "✗ Closed"}
+                          </span>
+                          {fmtInTz(split.end_time, splitEndTz ?? courseTz)}
                         </dd>
                       </div>
                     )}

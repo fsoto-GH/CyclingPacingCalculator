@@ -14,6 +14,7 @@ import type {
   CourseDetail,
   GpxTrackPoint,
   SplitGpxProfile,
+  SubSplitMode,
 } from "../types";
 import { makeDefaultDayHours } from "../types";
 import type { RestStopForm as RestStopFormType } from "../types";
@@ -86,6 +87,7 @@ const INITIAL_FORM: CourseFormState = {
   unitSystem: "imperial",
   mode: "distance",
   timezone: browserTimezone,
+  sub_split_mode: "hour",
   init_moving_speed: "",
   min_moving_speed: "",
   down_time_ratio: "0",
@@ -157,6 +159,9 @@ function loadSavedForm(): CourseFormState {
     // Migrate empty down_time_ratio / split_delta to "0" (was previously required to be non-empty)
     if (!parsed.down_time_ratio?.trim()) parsed.down_time_ratio = "0";
     if (!parsed.split_delta?.trim()) parsed.split_delta = "0";
+
+    // Migrate: add course-level sub_split_mode if missing (old forms had it per-split only)
+    if (!parsed.sub_split_mode) parsed.sub_split_mode = "hour";
 
     // Migrate rest stops and splits
     for (const seg of parsed.segments ?? []) {
@@ -1808,6 +1813,24 @@ export default function CourseForm() {
                     />
                   </div>
                   <div className="field">
+                    <label htmlFor="course-ss-mode">Sub-Split Mode</label>
+                    <select
+                      id="course-ss-mode"
+                      value={form.sub_split_mode}
+                      onChange={(e) =>
+                        update({
+                          sub_split_mode: e.target.value as SubSplitMode,
+                        })
+                      }
+                    >
+                      <option value="hour">Hourly</option>
+                      <option value="even">Even</option>
+                      <option value="fixed">Fixed Size</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+
+                  <div className="field">
                     <label htmlFor="course-seg-count"># of Segments</label>
                     <NumberInput
                       id="course-seg-count"
@@ -1955,7 +1978,7 @@ export default function CourseForm() {
                           gpxProfiles={gpxProfiles?.[i] ?? null}
                           gpxTrack={gpxTrack}
                           courseTz={form.timezone}
-                          isLastSeg={i === form.segments.length - 1}
+                          courseSplitMode={form.sub_split_mode}
                           splitStatuses={splitGpxStatuses[i]}
                           cityLabels={cityLabels[i]}
                           cityFetching={cityFetching[i]}
@@ -1989,6 +2012,10 @@ export default function CourseForm() {
                           }
                           collapseSignal={collapseAllSignal || undefined}
                           expandAllSignal={expandAllSignal || undefined}
+                          splitResults={
+                            result?.segment_details[i]?.split_details ??
+                            undefined
+                          }
                         />
                       );
                     })}

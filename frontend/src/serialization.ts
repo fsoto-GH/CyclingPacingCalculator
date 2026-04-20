@@ -7,6 +7,7 @@ import type {
   SplitForm,
   SegmentForm,
   DayHoursEntry,
+  SubSplitMode,
 } from "./types";
 import { tzLocalStringToUtcIso } from "./utils";
 import { minutesToSeconds, parseOptionalFloat } from "./utils";
@@ -49,22 +50,28 @@ function serializeRestStop(split: SplitForm): RestStopPayload | null {
   };
 }
 
-function serializeSplit(split: SplitForm): SplitPayload {
+function serializeSplit(
+  split: SplitForm,
+  courseSplitMode: SubSplitMode,
+): SplitPayload {
+  const effectiveMode: SubSplitMode = split.sub_split_override
+    ? split.sub_split_mode
+    : courseSplitMode;
   const payload: SplitPayload = {
     name: split.name?.trim() || null,
     distance: parseFloat(split.distance),
-    sub_split_mode: split.sub_split_mode,
+    sub_split_mode: effectiveMode,
     adjustment_time: minutesToSeconds(split.adjustment_time) ?? 0,
   };
 
-  if (split.sub_split_mode === "even") {
+  if (effectiveMode === "even") {
     payload.sub_split_count = parseInt(split.sub_split_count, 10);
-  } else if (split.sub_split_mode === "fixed") {
+  } else if (effectiveMode === "fixed") {
     payload.sub_split_distance = parseFloat(split.sub_split_distance);
     payload.last_sub_split_threshold = parseFloat(
       split.last_sub_split_threshold,
     );
-  } else if (split.sub_split_mode === "custom") {
+  } else if (effectiveMode === "custom") {
     payload.sub_split_distances = split.sub_split_distances
       .split(",")
       .map((s) => parseFloat(s.trim()));
@@ -86,10 +93,13 @@ function serializeSplit(split: SplitForm): SplitPayload {
   return payload;
 }
 
-function serializeSegment(seg: SegmentForm): SegmentPayload {
+function serializeSegment(
+  seg: SegmentForm,
+  courseSplitMode: SubSplitMode,
+): SegmentPayload {
   const payload: SegmentPayload = {
     name: seg.name?.trim() || null,
-    splits: seg.splits.map(serializeSplit),
+    splits: seg.splits.map((s) => serializeSplit(s, courseSplitMode)),
     sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
     no_end_down_time: !seg.include_end_down_time,
   };
@@ -110,8 +120,9 @@ function serializeSegment(seg: SegmentForm): SegmentPayload {
 }
 
 export function serializeCourse(form: CourseForm): CoursePayload {
+  const courseSplitMode: SubSplitMode = form.sub_split_mode ?? "hour";
   return {
-    segments: form.segments.map(serializeSegment),
+    segments: form.segments.map((s) => serializeSegment(s, courseSplitMode)),
     mode: form.mode,
     init_moving_speed: parseFloat(form.init_moving_speed),
     min_moving_speed: parseFloat(form.min_moving_speed),

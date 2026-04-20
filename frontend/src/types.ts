@@ -108,6 +108,7 @@ export interface SplitForm {
   name?: string;
   distance: string;
   sub_split_mode: SubSplitMode;
+  sub_split_override?: boolean; // when false/undefined, split inherits course-level mode
   sub_split_count: string;
   sub_split_distance: string;
   last_sub_split_threshold: string;
@@ -140,6 +141,7 @@ export interface CourseForm {
   unitSystem: UnitSystem;
   mode: Mode;
   timezone: string; // IANA timezone
+  sub_split_mode: SubSplitMode; // course-level default, splits may override
   init_moving_speed: string;
   min_moving_speed: string;
   down_time_ratio: string;
@@ -180,7 +182,6 @@ export interface SplitDetail extends SubSplitDetail {
     name: string;
     address: string;
     alt?: string | null;
-    arrival_date?: string | null;
   } | null;
 }
 
