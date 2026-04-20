@@ -1044,17 +1044,7 @@ export default function SplitEndpointMap({
           <div className="legend-footer">
             <button
               type="button"
-              className="ghost-btn"
-              onClick={() => {
-                confirmDialogRef.current?.close();
-                setConfirmStop(null);
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="ghost-btn no-hours-confirm__use-btn"
+              className="action-btn action-btn-export"
               onClick={() => {
                 const stop = confirmStop;
                 confirmDialogRef.current?.close();

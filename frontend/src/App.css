@@ -1765,7 +1765,15 @@ h4 {
 }
 
 .action-btn-export {
+  background: none;
+  border: 1px solid #3a3a3a;
+  color: #6ee7b7;
+  border-color: #2d6a4f;
+}
+
+.action-btn-export:hover:not(:disabled) {
   background: #2d6a4f;
+  border-color: #6ee7b7;
   color: #fff;
 }
 

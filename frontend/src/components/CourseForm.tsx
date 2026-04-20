@@ -2296,7 +2296,7 @@ export default function CourseForm() {
           <div className="legend-footer">
             <button
               type="button"
-              className="action-btn"
+              className="action-btn action-btn-export"
               onClick={() => setEtaMarginsOpen(false)}
             >
               Done
@@ -2381,13 +2381,6 @@ export default function CourseForm() {
             </div>
           </div>
           <div className="legend-footer">
-            <button
-              type="button"
-              className="action-btn"
-              onClick={() => setQuickSetup((q) => ({ ...q, open: false }))}
-            >
-              Cancel
-            </button>
             {form.segments.length > 0 &&
               (() => {
                 const nSeg = parseInt(quickSetup.segments, 10);
@@ -2405,7 +2398,7 @@ export default function CourseForm() {
                 return (
                   <button
                     type="button"
-                    className="action-btn"
+                    className="action-btn action-btn-export"
                     disabled={!valid}
                     title={valid ? undefined : "Fill in all fields to continue"}
                     onClick={() => {
@@ -2626,17 +2619,10 @@ export default function CourseForm() {
             )}
           </div>
           <div className="legend-footer">
-            <button
-              type="button"
-              className="action-btn"
-              onClick={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
-            >
-              Cancel
-            </button>
             {autoNameDialog.namedItems.length > 0 && (
               <button
                 type="button"
-                className="action-btn"
+                className="action-btn action-btn-export"
                 onClick={() => {
                   const { segmentPrefix, splitPrefix, includeCityRoute } =
                     autoNameDialog;

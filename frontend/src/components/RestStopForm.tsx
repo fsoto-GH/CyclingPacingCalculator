@@ -261,12 +261,9 @@ export default function RestStopFormComponent({
           )}
         </div>
         <div className="legend-footer">
-          <button type="button" className="ghost-btn" onClick={cancelModal}>
-            Cancel
-          </button>
           <button
             type="button"
-            className="ghost-btn rs-hours-set-btn"
+            className="action-btn action-btn-export"
             onClick={commitModal}
           >
             Set Hours

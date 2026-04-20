@@ -195,7 +195,7 @@ export default function FindNearbyModal({
       <div className="legend-footer">
         <button
           type="button"
-          className="ghost-btn fnm-search-btn"
+          className="action-btn action-btn-export"
           onClick={handleSave}
         >
           Save
