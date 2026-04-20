@@ -58,6 +58,14 @@ interface SegmentFormProps {
   splitResults?: (SplitDetail | null)[];
   /** Course-level sub-split mode default; splits may override. */
   courseSplitMode: SubSplitMode;
+  /** Total number of segments in the course */
+  totalSegments?: number;
+  onMoveSplitToPrevSeg?: (splitIdx: number) => void;
+  onMoveSplitToNextSeg?: (splitIdx: number) => void;
+  onDeleteSplit?: (splitIdx: number) => void;
+  readOnly?: boolean;
+  etaMarginOpen?: number;
+  etaMarginClose?: number;
 }
 
 export default function SegmentFormComponent({
@@ -83,6 +91,13 @@ export default function SegmentFormComponent({
   expandAllSignal,
   splitResults,
   courseSplitMode,
+  totalSegments = 1,
+  onMoveSplitToPrevSeg,
+  onMoveSplitToNextSeg,
+  onDeleteSplit,
+  readOnly,
+  etaMarginOpen = 15,
+  etaMarginClose = 7,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -443,7 +458,7 @@ export default function SegmentFormComponent({
       </div>
 
       {!collapsed && (
-        <div className="segment-body">
+        <div className={`segment-body${readOnly ? " course-read-only" : ""}`}>
           <div className="fields-grid">
             <TimeInput
               id={`${prefix}-sleep-time`}
@@ -597,6 +612,29 @@ export default function SegmentFormComponent({
                 expandAllSignal={undefined}
                 splitResult={splitResults?.[j] ?? null}
                 courseSplitMode={courseSplitMode}
+                canShiftUp={j > 0}
+                canShiftDown={j < value.splits.length - 1}
+                canMoveToPrevSeg={j === 0 && segIndex > 0}
+                canMoveToNextSeg={
+                  j === value.splits.length - 1 && segIndex < totalSegments - 1
+                }
+                canDelete={value.splits.length > 1 || totalSegments > 1}
+                onShiftUp={() => {
+                  const next = [...value.splits];
+                  [next[j - 1], next[j]] = [next[j], next[j - 1]];
+                  update({ splits: next });
+                }}
+                onShiftDown={() => {
+                  const next = [...value.splits];
+                  [next[j], next[j + 1]] = [next[j + 1], next[j]];
+                  update({ splits: next });
+                }}
+                onMoveToPrevSeg={() => onMoveSplitToPrevSeg?.(j)}
+                onMoveToNextSeg={() => onMoveSplitToNextSeg?.(j)}
+                onDelete={() => onDeleteSplit?.(j)}
+                readOnly={readOnly}
+                etaMarginOpen={etaMarginOpen}
+                etaMarginClose={etaMarginClose}
               />
             ))}
           </div>

@@ -271,11 +271,14 @@ function computeSegmentDetail(
   const currDtr = seg.down_time_ratio ?? downTimeRatio;
   const currDelta = seg.split_delta ?? splitDelta;
 
-  if (currSpeed < currMin) {
+  // Only error if the segment explicitly sets a moving speed below its minimum.
+  // When speed is inherited from a previous segment's decay, clamp it up instead.
+  if (seg.moving_speed != null && currSpeed < currMin) {
     throw new CalcError(
       `Segment moving speed (${currSpeed}) is less than minimum moving speed (${currMin}).`,
     );
   }
+  currSpeed = Math.max(currSpeed, currMin);
 
   const splitDetails: SplitDetail[] = [];
   let currTimeMs = startTimeMs;

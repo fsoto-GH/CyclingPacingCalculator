@@ -18,7 +18,7 @@ function timeToMin(t: string): number {
 }
 
 interface EtaInfo {
-  status: "open" | "near" | "closed";
+  status: "open" | "near-open" | "near-close" | "closed";
   label: string;
   hoursLabel: string; // e.g. "6:00 AM – 10:00 PM" or "24 hours" or "Closed"
   nearDetail: string | null; // e.g. "5 min before opening" or "10 min after closing"
@@ -28,7 +28,9 @@ function checkArrivalVsHours(
   arrivalIso: string,
   entry: DayHoursEntry,
   tz: string,
-): "open" | "closed" | "near" | null {
+  marginOpen = 15,
+  marginClose = 7,
+): "open" | "closed" | "near-open" | "near-close" | null {
   if (entry.mode === "24h") return "open";
   if (entry.mode === "closed") return "closed";
 
@@ -43,22 +45,27 @@ function checkArrivalVsHours(
   const openMin = timeToMin(entry.opens);
   const closeMin = timeToMin(entry.closes);
 
-  const MARGIN = 30;
+  const MARGIN_OPEN = marginOpen;
+  const MARGIN_CLOSE = marginClose;
 
+  // Shortest distance on the 24-hour clock to each boundary
+  const dOpen = Math.min(
+    (arrMin - openMin + 1440) % 1440,
+    (openMin - arrMin + 1440) % 1440,
+  );
+  const dClose = Math.min(
+    (arrMin - closeMin + 1440) % 1440,
+    (closeMin - arrMin + 1440) % 1440,
+  );
+
+  if (dClose <= MARGIN_CLOSE) return "near-close";
+  if (dOpen <= MARGIN_OPEN) return "near-open";
+
+  // Check if inside open window
   if (closeMin > openMin) {
-    if (arrMin >= openMin && arrMin <= closeMin) {
-      if (arrMin - openMin < MARGIN || closeMin - arrMin < MARGIN)
-        return "near";
-      return "open";
-    }
-    return "closed";
+    return arrMin >= openMin && arrMin <= closeMin ? "open" : "closed";
   } else {
-    if (arrMin >= openMin || arrMin <= closeMin) {
-      if (arrMin >= openMin && arrMin - openMin < MARGIN) return "near";
-      if (arrMin <= closeMin && closeMin - arrMin < MARGIN) return "near";
-      return "open";
-    }
-    return "closed";
+    return arrMin >= openMin || arrMin <= closeMin ? "open" : "closed";
   }
 }
 import TimeInput from "./TimeInput";
@@ -105,6 +112,19 @@ interface SplitFormProps {
   segColor?: string;
   /** Course-level sub-split mode default; splits may override. */
   courseSplitMode: SubSplitMode;
+  canShiftUp?: boolean;
+  canShiftDown?: boolean;
+  canMoveToPrevSeg?: boolean;
+  canMoveToNextSeg?: boolean;
+  canDelete?: boolean;
+  onShiftUp?: () => void;
+  onShiftDown?: () => void;
+  onMoveToPrevSeg?: () => void;
+  onMoveToNextSeg?: () => void;
+  onDelete?: () => void;
+  readOnly?: boolean;
+  etaMarginOpen?: number;
+  etaMarginClose?: number;
 }
 
 export default function SplitFormComponent({
@@ -131,6 +151,19 @@ export default function SplitFormComponent({
   splitResult,
   segColor,
   courseSplitMode,
+  canShiftUp,
+  canShiftDown,
+  canMoveToPrevSeg,
+  canMoveToNextSeg,
+  canDelete,
+  onShiftUp,
+  onShiftDown,
+  onMoveToPrevSeg,
+  onMoveToNextSeg,
+  onDelete,
+  readOnly,
+  etaMarginOpen = 15,
+  etaMarginClose = 7,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
@@ -196,9 +229,26 @@ export default function SplitFormComponent({
   }, [expandAllSignal]);
 
   // ── Three toggle panels (Form | Map | Results) ────────────────────────────
-  const [showForm, setShowForm] = useState(true);
-  const [showMap, setShowMap] = useState(false);
-  const [showResults, setShowResults] = useState(false);
+  const [showForm, setShowForm] = useState(!readOnly);
+  const [showMap, setShowMap] = useState(!!readOnly);
+  const [showResults, setShowResults] = useState(!!readOnly);
+
+  // When readOnly toggles, reset panel defaults
+  const prevReadOnly = useRef(readOnly);
+  useEffect(() => {
+    if (readOnly !== prevReadOnly.current) {
+      prevReadOnly.current = readOnly;
+      if (readOnly) {
+        setShowForm(false);
+        setShowMap(true);
+        setShowResults(true);
+      } else {
+        setShowForm(true);
+        setShowMap(false);
+        setShowResults(false);
+      }
+    }
+  }, [readOnly]);
   const [formColWidth, setFormColWidth] = useState(350);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -338,7 +388,13 @@ export default function SplitFormComponent({
     const entry: DayHoursEntry = rs.sameHoursEveryDay
       ? rs.allDays
       : rs.perDay[dayIdx];
-    const status = checkArrivalVsHours(splitResult.end_time, entry, tz);
+    const status = checkArrivalVsHours(
+      splitResult.end_time,
+      entry,
+      tz,
+      etaMarginOpen,
+      etaMarginClose,
+    );
     if (!status) return null;
 
     // Build human-readable hours label
@@ -357,7 +413,10 @@ export default function SplitFormComponent({
 
     // Compute near-detail delta
     let nearDetail: string | null = null;
-    if (status === "near" && entry.mode === "hours") {
+    if (
+      (status === "near-open" || status === "near-close") &&
+      entry.mode === "hours"
+    ) {
       const arrivalStr = arrival.toLocaleTimeString("en-US", {
         timeZone: tz,
         hour12: false,
@@ -367,36 +426,34 @@ export default function SplitFormComponent({
       const arrMin = timeToMin(arrivalStr);
       const openMin = timeToMin(entry.opens);
       const closeMin = timeToMin(entry.closes);
-      // Determine which boundary is closest
-      const MARGIN = 30;
-      const minsFromOpen = (arrMin - openMin + 1440) % 1440;
-      const minsToClose = (closeMin - arrMin + 1440) % 1440;
-      if (minsFromOpen < MARGIN) {
-        const mins = minsFromOpen;
-        nearDetail =
-          mins === 0
-            ? "Arriving exactly at opening"
-            : mins === 1
-              ? "1 min after opening"
-              : `${mins} min after opening`;
-      } else if (minsToClose < MARGIN) {
-        const mins = minsToClose;
-        nearDetail =
-          mins === 0
-            ? "Arriving exactly at closing"
-            : mins === 1
-              ? "1 min before closing"
-              : `${mins} min before closing`;
-      } else {
-        // Before open: compute how many minutes until open
-        const minsToOpen = (openMin - arrMin + 1440) % 1440;
-        if (minsToOpen <= MARGIN) {
+
+      if (status === "near-open") {
+        const minsAfterOpen = (arrMin - openMin + 1440) % 1440;
+        const minsBeforeOpen = (openMin - arrMin + 1440) % 1440;
+        if (minsAfterOpen <= minsBeforeOpen) {
           nearDetail =
-            minsToOpen === 1
-              ? "1 min before opening"
-              : `${minsToOpen} min before opening`;
+            minsAfterOpen === 0
+              ? "Arriving exactly at opening"
+              : minsAfterOpen === 1
+                ? "1 min after opening"
+                : `${minsAfterOpen} min after opening`;
         } else {
-          const minsAfterClose = (arrMin - closeMin + 1440) % 1440;
+          nearDetail =
+            minsBeforeOpen === 1
+              ? "1 min before opening"
+              : `${minsBeforeOpen} min before opening`;
+        }
+      } else {
+        const minsBeforeClose = (closeMin - arrMin + 1440) % 1440;
+        const minsAfterClose = (arrMin - closeMin + 1440) % 1440;
+        if (minsBeforeClose <= minsAfterClose) {
+          nearDetail =
+            minsBeforeClose === 0
+              ? "Arriving exactly at closing"
+              : minsBeforeClose === 1
+                ? "1 min before closing"
+                : `${minsBeforeClose} min before closing`;
+        } else {
           nearDetail =
             minsAfterClose === 1
               ? "1 min after closing"
@@ -407,7 +464,8 @@ export default function SplitFormComponent({
 
     const labels: Record<string, string> = {
       open: "Open at ETA",
-      near: "Near open/close time",
+      "near-open": "Near opening time",
+      "near-close": "Near closing time",
       closed: "Closed at ETA",
     };
     return { status, label: labels[status], hoursLabel, nearDetail };
@@ -597,11 +655,15 @@ export default function SplitFormComponent({
                       {etaInfo && (
                         <span
                           className={`eta-badge eta-${etaInfo.status}`}
-                          title={etaInfo.label}
+                          title={`${etaInfo.label} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
                         >
-                          {etaInfo.status === "open" && "✓ Open"}
-                          {etaInfo.status === "near" && "⚠ Near close"}
-                          {etaInfo.status === "closed" && "✗ Closed"}
+                          {etaInfo.status === "open" &&
+                            (etaInfo.hoursLabel === "24 hours"
+                              ? "24/7"
+                              : "Open")}
+                          {etaInfo.status === "near-open" && "Near open"}
+                          {etaInfo.status === "near-close" && "Near close"}
+                          {etaInfo.status === "closed" && "Closed"}
                         </span>
                       )}
                       {nearbyCity_fetching && (
@@ -660,6 +722,58 @@ export default function SplitFormComponent({
               Results
             </button>
           </div>
+          <div className="split-action-buttons">
+            {canMoveToPrevSeg && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Move to previous segment"
+                onClick={() => onMoveToPrevSeg?.()}
+              >
+                ⬆ Prev Seg
+              </button>
+            )}
+            {canShiftUp && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Shift up"
+                onClick={() => onShiftUp?.()}
+              >
+                ↑
+              </button>
+            )}
+            {canShiftDown && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Shift down"
+                onClick={() => onShiftDown?.()}
+              >
+                ↓
+              </button>
+            )}
+            {canMoveToNextSeg && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Move to next segment"
+                onClick={() => onMoveToNextSeg?.()}
+              >
+                ⬇ Next Seg
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                className="split-action-btn split-action-btn--delete"
+                title="Delete this split"
+                onClick={() => onDelete?.()}
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -667,7 +781,7 @@ export default function SplitFormComponent({
         (() => {
           // ── Shared form content (distance, overrides, sub-splits, rest stop) ──
           const formContent = (
-            <>
+            <div className={readOnly ? "course-read-only" : undefined}>
               {/* Row 1: Distance */}
               <div className="field">
                 <label htmlFor={`${prefix}-distance`}>
@@ -897,7 +1011,7 @@ export default function SplitFormComponent({
                   onChange={(e) => update({ notes: e.target.value })}
                 />
               </div>
-            </>
+            </div>
           );
 
           // ── Map content (SplitEndpointMap) ──

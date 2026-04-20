@@ -470,6 +470,36 @@ h4 {
   background: #2e2e2e;
 }
 
+/* Lock / Unlock toggle */
+.segments-toggle-btn--lock {
+  color: #94a3b8;
+}
+
+.segments-toggle-btn--lock.active {
+  color: #fbbf24;
+  border-color: #fbbf24;
+  background: #3a3520;
+}
+
+.segments-toggle-btn--lock:hover {
+  border-color: #fbbf24;
+  background: #2e2e2e;
+}
+
+/* Read-only overlay for course form */
+.course-read-only {
+  pointer-events: none;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.course-read-only input,
+.course-read-only select,
+.course-read-only textarea,
+.course-read-only button {
+  cursor: default;
+}
+
 @media (max-width: 640px) {
   .segments-toolbar {
     gap: 0.35rem;
@@ -1340,10 +1370,213 @@ h4 {
   flex: 1;
 }
 
+.rs-hours-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.35rem;
+}
+
+.rs-hours-header-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #aaa;
+  flex: 1;
+}
+
 .rs-hours-header-toggle-label {
   font-size: 0.78rem;
   color: #888;
 }
+
+/* ── Hours compact trigger row (replaces inline hours section) ── */
+.rs-hours-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+.rs-hours-row-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #aaa;
+  flex-shrink: 0;
+  padding-top: 0.08rem;
+}
+
+.rs-hours-detail-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  padding-top: 0.08rem;
+
+}
+
+.rs-hours-edit-icon-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0.15rem 0.4rem;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.rs-hours-edit-icon-btn:hover {
+  color: #93c5fd;
+  border-color: #4361ee;
+  background: rgba(67, 97, 238, 0.1);
+}
+
+/* ── Hours modal ── */
+.rs-hours-modal {
+  max-width: 460px;
+  width: min(460px, 95vw);
+  max-height: min(88vh, 680px);
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  background: #1e1e1e;
+  color: #e0e0e0;
+  color-scheme: dark;
+  padding: 0;
+  overflow: hidden;
+}
+
+.rs-hours-modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.rs-hours-modal::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.rs-hours-modal-body {
+  padding: 0.75rem 1.25rem 0.75rem;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+/* Same-hours toggle row — separated from the day list by a divider */
+.rs-hours-modal-same-row {
+  display: flex;
+  align-items: center;
+  padding-bottom: 0.65rem;
+  margin-bottom: 0.65rem;
+  border-bottom: 1px solid #2e2e2e;
+}
+
+/* Per-day container: bordered card with separated rows */
+.rs-hours-modal-body .per-day-hours {
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* Each day row: 2-row grid — [label | pills] on row 1, [times] on row 2 */
+.rs-hours-modal-body .per-day-hours .day-hours-input {
+  display: grid;
+  grid-template-columns: 2.6rem 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.2rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #252525;
+}
+
+.rs-hours-modal-body .per-day-hours .day-hours-input:last-child {
+  border-bottom: none;
+}
+
+.rs-hours-modal-body .per-day-hours .day-hours-input:nth-child(odd) {
+  background: #222;
+}
+
+/* Label: row 1 col 1 */
+.rs-hours-modal-body .per-day-hours .day-hours-input > .day-hours-label {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Pills: row 1 col 2 */
+.rs-hours-modal-body .per-day-hours .day-hours-input > .pill-group {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* Time range: row 2, spans both columns */
+.rs-hours-modal-body .per-day-hours .day-hours-input > .hours-range {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: auto;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  padding-left: 0.2rem;
+}
+
+.rs-hours-modal-body .per-day-hours .hours-range input[type="time"] {
+  flex: 1;
+  min-width: 5rem;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.3rem;
+}
+
+.rs-hours-modal-body .per-day-hours .next-day-flag {
+  width: auto;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+/* Compact pills inside the modal */
+.rs-hours-modal-body .pill {
+  padding: 0.18rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+/* Single "all days" row (no day label, no grid): keep flex, stop wrapping */
+.rs-hours-modal-body > .day-hours-input {
+  gap: 0.6rem;
+  flex-wrap: nowrap;
+}
+
+.rs-hours-modal-body > .day-hours-input .hours-range {
+  width: auto;
+  flex: 1;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+}
+
+.rs-hours-modal-body > .day-hours-input .hours-range input[type="time"] {
+  flex: 1;
+  min-width: 5rem;
+  font-size: 0.82rem;
+}
+
+/* "Set Hours" filled button variant */
+.rs-hours-set-btn {
+  background: #4361ee;
+  color: #fff;
+  border-color: #4361ee;
+}
+
+.rs-hours-set-btn:hover {
+  background: #3451d1;
+  border-color: #3451d1;
+  color: #fff;
+}
+
 
 /* ── Toggle switch ── */
 .toggle-switch {
@@ -3418,9 +3651,14 @@ dialog {
   color: #4ade80;
 }
 
-.eta-near {
+.eta-near-open {
   background: #4a3a10;
   color: #fbbf24;
+}
+
+.eta-near-close {
+  background: #4a2010;
+  color: #fb923c;
 }
 
 .eta-closed {
@@ -4022,6 +4260,7 @@ dialog {
 .split-view-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 5px 10px;
   background: #252525;
   border-bottom: 1px solid #3a3a3a;
@@ -4055,6 +4294,40 @@ dialog {
   border-color: rgba(255, 255, 255, 0.30);
   color: rgba(255, 255, 255, 0.95);
   font-weight: 500;
+}
+
+.split-action-buttons {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.split-action-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 11px;
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+  line-height: 20px;
+}
+
+.split-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.split-action-btn--delete {
+  color: rgba(255, 80, 80, 0.5);
+  border-color: rgba(255, 80, 80, 0.15);
+}
+
+.split-action-btn--delete:hover {
+  background: rgba(255, 80, 80, 0.12);
+  color: #f87171;
 }
 
 /* ── Split two-pane shell (Both / Map modes) ── */

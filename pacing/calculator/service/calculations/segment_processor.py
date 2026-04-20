@@ -31,10 +31,11 @@ def process_segment(segment: Segment,
 
 
 def __validate_segment(segment: Segment, moving_speed: float, min_moving_speed) -> bool:
-    curr_min_moving_speed = segment.moving_speed if segment.min_moving_speed is not None else min_moving_speed
+    curr_min_moving_speed = segment.min_moving_speed if segment.min_moving_speed is not None else min_moving_speed
     curr_moving_speed = segment.moving_speed if segment.moving_speed else moving_speed
 
-    if curr_moving_speed < curr_min_moving_speed:
+    # Only error if the segment explicitly sets a moving speed below its minimum
+    if segment.moving_speed is not None and curr_moving_speed < curr_min_moving_speed:
         raise ValueError('Split moving speed cannot be lower than the minimum moving speed')
 
     return True
@@ -85,8 +86,11 @@ def __compute_segment_detail(segment: Segment,
     if segment.down_time_ratio is not None:
         down_time_ratio = segment.down_time_ratio
 
-    if curr_moving_speed < min_moving_speed:
+    # Only error if the segment explicitly sets a moving speed below its minimum.
+    # When speed is inherited from a previous segment's decay, clamp it up instead.
+    if segment.moving_speed is not None and curr_moving_speed < min_moving_speed:
         raise ValueError('Split moving speed cannot be lower than the minimum moving speed')
+    curr_moving_speed = max(curr_moving_speed, min_moving_speed)
 
     for i, split in enumerate(segment.splits):
         # at this point, the following respect the course/segment-level settings:

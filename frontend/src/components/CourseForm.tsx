@@ -218,6 +218,16 @@ export default function CourseForm() {
     urlName?: string;
   } | null>(null);
   const [criteriaModalOpen, setCriteriaModalOpen] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
+  const [etaMargins, setEtaMargins] = useState({ open: "15", close: "7" });
+  const [etaMarginsOpen, setEtaMarginsOpen] = useState(false);
+  const etaMarginsRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const el = etaMarginsRef.current;
+    if (!el) return;
+    if (etaMarginsOpen && !el.open) el.showModal();
+    else if (!etaMarginsOpen && el.open) el.close();
+  }, [etaMarginsOpen]);
   const [autoNameDialog, setAutoNameDialog] = useState<{
     open: boolean;
     namedItems: string[];
@@ -1175,6 +1185,63 @@ export default function CourseForm() {
     });
   };
 
+  const moveSplitToPrevSeg = (segIdx: number, splitIdx: number) => {
+    setForm((prev) => {
+      if (segIdx === 0) return prev;
+      const segs = prev.segments.map((s) => ({ ...s, splits: [...s.splits] }));
+      const [split] = segs[segIdx].splits.splice(splitIdx, 1);
+      segs[segIdx - 1].splits.push(split);
+      segs[segIdx - 1].splitCount = String(segs[segIdx - 1].splits.length);
+      // Remove source segment if now empty
+      const filtered =
+        segs[segIdx].splits.length === 0
+          ? segs.filter((_, i) => i !== segIdx)
+          : segs.map((s) => ({ ...s, splitCount: String(s.splits.length) }));
+      return {
+        ...prev,
+        segments: filtered,
+        segmentCount: String(filtered.length),
+      };
+    });
+  };
+
+  const moveSplitToNextSeg = (segIdx: number, splitIdx: number) => {
+    setForm((prev) => {
+      if (segIdx >= prev.segments.length - 1) return prev;
+      const segs = prev.segments.map((s) => ({ ...s, splits: [...s.splits] }));
+      const [split] = segs[segIdx].splits.splice(splitIdx, 1);
+      segs[segIdx + 1].splits.unshift(split);
+      segs[segIdx + 1].splitCount = String(segs[segIdx + 1].splits.length);
+      // Remove source segment if now empty
+      const filtered =
+        segs[segIdx].splits.length === 0
+          ? segs.filter((_, i) => i !== segIdx)
+          : segs.map((s) => ({ ...s, splitCount: String(s.splits.length) }));
+      return {
+        ...prev,
+        segments: filtered,
+        segmentCount: String(filtered.length),
+      };
+    });
+  };
+
+  const deleteSplit = (segIdx: number, splitIdx: number) => {
+    setForm((prev) => {
+      const segs = prev.segments.map((s) => ({ ...s, splits: [...s.splits] }));
+      segs[segIdx].splits.splice(splitIdx, 1);
+      // Remove segment if now empty
+      const filtered =
+        segs[segIdx].splits.length === 0
+          ? segs.filter((_, i) => i !== segIdx)
+          : segs.map((s) => ({ ...s, splitCount: String(s.splits.length) }));
+      return {
+        ...prev,
+        segments: filtered,
+        segmentCount: String(filtered.length),
+      };
+    });
+  };
+
   // â”€â”€ Field-level validation keyed by input element IDs â”€â”€
   const computeFieldErrors = useCallback(
     (f: CourseFormState): Record<string, string> => {
@@ -1630,6 +1697,18 @@ export default function CourseForm() {
               >
                 <button
                   type="button"
+                  className={`segments-toggle-btn segments-toggle-btn--lock${readOnly ? " active" : ""}`}
+                  onClick={() => setReadOnly((v) => !v)}
+                  title={
+                    readOnly
+                      ? "Unlock course form for editing"
+                      : "Lock course form to read-only mode"
+                  }
+                >
+                  {readOnly ? "🔒 Locked" : "🔓 Unlocked"}
+                </button>
+                <button
+                  type="button"
                   className="segments-toggle-btn segments-toggle-btn--export"
                   onClick={handleExport}
                   disabled={Object.keys(allErrors).length > 0}
@@ -1646,6 +1725,7 @@ export default function CourseForm() {
                   type="button"
                   onClick={handleReset}
                   title="Reset all form fields to defaults"
+                  disabled={readOnly}
                 >
                   ↺ Reset
                 </button>
@@ -1653,7 +1733,9 @@ export default function CourseForm() {
             </div>
 
             {!courseCollapsed && (
-              <div className="segment-body">
+              <div
+                className={`segment-body${readOnly ? " course-read-only" : ""}`}
+              >
                 {/* Unit & Mode Toggles */}
                 <div className="toggle-row--inline">
                   <div className="toggle-row-label-group">
@@ -1968,6 +2050,14 @@ export default function CourseForm() {
                     >
                       🔍 Stop Criteria
                     </button>
+                    <button
+                      type="button"
+                      className="segments-toggle-btn"
+                      onClick={() => setEtaMarginsOpen(true)}
+                      title="Configure the time windows used for 'near open' and 'near close' ETA badges"
+                    >
+                      ⏱️ ETA Margins
+                    </button>
                   </div>
                 </div>
                 {/* Pagination controls — always present so page-size preference persists */}
@@ -2051,6 +2141,15 @@ export default function CourseForm() {
                           onChange={(s) => updateSegment(i, s)}
                           unitSystem={form.unitSystem}
                           mode={form.mode}
+                          isLastSeg={i === form.segments.length - 1}
+                          totalSegments={form.segments.length}
+                          onMoveSplitToPrevSeg={(splitIdx) =>
+                            moveSplitToPrevSeg(i, splitIdx)
+                          }
+                          onMoveSplitToNextSeg={(splitIdx) =>
+                            moveSplitToNextSeg(i, splitIdx)
+                          }
+                          onDeleteSplit={(splitIdx) => deleteSplit(i, splitIdx)}
                           gpxProfiles={gpxProfiles?.[i] ?? null}
                           gpxTrack={gpxTrack}
                           courseTz={form.timezone}
@@ -2092,6 +2191,9 @@ export default function CourseForm() {
                             result?.segment_details[i]?.split_details ??
                             undefined
                           }
+                          readOnly={readOnly}
+                          etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
+                          etaMarginClose={parseInt(etaMargins.close, 10) || 7}
                         />
                       );
                     })}
@@ -2110,6 +2212,97 @@ export default function CourseForm() {
             </div>
           )}
         </div>
+
+        {/* ETA Margins dialog */}
+        <dialog
+          ref={etaMarginsRef}
+          className="legend-modal"
+          onClose={() => setEtaMarginsOpen(false)}
+        >
+          <div className="legend-header">
+            <h2>ETA Margins</h2>
+            <button
+              className="legend-close"
+              onClick={() => setEtaMarginsOpen(false)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="legend-body">
+            <p style={{ marginTop: 0, marginBottom: "1rem" }}>
+              Time windows (in minutes) for the &ldquo;Near open&rdquo; and
+              &ldquo;Near close&rdquo; ETA badges on rest stops.
+            </p>
+            <div className="fields-grid">
+              <div className="field">
+                <label htmlFor="eta-margin-open">Near Open (min)</label>
+                <input
+                  id="eta-margin-open"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={etaMargins.open}
+                  onChange={(e) =>
+                    setEtaMargins((m) => ({ ...m, open: e.target.value }))
+                  }
+                />
+                {(() => {
+                  const v = parseInt(etaMargins.open, 10);
+                  if (
+                    etaMargins.open.trim() === "" ||
+                    isNaN(v) ||
+                    v < 0 ||
+                    !Number.isInteger(v)
+                  )
+                    return (
+                      <span className="field-error">
+                        Must be a non-negative integer
+                      </span>
+                    );
+                  return null;
+                })()}
+              </div>
+              <div className="field">
+                <label htmlFor="eta-margin-close">Near Close (min)</label>
+                <input
+                  id="eta-margin-close"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={etaMargins.close}
+                  onChange={(e) =>
+                    setEtaMargins((m) => ({ ...m, close: e.target.value }))
+                  }
+                />
+                {(() => {
+                  const v = parseInt(etaMargins.close, 10);
+                  if (
+                    etaMargins.close.trim() === "" ||
+                    isNaN(v) ||
+                    v < 0 ||
+                    !Number.isInteger(v)
+                  )
+                    return (
+                      <span className="field-error">
+                        Must be a non-negative integer
+                      </span>
+                    );
+                  return null;
+                })()}
+              </div>
+            </div>
+          </div>
+          <div className="legend-footer">
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => setEtaMarginsOpen(false)}
+            >
+              Done
+            </button>
+          </div>
+        </dialog>
 
         {/* Quick-setup dialog */}
         <dialog

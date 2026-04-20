@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { RestStopForm, DayHoursEntry } from "../types";
 import { FieldError } from "./FieldError";
 import DayHoursInput from "./DayHoursInput";
@@ -11,6 +12,46 @@ interface RestStopFormProps {
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+function fmtCompact(time: string): string {
+  if (!time) return "";
+  const [h, m] = time.split(":").map(Number);
+  const ampm = h < 12 ? "a" : "p";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return m === 0
+    ? `${h12}${ampm}`
+    : `${h12}:${String(m).padStart(2, "0")}${ampm}`;
+}
+
+function entryCompactLabel(entry: DayHoursEntry): string {
+  if (entry.mode === "24h") return "24h";
+  if (entry.mode === "closed") return "Closed";
+  return `${fmtCompact(entry.opens)}–${fmtCompact(entry.closes)}`;
+}
+
+function hoursDetailSummary(rs: RestStopForm): string {
+  if (rs.sameHoursEveryDay) {
+    return `Daily: ${entryCompactLabel(rs.allDays)}`;
+  }
+  const groups: { start: number; end: number; label: string }[] = [];
+  rs.perDay.forEach((entry, i) => {
+    const label = entryCompactLabel(entry);
+    if (groups.length > 0 && groups[groups.length - 1].label === label) {
+      groups[groups.length - 1].end = i;
+    } else {
+      groups.push({ start: i, end: i, label });
+    }
+  });
+  return groups
+    .map(({ start, end, label }) => {
+      const dayStr =
+        start === end
+          ? DAY_LABELS[start]
+          : `${DAY_LABELS[start]}–${DAY_LABELS[end]}`;
+      return `${dayStr}: ${label}`;
+    })
+    .join(" · ");
+}
+
 export default function RestStopFormComponent({
   prefix,
   value,
@@ -20,10 +61,46 @@ export default function RestStopFormComponent({
   const update = (patch: Partial<RestStopForm>) =>
     onChange({ ...value, ...patch });
 
-  const updatePerDay = (i: number, entry: DayHoursEntry) => {
-    const next = [...value.perDay] as RestStopForm["perDay"];
+  // Hours modal state — draft is initialized from value when modal opens
+  const [modalOpen, setModalOpen] = useState(false);
+  const [draftSame, setDraftSame] = useState(value.sameHoursEveryDay);
+  const [draftAllDays, setDraftAllDays] = useState<DayHoursEntry>(
+    value.allDays,
+  );
+  const [draftPerDay, setDraftPerDay] = useState<RestStopForm["perDay"]>(
+    value.perDay,
+  );
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    if (modalOpen && !el.open) el.showModal();
+    else if (!modalOpen && el.open) el.close();
+  }, [modalOpen]);
+
+  const openModal = () => {
+    setDraftSame(value.sameHoursEveryDay);
+    setDraftAllDays(value.allDays);
+    setDraftPerDay(value.perDay);
+    setModalOpen(true);
+  };
+
+  const cancelModal = () => setModalOpen(false);
+
+  const commitModal = () => {
+    update({
+      sameHoursEveryDay: draftSame,
+      allDays: draftAllDays,
+      perDay: draftPerDay,
+    });
+    setModalOpen(false);
+  };
+
+  const updateDraftPerDay = (i: number, entry: DayHoursEntry) => {
+    const next = [...draftPerDay] as RestStopForm["perDay"];
     next[i] = entry;
-    update({ perDay: next });
+    setDraftPerDay(next);
   };
 
   return (
@@ -117,47 +194,85 @@ export default function RestStopFormComponent({
             )}
           </div>
 
-          {/* Hours section */}
-          <div className="rs-hours-header">
-            <span className="rs-hours-header-label">Hours</span>
-            <span className="rs-hours-header-toggle-label">
-              Same Daily Hours
+          {/* Hours — summary + edit icon */}
+          <div className="rs-hours-row">
+            <span className="rs-hours-row-label">Hours</span>
+            <span className="rs-hours-detail-summary">
+              {hoursDetailSummary(value)}
             </span>
+            <button
+              type="button"
+              className="rs-hours-edit-icon-btn"
+              onClick={openModal}
+              aria-label="Edit rest stop hours"
+              title="Edit hours"
+            >
+              ✎
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hours modal */}
+      <dialog ref={dialogRef} className="rs-hours-modal" onClose={cancelModal}>
+        <div className="legend-header">
+          <h2>Rest Stop Hours</h2>
+          <button
+            type="button"
+            className="legend-close"
+            onClick={cancelModal}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="legend-body rs-hours-modal-body">
+          <div className="rs-hours-header rs-hours-modal-same-row">
+            <span className="rs-hours-header-label">Same hours every day</span>
             <label className="toggle-switch">
               <input
-                id={`${prefix}-same-hours`}
                 type="checkbox"
-                checked={value.sameHoursEveryDay}
-                onChange={(e) =>
-                  update({ sameHoursEveryDay: e.target.checked })
-                }
+                checked={draftSame}
+                onChange={(e) => setDraftSame(e.target.checked)}
               />
               <span className="toggle-track" />
               <span className="toggle-thumb" />
             </label>
           </div>
 
-          {value.sameHoursEveryDay ? (
+          {draftSame ? (
             <DayHoursInput
-              id={`${prefix}-all`}
-              value={value.allDays}
-              onChange={(v) => update({ allDays: v })}
+              id={`${prefix}-modal-all`}
+              value={draftAllDays}
+              onChange={setDraftAllDays}
             />
           ) : (
             <div className="per-day-hours">
               {DAY_LABELS.map((day, i) => (
                 <DayHoursInput
                   key={i}
-                  id={`${prefix}-day-${i}`}
+                  id={`${prefix}-modal-day-${i}`}
                   label={day}
-                  value={value.perDay[i]}
-                  onChange={(v) => updatePerDay(i, v)}
+                  value={draftPerDay[i]}
+                  onChange={(v) => updateDraftPerDay(i, v)}
                 />
               ))}
             </div>
           )}
         </div>
-      )}
+        <div className="legend-footer">
+          <button type="button" className="ghost-btn" onClick={cancelModal}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="ghost-btn rs-hours-set-btn"
+            onClick={commitModal}
+          >
+            Set Hours
+          </button>
+        </div>
+      </dialog>
     </div>
   );
 }
