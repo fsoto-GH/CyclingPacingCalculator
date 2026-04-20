@@ -91,6 +91,8 @@ export interface RestStopForm {
   name: string;
   address: string;
   alt: string;
+  lat?: number;
+  lon?: number;
   sameHoursEveryDay: boolean;
   allDays: DayHoursEntry; // used when sameHoursEveryDay
   perDay: [

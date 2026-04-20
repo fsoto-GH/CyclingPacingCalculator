@@ -3,11 +3,20 @@ import type { RestStopForm, DayHoursEntry } from "../types";
 import { FieldError } from "./FieldError";
 import DayHoursInput from "./DayHoursInput";
 
+interface EtaInfo {
+  status: "open" | "near-open" | "near-close" | "closed";
+  statusWord: string;
+  hoursLabel: string;
+  nearDetail: string | null;
+  arrivalTime: string;
+}
+
 interface RestStopFormProps {
   prefix: string;
   value: RestStopForm;
   onChange: (val: RestStopForm) => void;
   addressLoading?: boolean;
+  etaInfo?: EtaInfo | null;
 }
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -57,9 +66,17 @@ export default function RestStopFormComponent({
   value,
   onChange,
   addressLoading,
+  etaInfo,
 }: RestStopFormProps) {
   const update = (patch: Partial<RestStopForm>) =>
     onChange({ ...value, ...patch });
+
+  // Keep address typing local; commit to parent form on blur so
+  // forward-geocode triggers only after the user leaves the field.
+  const [addressDraft, setAddressDraft] = useState(value.address);
+  useEffect(() => {
+    setAddressDraft(value.address);
+  }, [value.address]);
 
   // Hours modal state — draft is initialized from value when modal opens
   const [modalOpen, setModalOpen] = useState(false);
@@ -165,8 +182,18 @@ export default function RestStopFormComponent({
             <input
               id={`${prefix}-address`}
               type="text"
-              value={value.address}
-              onChange={(e) => update({ address: e.target.value })}
+              value={addressDraft}
+              onChange={(e) => setAddressDraft(e.target.value)}
+              onBlur={() => {
+                if (addressDraft !== value.address) {
+                  update({ address: addressDraft });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
               placeholder={
                 addressLoading ? "Looking up address\u2026" : undefined
               }
@@ -210,6 +237,18 @@ export default function RestStopFormComponent({
               ✎
             </button>
           </div>
+
+          {/* ETA status */}
+          {etaInfo && (
+            <div className={`rs-eta-row eta-${etaInfo.status}`}>
+              ETA {etaInfo.arrivalTime} — <strong>{etaInfo.statusWord}</strong>
+              {etaInfo.hoursLabel !== "24 hours" &&
+                etaInfo.hoursLabel !== "Closed" && <> ({etaInfo.hoursLabel})</>}
+              {etaInfo.nearDetail && (
+                <span className="rs-eta-detail"> · {etaInfo.nearDetail}</span>
+              )}
+            </div>
+          )}
         </div>
       )}
 

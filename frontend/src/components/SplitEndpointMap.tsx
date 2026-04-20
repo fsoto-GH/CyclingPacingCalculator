@@ -41,18 +41,6 @@ import FindNearbyModal from "./FindNearbyModal";
 /** ±10 mi expressed in km */
 const SLICE_KM = 16.0934;
 
-// Module-level cache — persists across remounts so the same address is never re-fetched
-const geocodeCache = new Map<
-  string,
-  {
-    lat: number;
-    lon: number;
-    type?: string;
-    placeClass?: string;
-    name?: string;
-  } | null
->();
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function decimateTrack(track: GpxTrackPoint[]): [number, number][] {
@@ -372,15 +360,17 @@ export default function SplitEndpointMap({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
-  const [restStopCoords, setRestStopCoords] = useState<{
-    lat: number;
-    lon: number;
-    type?: string;
-    placeClass?: string;
-    name?: string;
-  } | null>(null);
-  const geocodeAbortRef = useRef<AbortController | null>(null);
-  const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Rest stop coordinates come from form state (populated by SplitForm geocode
+  // effect or Overpass selection). SplitEndpointMap no longer runs its own
+  // forward geocode — it reads the authoritative coords from the parent.
+  const restStopCoords = useMemo(() => {
+    if (restStop?.lat != null && restStop?.lon != null) {
+      return { lat: restStop.lat, lon: restStop.lon };
+    }
+    return null;
+  }, [restStop?.lat, restStop?.lon]);
+
   const isFirstEndpointRender = useRef(true);
 
   useEffect(() => {
@@ -397,12 +387,9 @@ export default function SplitEndpointMap({
     }
   }
 
-  // Abort geocode requests, pending timers, and any in-flight search on unmount
+  // Abort any in-flight search on unmount
   useEffect(
     () => () => {
-      geocodeAbortRef.current?.abort();
-      if (geocodeTimerRef.current !== null)
-        clearTimeout(geocodeTimerRef.current);
       searchAbortRef.current?.abort();
       if (usedStopTimerRef.current !== null)
         clearTimeout(usedStopTimerRef.current);
@@ -421,65 +408,6 @@ export default function SplitEndpointMap({
     setSearchError(null);
     searchAbortRef.current?.abort();
   }, [endLat, endLon]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Geocode the rest stop address via Nominatim — debounced 600 ms, cached by address
-  useEffect(() => {
-    const addr = restStop?.enabled ? (restStop.address?.trim() ?? "") : "";
-    if (!addr) {
-      setRestStopCoords(null);
-      return;
-    }
-    // Hit the cache first — avoids re-fetching across remounts or unchanged values
-    if (geocodeCache.has(addr)) {
-      const cached = geocodeCache.get(addr) ?? null;
-      setRestStopCoords(cached);
-      if (cached?.name && !restStop?.name?.trim()) {
-        onSelectStop({ name: cached.name });
-      }
-      return;
-    }
-    // Debounce: coalesce rapid keystrokes into a single request
-    if (geocodeTimerRef.current !== null) clearTimeout(geocodeTimerRef.current);
-    geocodeTimerRef.current = setTimeout(() => {
-      geocodeAbortRef.current?.abort();
-      const ctrl = new AbortController();
-      geocodeAbortRef.current = ctrl;
-      fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=json&limit=1`,
-        { signal: ctrl.signal, headers: { "Accept-Language": "en" } },
-      )
-        .then((r) => r.json())
-        .then(
-          (
-            res: Array<{
-              lat: string;
-              lon: string;
-              type?: string;
-              class?: string;
-              name?: string;
-            }>,
-          ) => {
-            if (ctrl.signal.aborted) return;
-            const coords =
-              res.length > 0
-                ? {
-                    lat: +res[0].lat,
-                    lon: +res[0].lon,
-                    type: res[0].type,
-                    placeClass: res[0].class,
-                    name: res[0].name,
-                  }
-                : null;
-            geocodeCache.set(addr, coords);
-            setRestStopCoords(coords);
-            if (coords?.name && !restStop?.name?.trim()) {
-              onSelectStop({ name: coords.name });
-            }
-          },
-        )
-        .catch(() => {});
-    }, 600);
-  }, [restStop?.enabled, restStop?.address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track slice: ±SLICE_KM around the endpoint
   const polyline = useMemo(() => {
@@ -596,7 +524,12 @@ export default function SplitEndpointMap({
   }
 
   function doSelect(a: NearbyAmenity) {
-    const patch: Partial<RestStopForm> = { enabled: true, name: a.name };
+    const patch: Partial<RestStopForm> = {
+      enabled: true,
+      name: a.name,
+      lat: a.lat,
+      lon: a.lon,
+    };
     if (a.hours) {
       patch.sameHoursEveryDay = false;
       patch.perDay = a.hours;
@@ -721,14 +654,6 @@ export default function SplitEndpointMap({
             >
               <Popup>
                 <strong>Rest Stop</strong>
-                {restStopCoords?.type && (
-                  <span
-                    className="split-map-place-badge"
-                    title={restStopCoords.placeClass}
-                  >
-                    {restStopCoords.type}
-                  </span>
-                )}
                 <br />
                 {restStop?.name || restStop?.address}
               </Popup>

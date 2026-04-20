@@ -470,36 +470,6 @@ h4 {
   background: #2e2e2e;
 }
 
-/* Lock / Unlock toggle */
-.segments-toggle-btn--lock {
-  color: #94a3b8;
-}
-
-.segments-toggle-btn--lock.active {
-  color: #fbbf24;
-  border-color: #fbbf24;
-  background: #3a3520;
-}
-
-.segments-toggle-btn--lock:hover {
-  border-color: #fbbf24;
-  background: #2e2e2e;
-}
-
-/* Read-only overlay for course form */
-.course-read-only {
-  pointer-events: none;
-  opacity: 0.7;
-  user-select: none;
-}
-
-.course-read-only input,
-.course-read-only select,
-.course-read-only textarea,
-.course-read-only button {
-  cursor: default;
-}
-
 @media (max-width: 640px) {
   .segments-toolbar {
     gap: 0.35rem;
@@ -1432,6 +1402,24 @@ h4 {
   color: #93c5fd;
   border-color: #4361ee;
   background: rgba(67, 97, 238, 0.1);
+}
+
+/* ── ETA row inside rest stop form ── */
+.rs-eta-row {
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.rs-eta-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rs-eta-detail {
+  opacity: 0.8;
 }
 
 /* ── Hours modal ── */
@@ -5037,7 +5025,6 @@ dialog {
 }
 
 .stop-marker-backup {
-  border: 2px dashed #94a3b8;
   padding: 1px;
   opacity: 0.75;
 }

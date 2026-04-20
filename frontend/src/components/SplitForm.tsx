@@ -19,9 +19,10 @@ function timeToMin(t: string): number {
 
 interface EtaInfo {
   status: "open" | "near-open" | "near-close" | "closed";
-  label: string;
+  statusWord: string; // e.g. "Open", "Near open", "Near close", "Closed"
   hoursLabel: string; // e.g. "6:00 AM – 10:00 PM" or "24 hours" or "Closed"
   nearDetail: string | null; // e.g. "5 min before opening" or "10 min after closing"
+  arrivalTime: string; // e.g. "1:31 PM EDT"
 }
 
 function checkArrivalVsHours(
@@ -122,7 +123,6 @@ interface SplitFormProps {
   onMoveToPrevSeg?: () => void;
   onMoveToNextSeg?: () => void;
   onDelete?: () => void;
-  readOnly?: boolean;
   etaMarginOpen?: number;
   etaMarginClose?: number;
   onZoomToSplit?: () => void;
@@ -162,7 +162,6 @@ export default function SplitFormComponent({
   onMoveToPrevSeg,
   onMoveToNextSeg,
   onDelete,
-  readOnly,
   etaMarginOpen = 15,
   etaMarginClose = 7,
   onZoomToSplit,
@@ -231,26 +230,9 @@ export default function SplitFormComponent({
   }, [expandAllSignal]);
 
   // ── Three toggle panels (Form | Map | Results) ────────────────────────────
-  const [showForm, setShowForm] = useState(!readOnly);
-  const [showMap, setShowMap] = useState(!!readOnly);
-  const [showResults, setShowResults] = useState(!!readOnly);
-
-  // When readOnly toggles, reset panel defaults
-  const prevReadOnly = useRef(readOnly);
-  useEffect(() => {
-    if (readOnly !== prevReadOnly.current) {
-      prevReadOnly.current = readOnly;
-      if (readOnly) {
-        setShowForm(false);
-        setShowMap(true);
-        setShowResults(true);
-      } else {
-        setShowForm(true);
-        setShowMap(false);
-        setShowResults(false);
-      }
-    }
-  }, [readOnly]);
+  const [showForm, setShowForm] = useState(true);
+  const [showMap, setShowMap] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const [formColWidth, setFormColWidth] = useState(350);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -464,13 +446,36 @@ export default function SplitFormComponent({
       }
     }
 
-    const labels: Record<string, string> = {
-      open: "Open at ETA",
-      "near-open": "Near opening time",
-      "near-close": "Near closing time",
-      closed: "Closed at ETA",
+    const statusWords: Record<string, string> = {
+      open: "Open",
+      "near-open": "Near open",
+      "near-close": "Near close",
+      closed: "Closed",
     };
-    return { status, label: labels[status], hoursLabel, nearDetail };
+
+    // Format arrival time with timezone abbreviation
+    const arrivalTime =
+      arrival.toLocaleTimeString("en-US", {
+        timeZone: tz,
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }) +
+      " " +
+      (new Intl.DateTimeFormat("en-US", {
+        timeZone: tz,
+        timeZoneName: "short",
+      })
+        .formatToParts(arrival)
+        .find((p) => p.type === "timeZoneName")?.value ?? "");
+
+    return {
+      status,
+      statusWord: statusWords[status],
+      hoursLabel,
+      nearDetail,
+      arrivalTime,
+    };
   })();
 
   // Timezone badge — shown whenever a split timezone override is active,
@@ -657,7 +662,7 @@ export default function SplitFormComponent({
                       {etaInfo && (
                         <span
                           className={`eta-badge eta-${etaInfo.status}`}
-                          title={`${etaInfo.label} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
+                          title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
                         >
                           {etaInfo.status === "open" &&
                             (etaInfo.hoursLabel === "24 hours"
@@ -793,7 +798,7 @@ export default function SplitFormComponent({
         (() => {
           // ── Shared form content (distance, overrides, sub-splits, rest stop) ──
           const formContent = (
-            <div className={readOnly ? "course-read-only" : undefined}>
+            <div>
               {/* Row 1: Distance */}
               <div className="field">
                 <label htmlFor={`${prefix}-distance`}>
@@ -1009,6 +1014,7 @@ export default function SplitFormComponent({
                 value={value.rest_stop}
                 onChange={(rs) => update({ rest_stop: rs })}
                 addressLoading={addressLoading}
+                etaInfo={etaInfo}
               />
 
               {/* Notes */}

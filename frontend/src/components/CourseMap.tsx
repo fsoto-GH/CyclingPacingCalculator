@@ -490,7 +490,8 @@ export default function CourseMap({
       result[result.length - 1].role = "finish";
     }
 
-    // Rest stop markers — placed at split endpoints where a rest stop is enabled
+    // Rest stop markers — use the stop's own coordinates when available,
+    // otherwise fall back to the split endpoint position on the GPX track.
     for (let si = 0; si < splitBoundariesKm.length; si++) {
       const segBounds = splitBoundariesKm[si];
       for (let sj = 0; sj < segBounds.length; sj++) {
@@ -498,7 +499,10 @@ export default function CourseMap({
           formSegments[si]?.splits[sj]?.rest_stop;
         if (!rs?.enabled || !rs.name) continue;
         const [, endKm] = segBounds[sj];
-        const coord = interpolateLatLon(gpxTrack, endKm);
+        const hasOwnCoords = rs.lat != null && rs.lon != null;
+        const coord = hasOwnCoords
+          ? { lat: rs.lat!, lon: rs.lon! }
+          : interpolateLatLon(gpxTrack, endKm);
         if (!coord) continue;
         result.push({
           lat: coord.lat,

@@ -63,7 +63,6 @@ interface SegmentFormProps {
   onMoveSplitToPrevSeg?: (splitIdx: number) => void;
   onMoveSplitToNextSeg?: (splitIdx: number) => void;
   onDeleteSplit?: (splitIdx: number) => void;
-  readOnly?: boolean;
   etaMarginOpen?: number;
   etaMarginClose?: number;
   onZoomToSegment?: () => void;
@@ -97,7 +96,6 @@ export default function SegmentFormComponent({
   onMoveSplitToPrevSeg,
   onMoveSplitToNextSeg,
   onDeleteSplit,
-  readOnly,
   etaMarginOpen = 15,
   etaMarginClose = 7,
   onZoomToSegment,
@@ -475,7 +473,7 @@ export default function SegmentFormComponent({
       </div>
 
       {!collapsed && (
-        <div className={`segment-body${readOnly ? " course-read-only" : ""}`}>
+        <div className="segment-body">
           <div className="fields-grid">
             <TimeInput
               id={`${prefix}-sleep-time`}
@@ -649,7 +647,6 @@ export default function SegmentFormComponent({
                 onMoveToPrevSeg={() => onMoveSplitToPrevSeg?.(j)}
                 onMoveToNextSeg={() => onMoveSplitToNextSeg?.(j)}
                 onDelete={() => onDeleteSplit?.(j)}
-                readOnly={readOnly}
                 etaMarginOpen={etaMarginOpen}
                 etaMarginClose={etaMarginClose}
                 onZoomToSplit={

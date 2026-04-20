@@ -76,6 +76,8 @@ export default function NearbyStopsPanel({
         enabled: true,
         name: a.name,
         address: a.address,
+        lat: a.lat,
+        lon: a.lon,
       };
       if (a.hours) {
         patch.sameHoursEveryDay = false;
