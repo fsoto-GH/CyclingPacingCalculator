@@ -1104,21 +1104,6 @@ export default function SplitFormComponent({
                     )}
                   </dd>
                 </div>
-                {etaInfo && (
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <dt title="These are the hours for the rest stop at the estimated time of arrival.">
-                      Rest Stop Hours
-                    </dt>
-                    <dd>
-                      <span>{etaInfo.hoursLabel}</span>
-                      {etaInfo.nearDetail && (
-                        <span className="split-results-near-detail">
-                          {etaInfo.nearDetail}
-                        </span>
-                      )}
-                    </dd>
-                  </div>
-                )}
                 <div>
                   <dt title="Average moving speed across this split">Speed</dt>
                   <dd>
@@ -1147,6 +1132,21 @@ export default function SplitFormComponent({
                       </dd>
                     </div>
                   )}
+                {etaInfo && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <dt title="These are the hours for the rest stop at the estimated time of arrival.">
+                      Rest Stop Hours
+                    </dt>
+                    <dd>
+                      <span>{etaInfo.hoursLabel}</span>
+                      {etaInfo.nearDetail && (
+                        <span className="split-results-near-detail">
+                          {etaInfo.nearDetail}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                )}
               </dl>
               {!showForm &&
                 value.rest_stop.enabled &&

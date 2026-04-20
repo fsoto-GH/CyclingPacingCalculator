@@ -325,6 +325,12 @@ export default function CourseForm() {
     [],
   );
 
+  // Clear mapNavTarget after children have consumed the signal so stale
+  // values don't re-fire when components remount (collapse → expand).
+  useEffect(() => {
+    if (mapNavTarget) setMapNavTarget(null);
+  }, [mapNavTarget]);
+
   // Collapse/expand all segments and splits
   const [collapseAllSignal, setCollapseAllSignal] = useState(0);
   const [expandAllSignal, setExpandAllSignal] = useState(0);
