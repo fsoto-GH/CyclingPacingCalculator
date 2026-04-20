@@ -142,6 +142,10 @@ export interface CourseForm {
   mode: Mode;
   timezone: string; // IANA timezone
   sub_split_mode: SubSplitMode; // course-level default, splits may override
+  sub_split_count?: string;
+  sub_split_distance?: string;
+  last_sub_split_threshold?: string;
+  sub_split_distances?: string; // comma-separated
   init_moving_speed: string;
   min_moving_speed: string;
   down_time_ratio: string;

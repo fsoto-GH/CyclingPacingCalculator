@@ -865,63 +865,80 @@ export default function SplitFormComponent({
 
           const resultsContent = splitResult ? (
             <div className="split-results-panel">
-              <dl className="split-results-dl">
-                <dt>Start</dt>
-                <dd>
-                  {fmtInTz(splitResult.start_time, splitStartTz ?? courseTz)}
-                </dd>
-                {splitStartTz && splitStartTz !== courseTz && (
-                  <>
-                    <dt />
-                    <dd className="split-results-tz-also">
-                      {fmtInTz(splitResult.start_time, courseTz)}
-                    </dd>
-                  </>
-                )}
-                <dt>End</dt>
-                <dd>{fmtInTz(splitResult.end_time, splitEndTz ?? courseTz)}</dd>
-                {splitEndTz && splitEndTz !== courseTz && (
-                  <>
-                    <dt />
-                    <dd className="split-results-tz-also">
-                      {fmtInTz(splitResult.end_time, courseTz)}
-                    </dd>
-                  </>
-                )}
-                <dt>Moving</dt>
-                <dd>{formatHours(splitResult.moving_time_hours)}</dd>
-                <dt>Down</dt>
-                <dd>{formatHours(splitResult.down_time_hours)}</dd>
-                <dt>Active</dt>
-                <dd>{formatHours(splitResult.active_time_hours)}</dd>
-                <dt>Split Time</dt>
-                <dd>
-                  {formatHours(
-                    splitResult.moving_time_hours + splitResult.down_time_hours,
-                  )}
-                </dd>
+              <dl className="split-results-grid">
+                <div>
+                  <dt>Start</dt>
+                  <dd>
+                    {fmtInTz(splitResult.start_time, splitStartTz ?? courseTz)}
+                    {splitStartTz && splitStartTz !== courseTz && (
+                      <span className="split-results-tz-also">
+                        {" "}
+                        ({fmtInTz(splitResult.start_time, courseTz)})
+                      </span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>End</dt>
+                  <dd>
+                    {fmtInTz(splitResult.end_time, splitEndTz ?? courseTz)}
+                    {splitEndTz && splitEndTz !== courseTz && (
+                      <span className="split-results-tz-also">
+                        {" "}
+                        ({fmtInTz(splitResult.end_time, courseTz)})
+                      </span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Active</dt>
+                  <dd>{formatHours(splitResult.active_time_hours)}</dd>
+                </div>
+                <div>
+                  <dt>Moving</dt>
+                  <dd>{formatHours(splitResult.moving_time_hours)}</dd>
+                </div>
+                <div>
+                  <dt>Down</dt>
+                  <dd>{formatHours(splitResult.down_time_hours)}</dd>
+                </div>
+                <div>
+                  <dt>Split Time</dt>
+                  <dd>
+                    {formatHours(
+                      splitResult.moving_time_hours +
+                        splitResult.down_time_hours,
+                    )}
+                  </dd>
+                </div>
                 {etaInfo && (
-                  <>
+                  <div style={{ gridColumn: "1 / -1" }}>
                     <dt>ETA Status</dt>
-                    <dd
-                      className={`split-results-eta split-results-eta--${etaInfo.status}`}
-                    >
-                      {etaInfo.label}
+                    <dd>
+                      <span className={`eta-badge eta-${etaInfo.status}`}>
+                        {etaInfo.status === "open" && "✓ Open"}
+                        {etaInfo.status === "near" && "⚠ Near close"}
+                        {etaInfo.status === "closed" && "✗ Closed"}
+                      </span>
                     </dd>
-                  </>
+                  </div>
                 )}
-                <dt>Speed</dt>
-                <dd>
-                  {splitResult.moving_speed.toFixed(1)} {sLabel}
-                </dd>
-                <dt>Pace</dt>
-                <dd>{paceStr}</dd>
+                <div>
+                  <dt>Speed</dt>
+                  <dd>
+                    {splitResult.moving_speed.toFixed(1)} {sLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Pace</dt>
+                  <dd>{paceStr}</dd>
+                </div>
                 {splitResult.adjustment_time_hours != null &&
                   splitResult.adjustment_time_hours !== 0 && (
-                    <>
+                    <div>
                       <dt>Adj. Time</dt>
                       <dd>{formatHours(splitResult.adjustment_time_hours)}</dd>
-                    </>
+                    </div>
                   )}
               </dl>
               {splitResult.sub_splits.length > 0 && (
@@ -968,79 +985,76 @@ export default function SplitFormComponent({
             </div>
           );
 
-          // ── Panel layout: render selected panels side by side or stacked ──
-          const activePanelCount =
-            (showForm ? 1 : 0) +
-            (showMap && mapAvailable ? 1 : 0) +
-            (showResults ? 1 : 0);
+          // ── Layout: Results always takes a full-width row above Form/Map ──
+          const hasFormOrMap = showForm || (showMap && mapAvailable);
 
-          if (activePanelCount === 0) {
-            // Guard: at least form
-            return <div className="split-body">{formContent}</div>;
-          }
+          // Build the form/map pane (may be absent)
+          const formMapPane = hasFormOrMap
+            ? (() => {
+                if (isNarrow) {
+                  return (
+                    <div className="split-two-pane split-two-pane--stacked">
+                      {showForm && (
+                        <div className="split-form-col">{formContent}</div>
+                      )}
+                      {showMap && mapAvailable && (
+                        <div className="split-map-col">{mapContent}</div>
+                      )}
+                    </div>
+                  );
+                }
+                if (showForm && showMap && mapAvailable) {
+                  return (
+                    <div className="split-two-pane">
+                      <div
+                        className="split-form-col"
+                        style={{ width: formColWidth }}
+                      >
+                        {formContent}
+                      </div>
+                      <div
+                        ref={resizeHandleRef}
+                        className="split-resize-handle"
+                        onMouseDown={(e) => {
+                          isDragging.current = true;
+                          dragStartX.current = e.clientX;
+                          dragStartWidth.current = formColWidth;
+                          resizeHandleRef.current?.classList.add("active");
+                          e.preventDefault();
+                        }}
+                      />
+                      <div className="split-map-col">{mapContent}</div>
+                    </div>
+                  );
+                }
+                if (showMap && mapAvailable) {
+                  return (
+                    <div className="split-two-pane">
+                      <div className="split-map-col--full">{mapContent}</div>
+                    </div>
+                  );
+                }
+                return <div className="split-body">{formContent}</div>;
+              })()
+            : null;
 
-          if (activePanelCount === 1) {
-            if (showForm)
-              return <div className="split-body">{formContent}</div>;
-            if (showMap && mapAvailable)
-              return (
-                <div className="split-two-pane">
-                  <div className="split-map-col--full">{mapContent}</div>
-                </div>
-              );
-            return <div className="split-body">{resultsContent}</div>;
-          }
-
-          // Two or three panels — render in a flex row based on which are active
-          if (isNarrow) {
+          if (!showResults) {
+            // No results row — just form/map (or fallback to form)
             return (
-              <div className="split-two-pane split-two-pane--stacked">
-                {showForm && (
-                  <div className="split-form-col">{formContent}</div>
-                )}
-                {showMap && mapAvailable && (
-                  <div className="split-map-col">{mapContent}</div>
-                )}
-                {showResults && (
-                  <div className="split-form-col">{resultsContent}</div>
-                )}
-              </div>
+              formMapPane ?? <div className="split-body">{formContent}</div>
             );
           }
 
-          // Wide layout: form/results on left, map in middle/right, or side by side
+          if (!hasFormOrMap) {
+            // Results only
+            return <div className="split-body">{resultsContent}</div>;
+          }
+
+          // Results row above form/map
           return (
-            <div className="split-two-pane">
-              {showForm && (
-                <div className="split-form-col" style={{ width: formColWidth }}>
-                  {formContent}
-                </div>
-              )}
-              {showForm && (showMap || showResults) && (
-                <div
-                  ref={resizeHandleRef}
-                  className="split-resize-handle"
-                  onMouseDown={(e) => {
-                    isDragging.current = true;
-                    dragStartX.current = e.clientX;
-                    dragStartWidth.current = formColWidth;
-                    resizeHandleRef.current?.classList.add("active");
-                    e.preventDefault();
-                  }}
-                />
-              )}
-              {showMap && mapAvailable && (
-                <div
-                  className={
-                    showResults ? "split-map-col" : "split-map-col--full"
-                  }
-                >
-                  {mapContent}
-                </div>
-              )}
-              {showResults && (
-                <div className="split-form-col">{resultsContent}</div>
-              )}
+            <div className="split-stacked-layout">
+              <div className="split-results-row">{resultsContent}</div>
+              {formMapPane}
             </div>
           );
         })()}

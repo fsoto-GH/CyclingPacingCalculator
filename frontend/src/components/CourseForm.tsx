@@ -88,6 +88,10 @@ const INITIAL_FORM: CourseFormState = {
   mode: "distance",
   timezone: browserTimezone,
   sub_split_mode: "hour",
+  sub_split_count: "1",
+  sub_split_distance: "",
+  last_sub_split_threshold: "20",
+  sub_split_distances: "",
   init_moving_speed: "",
   min_moving_speed: "",
   down_time_ratio: "0",
@@ -162,6 +166,12 @@ function loadSavedForm(): CourseFormState {
 
     // Migrate: add course-level sub_split_mode if missing (old forms had it per-split only)
     if (!parsed.sub_split_mode) parsed.sub_split_mode = "hour";
+    if (!parsed.sub_split_count) parsed.sub_split_count = "1";
+    if (parsed.sub_split_distance === undefined) parsed.sub_split_distance = "";
+    if (parsed.last_sub_split_threshold === undefined)
+      parsed.last_sub_split_threshold = "20";
+    if (parsed.sub_split_distances === undefined)
+      parsed.sub_split_distances = "";
 
     // Migrate rest stops and splits
     for (const seg of parsed.segments ?? []) {
@@ -1829,6 +1839,72 @@ export default function CourseForm() {
                       <option value="custom">Custom</option>
                     </select>
                   </div>
+
+                  {form.sub_split_mode === "even" && (
+                    <div className="field">
+                      <label htmlFor="course-ss-count">Count *</label>
+                      <NumberInput
+                        id="course-ss-count"
+                        min="1"
+                        step="1"
+                        value={form.sub_split_count ?? ""}
+                        onChange={(v) => update({ sub_split_count: v })}
+                        placeholder="1"
+                      />
+                      <FieldError fieldId="course-ss-count" />
+                    </div>
+                  )}
+
+                  {form.sub_split_mode === "fixed" && (
+                    <>
+                      <div className="field">
+                        <label htmlFor="course-ss-distance">
+                          Size ({distanceLabel(form.unitSystem)}) *
+                        </label>
+                        <NumberInput
+                          id="course-ss-distance"
+                          step="any"
+                          value={form.sub_split_distance ?? ""}
+                          onChange={(v) => update({ sub_split_distance: v })}
+                          placeholder="e.g. 20"
+                        />
+                        <FieldError fieldId="course-ss-distance" />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="course-ss-threshold">
+                          Last Threshold ({distanceLabel(form.unitSystem)}) *
+                        </label>
+                        <NumberInput
+                          id="course-ss-threshold"
+                          step="any"
+                          value={form.last_sub_split_threshold ?? ""}
+                          onChange={(v) =>
+                            update({ last_sub_split_threshold: v })
+                          }
+                          placeholder="e.g. 10"
+                        />
+                        <FieldError fieldId="course-ss-threshold" />
+                      </div>
+                    </>
+                  )}
+
+                  {form.sub_split_mode === "custom" && (
+                    <div className="field field--full-width">
+                      <label htmlFor="course-ss-distances">
+                        Distances (comma-sep.) *
+                      </label>
+                      <input
+                        id="course-ss-distances"
+                        type="text"
+                        value={form.sub_split_distances ?? ""}
+                        onChange={(e) =>
+                          update({ sub_split_distances: e.target.value })
+                        }
+                        placeholder="e.g. 10, 20, 30"
+                      />
+                      <FieldError fieldId="course-ss-distances" />
+                    </div>
+                  )}
 
                   <div className="field">
                     <label htmlFor="course-seg-count"># of Segments</label>

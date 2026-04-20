@@ -3428,10 +3428,19 @@ dialog {
   color: #f87171;
 }
 
+/* ── Stacked layout: Results row above Form/Map pane ── */
+.split-stacked-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+.split-results-row {
+  border-bottom: 2px solid #2e2e2e;
+}
+
 /* ── Inline split results panel ── */
 .split-results-panel {
   padding: 0.75rem 1rem 1rem;
-  border: 1px solid #2e2e2e;
   overflow-y: auto;
 }
 
@@ -3467,8 +3476,10 @@ dialog {
 }
 
 .split-results-tz-also {
+  display: block;
   color: #64748b;
   font-size: 0.78rem;
+  margin-top: 0.1rem;
 }
 
 /* ETA status in results panel */
@@ -4056,6 +4067,23 @@ dialog {
   display: flex;
   flex-direction: column;
   padding: 0.5rem 0.5rem 0.5rem 0;
+}
+
+/* Results panel column — flex:1, scrollable, no border-right */
+.split-results-col {
+  flex: 1;
+  min-width: 200px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+  border-left: 2px solid #2e2e2e;
+}
+
+.split-two-pane--stacked .split-results-col {
+  width: 100% !important;
+  height: auto;
+  border-left: none;
+  border-top: 2px solid #2e2e2e;
 }
 
 .split-two-pane--stacked .split-map-col {

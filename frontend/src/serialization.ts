@@ -50,13 +50,34 @@ function serializeRestStop(split: SplitForm): RestStopPayload | null {
   };
 }
 
+interface CourseSubSplitDefaults {
+  sub_split_mode: SubSplitMode;
+  sub_split_count?: string;
+  sub_split_distance?: string;
+  last_sub_split_threshold?: string;
+  sub_split_distances?: string;
+}
+
 function serializeSplit(
   split: SplitForm,
-  courseSplitMode: SubSplitMode,
+  courseDefaults: CourseSubSplitDefaults,
 ): SplitPayload {
   const effectiveMode: SubSplitMode = split.sub_split_override
     ? split.sub_split_mode
-    : courseSplitMode;
+    : courseDefaults.sub_split_mode;
+  const effectiveCount = split.sub_split_override
+    ? split.sub_split_count
+    : (courseDefaults.sub_split_count ?? "1");
+  const effectiveDistance = split.sub_split_override
+    ? split.sub_split_distance
+    : (courseDefaults.sub_split_distance ?? "");
+  const effectiveThreshold = split.sub_split_override
+    ? split.last_sub_split_threshold
+    : (courseDefaults.last_sub_split_threshold ?? "20");
+  const effectiveDistances = split.sub_split_override
+    ? split.sub_split_distances
+    : (courseDefaults.sub_split_distances ?? "");
+
   const payload: SplitPayload = {
     name: split.name?.trim() || null,
     distance: parseFloat(split.distance),
@@ -65,14 +86,12 @@ function serializeSplit(
   };
 
   if (effectiveMode === "even") {
-    payload.sub_split_count = parseInt(split.sub_split_count, 10);
+    payload.sub_split_count = parseInt(effectiveCount, 10);
   } else if (effectiveMode === "fixed") {
-    payload.sub_split_distance = parseFloat(split.sub_split_distance);
-    payload.last_sub_split_threshold = parseFloat(
-      split.last_sub_split_threshold,
-    );
+    payload.sub_split_distance = parseFloat(effectiveDistance);
+    payload.last_sub_split_threshold = parseFloat(effectiveThreshold);
   } else if (effectiveMode === "custom") {
-    payload.sub_split_distances = split.sub_split_distances
+    payload.sub_split_distances = effectiveDistances
       .split(",")
       .map((s) => parseFloat(s.trim()));
   }
@@ -95,11 +114,11 @@ function serializeSplit(
 
 function serializeSegment(
   seg: SegmentForm,
-  courseSplitMode: SubSplitMode,
+  courseDefaults: CourseSubSplitDefaults,
 ): SegmentPayload {
   const payload: SegmentPayload = {
     name: seg.name?.trim() || null,
-    splits: seg.splits.map((s) => serializeSplit(s, courseSplitMode)),
+    splits: seg.splits.map((s) => serializeSplit(s, courseDefaults)),
     sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
     no_end_down_time: !seg.include_end_down_time,
   };
@@ -120,9 +139,15 @@ function serializeSegment(
 }
 
 export function serializeCourse(form: CourseForm): CoursePayload {
-  const courseSplitMode: SubSplitMode = form.sub_split_mode ?? "hour";
+  const courseDefaults: CourseSubSplitDefaults = {
+    sub_split_mode: form.sub_split_mode ?? "hour",
+    sub_split_count: form.sub_split_count ?? "1",
+    sub_split_distance: form.sub_split_distance ?? "",
+    last_sub_split_threshold: form.last_sub_split_threshold ?? "20",
+    sub_split_distances: form.sub_split_distances ?? "",
+  };
   return {
-    segments: form.segments.map((s) => serializeSegment(s, courseSplitMode)),
+    segments: form.segments.map((s) => serializeSegment(s, courseDefaults)),
     mode: form.mode,
     init_moving_speed: parseFloat(form.init_moving_speed),
     min_moving_speed: parseFloat(form.min_moving_speed),
