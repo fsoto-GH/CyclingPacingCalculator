@@ -74,6 +74,7 @@ import RestStopFormComponent from "./RestStopForm";
 import TimezoneSelect from "./TimezoneSelect";
 import { FieldError } from "./FieldError";
 import NumberInput from "./NumberInput";
+import ConfirmModal from "./ConfirmModal";
 const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
 
 interface SplitFormProps {
@@ -199,6 +200,7 @@ export default function SplitFormComponent({
     !!value.sub_split_override;
   const [showOptional, setShowOptional] = useState(hasOptionalValues);
   const [collapsed, setCollapsed] = useState(true);
+  const [confirmDeleteSplitOpen, setConfirmDeleteSplitOpen] = useState(false);
 
   // Expand + scroll when CourseMap popup navigates here.
   // lastFiredExpandRef guards against re-firing on remount (e.g. page change)
@@ -785,7 +787,7 @@ export default function SplitFormComponent({
                 type="button"
                 className="split-action-btn split-action-btn--delete"
                 title="Delete this split"
-                onClick={() => onDelete?.()}
+                onClick={() => setConfirmDeleteSplitOpen(true)}
               >
                 ✕
               </button>
@@ -1321,6 +1323,18 @@ export default function SplitFormComponent({
             </div>
           );
         })()}
+      <ConfirmModal
+        open={confirmDeleteSplitOpen}
+        title="Delete Split"
+        message={`Delete ${headerTitle}?`}
+        confirmLabel="Delete Split"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirmDeleteSplitOpen(false)}
+        onConfirm={() => {
+          setConfirmDeleteSplitOpen(false);
+          onDelete?.();
+        }}
+      />
     </div>
   );
 }

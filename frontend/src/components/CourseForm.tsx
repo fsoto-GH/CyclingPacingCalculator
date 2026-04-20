@@ -2412,6 +2412,7 @@ export default function CourseForm() {
                                   handleZoomToSplit(i, splitIdx)
                               : undefined
                           }
+                          splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
                         />
                       );
                     })}

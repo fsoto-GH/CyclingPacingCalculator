@@ -1708,7 +1708,7 @@ h4 {
 }
 
 .action-btn {
-  padding: 0.55rem 1.5rem;
+  padding: 0.4rem 1rem;
   min-width: 120px;
   border: none;
   border-radius: 4px;
@@ -1753,6 +1753,7 @@ h4 {
 }
 
 .action-btn-export {
+  font-size: 0.82rem;
   background: none;
   border: 1px solid #3a3a3a;
   color: #6ee7b7;
@@ -4263,7 +4264,7 @@ dialog {
   align-items: center;
   justify-content: flex-end;
   padding: 5px 10px;
-  background: #252525;
+  border-top: 1px solid #3a3a3a;
   border-bottom: 1px solid #3a3a3a;
 }
 
@@ -4276,9 +4277,9 @@ dialog {
   padding: 2px 10px;
   font-size: 11px;
   border-radius: 11px;
-  border: 0.5px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.45);
+  border: 0.5px solid rgba(255, 255, 255, 0.30);
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.70);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   user-select: none;
@@ -4324,8 +4325,8 @@ dialog {
 }
 
 .split-action-btn--delete {
-  color: rgba(255, 80, 80, 0.6);
-  border-color: rgba(255, 80, 80, 0.25);
+  color: rgba(255, 100, 100, 0.85);
+  border-color: rgba(255, 80, 80, 0.45);
 }
 
 .split-action-btn--delete:hover {
@@ -4339,8 +4340,6 @@ dialog {
   padding: 2px 6px;
   font-size: 13px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.04);
   color: rgba(255, 255, 255, 0.45);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;

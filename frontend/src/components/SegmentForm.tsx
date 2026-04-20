@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, lazy, Suspense } from "react";
+
+const GpxExportModal = lazy(() => import("./GpxExportModal"));
 import type {
   SegmentForm,
   SplitForm as SplitFormType,
@@ -20,6 +22,7 @@ import TimeInput from "./TimeInput";
 import SplitFormComponent from "./SplitForm";
 import { FieldError } from "./FieldError";
 import NumberInput from "./NumberInput";
+import ConfirmModal from "./ConfirmModal";
 
 interface SegmentFormProps {
   segIndex: number;
@@ -69,6 +72,7 @@ interface SegmentFormProps {
   etaMarginClose?: number;
   onZoomToSegment?: () => void;
   onZoomToSplit?: (splitIdx: number) => void;
+  splitBoundariesKm?: [number, number][] | null;
 }
 
 export default function SegmentFormComponent({
@@ -104,6 +108,7 @@ export default function SegmentFormComponent({
   etaMarginClose = 7,
   onZoomToSegment,
   onZoomToSplit,
+  splitBoundariesKm,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -124,6 +129,9 @@ export default function SegmentFormComponent({
   const segColor = SEGMENT_COLORS[segIndex % SEGMENT_COLORS.length];
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const [confirmDeleteSegmentOpen, setConfirmDeleteSegmentOpen] =
+    useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // When segment transitions to collapsed, cascade a collapse to all splits
   useEffect(() => {
@@ -465,6 +473,16 @@ export default function SegmentFormComponent({
       {!collapsed && (
         <div className="segment-view-bar">
           <div className="split-action-buttons">
+            {gpxTrack && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Export GPX splits for this segment"
+                onClick={() => setShowExportModal(true)}
+              >
+                ⬇ GPX
+              </button>
+            )}
             {onZoomToSegment && (
               <button
                 type="button"
@@ -480,9 +498,9 @@ export default function SegmentFormComponent({
                 type="button"
                 className="split-action-btn split-action-btn--delete"
                 title="Delete this segment"
-                onClick={() => onDeleteSegment?.()}
+                onClick={() => setConfirmDeleteSegmentOpen(true)}
               >
-                ✕ Delete Segment
+                ✕
               </button>
             )}
           </div>
@@ -673,6 +691,33 @@ export default function SegmentFormComponent({
             ))}
           </div>
         </div>
+      )}
+      <ConfirmModal
+        open={confirmDeleteSegmentOpen}
+        title="Delete Segment"
+        message={`Delete ${headerTitle}? This will remove all splits in this segment.`}
+        confirmLabel="Delete Segment"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirmDeleteSegmentOpen(false)}
+        onConfirm={() => {
+          setConfirmDeleteSegmentOpen(false);
+          onDeleteSegment?.();
+        }}
+      />
+      {gpxTrack && showExportModal && (
+        <Suspense fallback={null}>
+          <GpxExportModal
+            open={showExportModal}
+            onClose={() => setShowExportModal(false)}
+            segIndex={segIndex}
+            segName={value.name}
+            splits={value.splits}
+            gpxTrack={gpxTrack}
+            splitBoundariesKm={splitBoundariesKm ?? []}
+            gpxProfiles={gpxProfiles ?? []}
+            unitSystem={unitSystem}
+          />
+        </Suspense>
       )}
     </div>
   );
