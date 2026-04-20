@@ -63,6 +63,8 @@ interface SegmentFormProps {
   onMoveSplitToPrevSeg?: (splitIdx: number) => void;
   onMoveSplitToNextSeg?: (splitIdx: number) => void;
   onDeleteSplit?: (splitIdx: number) => void;
+  canDeleteSegment?: boolean;
+  onDeleteSegment?: () => void;
   etaMarginOpen?: number;
   etaMarginClose?: number;
   onZoomToSegment?: () => void;
@@ -96,6 +98,8 @@ export default function SegmentFormComponent({
   onMoveSplitToPrevSeg,
   onMoveSplitToNextSeg,
   onDeleteSplit,
+  canDeleteSegment,
+  onDeleteSegment,
   etaMarginOpen = 15,
   etaMarginClose = 7,
   onZoomToSegment,
@@ -457,20 +461,33 @@ export default function SegmentFormComponent({
               )}
           </div>
         )}
-        {onZoomToSegment && (
-          <button
-            type="button"
-            className="zoom-to-map-btn"
-            title="Zoom course map to this segment"
-            onClick={(e) => {
-              e.stopPropagation();
-              onZoomToSegment();
-            }}
-          >
-            🗺️
-          </button>
-        )}
       </div>
+      {!collapsed && (
+        <div className="segment-view-bar">
+          <div className="split-action-buttons">
+            {onZoomToSegment && (
+              <button
+                type="button"
+                className="split-action-btn zoom-to-map-btn"
+                title="Zoom course map to this segment"
+                onClick={() => onZoomToSegment()}
+              >
+                🗺️
+              </button>
+            )}
+            {canDeleteSegment && (
+              <button
+                type="button"
+                className="split-action-btn split-action-btn--delete"
+                title="Delete this segment"
+                onClick={() => onDeleteSegment?.()}
+              >
+                ✕ Delete Segment
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {!collapsed && (
         <div className="segment-body">

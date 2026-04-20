@@ -1453,6 +1453,18 @@ export default function CourseForm() {
     });
   };
 
+  const deleteSegment = (segIdx: number) => {
+    setForm((prev) => {
+      if (prev.segments.length <= 1) return prev;
+      const filtered = prev.segments.filter((_, i) => i !== segIdx);
+      return {
+        ...prev,
+        segments: filtered,
+        segmentCount: String(filtered.length),
+      };
+    });
+  };
+
   // â”€â”€ Field-level validation keyed by input element IDs â”€â”€
   const computeFieldErrors = useCallback(
     (f: CourseFormState): Record<string, string> => {
@@ -2346,6 +2358,8 @@ export default function CourseForm() {
                             moveSplitToNextSeg(i, splitIdx)
                           }
                           onDeleteSplit={(splitIdx) => deleteSplit(i, splitIdx)}
+                          canDeleteSegment={form.segments.length > 1}
+                          onDeleteSegment={() => deleteSegment(i)}
                           gpxProfiles={gpxProfiles?.[i] ?? null}
                           gpxTrack={gpxTrack}
                           courseTz={form.timezone}

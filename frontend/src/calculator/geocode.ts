@@ -255,7 +255,7 @@ export async function forwardGeocode(
   address: string,
   signal?: AbortSignal,
 ): Promise<ForwardGeocodeResult | null> {
-  // Stop pining for now, we hit 429.
+  // Stop pinging for now, we hit 429.
   if (true) return null;
   const addr = address.trim();
   if (!addr) return null;

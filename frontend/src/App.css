@@ -4258,11 +4258,10 @@ dialog {
 }
 
 /* ── Split layout button toggles ── */
-
-.split-view-bar {
+.segment-view-bar, .split-view-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 5px 10px;
   background: #252525;
   border-bottom: 1px solid #3a3a3a;
@@ -4353,13 +4352,6 @@ dialog {
   background: rgba(56, 189, 248, 0.15);
   border-color: rgba(56, 189, 248, 0.5);
   color: #38bdf8;
-}
-/* Inside segment header: no border, blends in */
-.segment-header > .zoom-to-map-btn {
-  border: none;
-  background: transparent;
-  margin-left: auto;
-  margin-right: 4px;
 }
 
 /* ── Split two-pane shell (Both / Map modes) ── */
