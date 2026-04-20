@@ -57,6 +57,8 @@ interface CourseMapProps {
   onMarkerClick?: (segIdx: number, splitIdx: number) => void;
   /** Display name shown in the elevation panel header. */
   courseName?: string;
+  /** When set, zoom the map to the given segment (or split within it). */
+  zoomTarget?: { segIdx: number; splitIdx?: number; rev: number } | null;
 }
 
 /** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2–3k. */
@@ -392,6 +394,7 @@ export default function CourseMap({
   gpxProfiles,
   onMarkerClick,
   courseName,
+  zoomTarget,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
   const toUserDist =
@@ -552,6 +555,35 @@ export default function CourseMap({
       setElevZoomRange(null);
     }
   }, [formSegments.length, selectedSegIdx]);
+
+  // React to external zoom requests from SegmentForm / SplitForm buttons.
+  const lastZoomRevRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!zoomTarget || zoomTarget.rev === lastZoomRevRef.current) return;
+    lastZoomRevRef.current = zoomTarget.rev;
+    startSelectionTransition(() => setSelectedSegIdx(zoomTarget.segIdx));
+    requestAnimationFrame(() => {
+      if (zoomTarget.splitIdx != null) {
+        fitToSplit(zoomTarget.segIdx, zoomTarget.splitIdx);
+        // Zoom elevation profile to the split's km range
+        const prof = gpxProfiles?.[zoomTarget.segIdx]?.[zoomTarget.splitIdx];
+        if (prof) {
+          setElevZoomRange([prof.startKm, prof.endKm]);
+        }
+      } else {
+        fitToSegment(zoomTarget.segIdx);
+        // Zoom elevation profile to the segment's km range
+        const segProfiles = gpxProfiles?.[zoomTarget.segIdx];
+        if (segProfiles && segProfiles.length > 0) {
+          setElevZoomRange([
+            segProfiles[0].startKm,
+            segProfiles[segProfiles.length - 1].endKm,
+          ]);
+        }
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomTarget]);
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {

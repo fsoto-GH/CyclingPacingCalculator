@@ -331,6 +331,41 @@ export default function CourseForm() {
     if (mapNavTarget) setMapNavTarget(null);
   }, [mapNavTarget]);
 
+  // Zoom-to-segment/split from form buttons — drives CourseMap's zoomTarget prop.
+  const [mapZoomTarget, setMapZoomTarget] = useState<{
+    segIdx: number;
+    splitIdx?: number;
+    rev: number;
+  } | null>(null);
+  const courseMapContainerRef = useRef<HTMLDivElement | null>(null);
+  const handleZoomToSegment = useCallback((segIdx: number) => {
+    setMapCollapsed(false);
+    setMapZoomTarget((prev) => ({
+      segIdx,
+      rev: (prev?.rev ?? 0) + 1,
+    }));
+    requestAnimationFrame(() => {
+      courseMapContainerRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, []);
+  const handleZoomToSplit = useCallback((segIdx: number, splitIdx: number) => {
+    setMapCollapsed(false);
+    setMapZoomTarget((prev) => ({
+      segIdx,
+      splitIdx,
+      rev: (prev?.rev ?? 0) + 1,
+    }));
+    requestAnimationFrame(() => {
+      courseMapContainerRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, []);
+
   // Collapse/expand all segments and splits
   const [collapseAllSignal, setCollapseAllSignal] = useState(0);
   const [expandAllSignal, setExpandAllSignal] = useState(0);
@@ -2200,6 +2235,15 @@ export default function CourseForm() {
                           readOnly={readOnly}
                           etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
                           etaMarginClose={parseInt(etaMargins.close, 10) || 7}
+                          onZoomToSegment={
+                            gpxTrack ? () => handleZoomToSegment(i) : undefined
+                          }
+                          onZoomToSplit={
+                            gpxTrack
+                              ? (splitIdx: number) =>
+                                  handleZoomToSplit(i, splitIdx)
+                              : undefined
+                          }
                         />
                       );
                     })}
@@ -2666,7 +2710,7 @@ export default function CourseForm() {
 
         {/* Live course map — shown as soon as a GPX and at least one distance are set */}
         {gpxTrack && splitBoundariesKm && (
-          <div className="course-map-collapsible">
+          <div className="course-map-collapsible" ref={courseMapContainerRef}>
             <div
               className="course-map-collapse-header"
               onClick={() => setMapCollapsed((c) => !c)}
@@ -2690,6 +2734,7 @@ export default function CourseForm() {
                   gpxProfiles={gpxProfiles}
                   onMarkerClick={handleMapMarkerClick}
                   courseName={form.name?.trim() || undefined}
+                  zoomTarget={mapZoomTarget}
                 />
               </Suspense>
             )}

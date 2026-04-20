@@ -125,6 +125,7 @@ interface SplitFormProps {
   readOnly?: boolean;
   etaMarginOpen?: number;
   etaMarginClose?: number;
+  onZoomToSplit?: () => void;
 }
 
 export default function SplitFormComponent({
@@ -164,6 +165,7 @@ export default function SplitFormComponent({
   readOnly,
   etaMarginOpen = 15,
   etaMarginClose = 7,
+  onZoomToSplit,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
@@ -723,6 +725,16 @@ export default function SplitFormComponent({
             </button>
           </div>
           <div className="split-action-buttons">
+            {onZoomToSplit && (
+              <button
+                type="button"
+                className="split-action-btn zoom-to-map-btn"
+                title="Zoom course map to this split"
+                onClick={() => onZoomToSplit()}
+              >
+                🗺️
+              </button>
+            )}
             {canMoveToPrevSeg && (
               <button
                 type="button"

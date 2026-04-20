@@ -66,6 +66,8 @@ interface SegmentFormProps {
   readOnly?: boolean;
   etaMarginOpen?: number;
   etaMarginClose?: number;
+  onZoomToSegment?: () => void;
+  onZoomToSplit?: (splitIdx: number) => void;
 }
 
 export default function SegmentFormComponent({
@@ -98,6 +100,8 @@ export default function SegmentFormComponent({
   readOnly,
   etaMarginOpen = 15,
   etaMarginClose = 7,
+  onZoomToSegment,
+  onZoomToSplit,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -455,6 +459,19 @@ export default function SegmentFormComponent({
               )}
           </div>
         )}
+        {onZoomToSegment && (
+          <button
+            type="button"
+            className="zoom-to-map-btn"
+            title="Zoom course map to this segment"
+            onClick={(e) => {
+              e.stopPropagation();
+              onZoomToSegment();
+            }}
+          >
+            🗺️
+          </button>
+        )}
       </div>
 
       {!collapsed && (
@@ -635,6 +652,9 @@ export default function SegmentFormComponent({
                 readOnly={readOnly}
                 etaMarginOpen={etaMarginOpen}
                 etaMarginClose={etaMarginClose}
+                onZoomToSplit={
+                  onZoomToSplit ? () => onZoomToSplit(j) : undefined
+                }
               />
             ))}
           </div>
