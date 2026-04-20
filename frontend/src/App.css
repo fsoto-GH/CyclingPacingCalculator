@@ -3518,17 +3518,54 @@ dialog {
   line-height: 1.4;
 }
 
-/* Rest stop hours and near-detail shown next to ETA badge in results panel */
-.split-results-hours {
-  font-size: 0.8rem;
-  color: #94a3b8;
-}
-
 .split-results-near-detail {
   display: block;
   font-size: 0.78rem;
   color: #fbbf24;
   margin-top: 0.15rem;
+}
+
+/* ── Rest stop info block in inline results panel (when form is disabled) ── */
+.split-results-rs-info {
+  margin-top: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  background: #1a1a2e;
+  border: 1px solid #2e2e4e;
+  border-radius: 5px;
+  font-size: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.split-results-rs-name {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.split-results-rs-name a,
+.split-results-rs-address a {
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+.split-results-rs-name a:hover,
+.split-results-rs-address a:hover {
+  text-decoration: underline;
+}
+
+.split-results-rs-address {
+  color: #94a3b8;
+  font-size: 0.79rem;
+}
+
+.split-results-rs-notes {
+  color: #94a3b8;
+  font-size: 0.79rem;
+  white-space: pre-wrap;
+  margin-top: 0.15rem;
+  border-top: 1px solid #2e2e4e;
+  padding-top: 0.2rem;
 }
 
 /* ── Sub-splits collapsible in inline results panel ── */

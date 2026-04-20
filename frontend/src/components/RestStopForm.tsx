@@ -2,17 +2,11 @@ import type { RestStopForm, DayHoursEntry } from "../types";
 import { FieldError } from "./FieldError";
 import DayHoursInput from "./DayHoursInput";
 
-interface EtaInfo {
-  status: "open" | "near" | "closed";
-  label: string;
-}
-
 interface RestStopFormProps {
   prefix: string;
   value: RestStopForm;
   onChange: (val: RestStopForm) => void;
   addressLoading?: boolean;
-  etaInfo?: EtaInfo | null;
 }
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -22,7 +16,6 @@ export default function RestStopFormComponent({
   value,
   onChange,
   addressLoading,
-  etaInfo,
 }: RestStopFormProps) {
   const update = (patch: Partial<RestStopForm>) =>
     onChange({ ...value, ...patch });
@@ -39,16 +32,6 @@ export default function RestStopFormComponent({
       <div className={`rs-toggle-row${value.enabled ? " open" : ""}`}>
         <div className="rs-header-name">
           <span className="rs-toggle-label">Rest Stop</span>
-          {etaInfo && (
-            <span
-              className={`eta-badge eta-${etaInfo.status}`}
-              title={etaInfo.label}
-            >
-              {etaInfo.status === "open" && "✓ Open"}
-              {etaInfo.status === "near" && "⚠ Near close"}
-              {etaInfo.status === "closed" && "✗ Closed"}
-            </span>
-          )}
         </div>
 
         <label className="toggle-switch">

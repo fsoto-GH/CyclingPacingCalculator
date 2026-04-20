@@ -883,7 +883,6 @@ export default function SplitFormComponent({
                 value={value.rest_stop}
                 onChange={(rs) => update({ rest_stop: rs })}
                 addressLoading={addressLoading}
-                etaInfo={etaInfo}
               />
 
               {/* Notes */}
@@ -993,18 +992,11 @@ export default function SplitFormComponent({
                 </div>
                 {etaInfo && (
                   <div style={{ gridColumn: "1 / -1" }}>
-                    <dt title="Whether the rest stop is open at your estimated arrival">
-                      ETA Status
+                    <dt title="These are the hours for the rest stop at the estimated time of arrival.">
+                      Rest Stop Hours
                     </dt>
                     <dd>
-                      <span className={`eta-badge eta-${etaInfo.status}`}>
-                        {etaInfo.status === "open" && "✓ Open"}
-                        {etaInfo.status === "near" && "⚠ Near close"}
-                        {etaInfo.status === "closed" && "✗ Closed"}
-                      </span>{" "}
-                      <span className="split-results-hours">
-                        {etaInfo.hoursLabel}
-                      </span>
+                      <span>{etaInfo.hoursLabel}</span>
                       {etaInfo.nearDetail && (
                         <span className="split-results-near-detail">
                           {etaInfo.nearDetail}
@@ -1042,6 +1034,51 @@ export default function SplitFormComponent({
                     </div>
                   )}
               </dl>
+              {!showForm &&
+                value.rest_stop.enabled &&
+                (value.rest_stop.name ||
+                  value.rest_stop.address ||
+                  value.rest_stop.alt ||
+                  value.notes) && (
+                  <div className="split-results-rs-info">
+                    {value.rest_stop.name && (
+                      <div className="split-results-rs-name">
+                        {value.rest_stop.alt ? (
+                          <a
+                            href={value.rest_stop.alt}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {value.rest_stop.name}
+                          </a>
+                        ) : (
+                          value.rest_stop.name
+                        )}
+                      </div>
+                    )}
+                    {value.rest_stop.address && (
+                      <div className="split-results-rs-address">
+                        {value.rest_stop.address}
+                      </div>
+                    )}
+                    {!value.rest_stop.name && value.rest_stop.alt && (
+                      <div className="split-results-rs-address">
+                        <a
+                          href={value.rest_stop.alt}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {value.rest_stop.alt}
+                        </a>
+                      </div>
+                    )}
+                    {value.notes && (
+                      <div className="split-results-rs-notes">
+                        {value.notes}
+                      </div>
+                    )}
+                  </div>
+                )}
               {splitResult.sub_splits.length > 0 && (
                 <details className="split-sub-splits">
                   <summary>
@@ -1053,7 +1090,7 @@ export default function SplitFormComponent({
                         <th>#</th>
                         <th>Dist</th>
                         <th>Moving</th>
-                        <th>Speed</th>
+                        <th>Down</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1069,9 +1106,7 @@ export default function SplitFormComponent({
                               {dLabel}
                             </td>
                             <td>{formatHours(ss.moving_time_hours)}</td>
-                            <td>
-                              {ss.moving_speed.toFixed(1)} {sLabel}
-                            </td>
+                            <td>{formatHours(ss.down_time_hours)}</td>
                           </tr>
                         ),
                       )}
