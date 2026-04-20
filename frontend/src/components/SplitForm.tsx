@@ -527,6 +527,16 @@ export default function SplitFormComponent({
                   </div>
                   {hasDist && (
                     <span className="split-header-city">
+                      {etaInfo && (
+                        <span
+                          className={`eta-badge eta-${etaInfo.status}`}
+                          title={etaInfo.label}
+                        >
+                          {etaInfo.status === "open" && "✓ Open"}
+                          {etaInfo.status === "near" && "⚠ Near close"}
+                          {etaInfo.status === "closed" && "✗ Closed"}
+                        </span>
+                      )}
                       {nearbyCity_fetching && (
                         <span className="split-nearby-city--loading">
                           (finding nearest city…) ·{" "}
@@ -538,16 +548,6 @@ export default function SplitFormComponent({
                         : sign === "under"
                           ? `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} left`
                           : `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} over`}
-                      {etaInfo && (
-                        <span
-                          className={`eta-badge eta-badge--header eta-${etaInfo.status}`}
-                          title={etaInfo.label}
-                        >
-                          {etaInfo.status === "open" && " ✓"}
-                          {etaInfo.status === "near" && " ⚠"}
-                          {etaInfo.status === "closed" && " ✗"}
-                        </span>
-                      )}
                     </span>
                   )}
                 </>
