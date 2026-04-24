@@ -31,7 +31,7 @@ import {
   AMENITY_COLORS,
   queryNearbyAmenities,
 } from "../calculator/overpass";
-import { reverseGeocode } from "../calculator/geocode";
+import { reverseGeocode, forwardGeocode } from "../calculator/geocode";
 import type { NearbyAmenity } from "../calculator/overpass";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
@@ -361,15 +361,54 @@ export default function SplitEndpointMap({
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
 
-  // Rest stop coordinates come from form state (populated by SplitForm geocode
-  // effect or Overpass selection). SplitEndpointMap no longer runs its own
-  // forward geocode — it reads the authoritative coords from the parent.
+  // Rest stop coordinates come from form state (set by Overpass selection or
+  // the forward-geocode effect below). Reads are passive — writes happen via
+  // onSelectStop so state stays in the parent.
   const restStopCoords = useMemo(() => {
     if (restStop?.lat != null && restStop?.lon != null) {
       return { lat: restStop.lat, lon: restStop.lon };
     }
     return null;
   }, [restStop?.lat, restStop?.lon]);
+
+  // Geocode the rest stop address when the map mounts or the address changes,
+  // but only when coords are not already set. This keeps the logic local to the
+  // map so it only runs when the user actually opens the split's map panel.
+  const geocodeAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const rs = restStop;
+    if (!rs?.enabled || !rs.address?.trim()) return;
+    if (rs.lat != null && rs.lon != null) return; // already have coords
+
+    geocodeAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    geocodeAbortRef.current = ctrl;
+
+    const name = rs.name?.trim() ?? "";
+    const address = rs.address.trim();
+    const RESERVED = new Set([
+      "home",
+      "house",
+      "my house",
+      "our house",
+      "residence",
+    ]);
+    const normName = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const query =
+      name && !RESERVED.has(normName) ? `${name} by ${address}` : address;
+
+    forwardGeocode(query, ctrl.signal).then((result) => {
+      if (ctrl.signal.aborted || !result) return;
+      onSelectStop({ lat: result.lat, lon: result.lon });
+    });
+
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restStop?.enabled, restStop?.address, restStop?.name]);
 
   const isFirstEndpointRender = useRef(true);
 

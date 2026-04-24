@@ -262,7 +262,7 @@ export default function RestStopFormComponent({
             onClick={cancelModal}
             aria-label="Close"
           >
-            ✕
+            <i className="fas fa-times" />
           </button>
         </div>
         <div className="legend-body rs-hours-modal-body">

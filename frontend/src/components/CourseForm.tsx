@@ -37,12 +37,7 @@ import {
   interpolateLatLon,
 } from "../calculator/gpxParser";
 import tzlookup from "tz-lookup";
-import {
-  getCachedGeocode,
-  reverseGeocode,
-  forwardGeocode,
-  getCachedForwardGeocode,
-} from "../calculator/geocode";
+import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
 const CourseMap = lazy(() => import("./CourseMap"));
@@ -206,35 +201,6 @@ function loadSavedForm(): CourseFormState {
     /* ignore corrupt data */
   }
   return INITIAL_FORM;
-}
-
-function buildRestStopForwardQueries(rs: RestStopFormType): string[] {
-  if (!rs.enabled) return [];
-  const name = rs.name?.trim() ?? "";
-  const address = rs.address?.trim() ?? "";
-  if (!address) return [];
-
-  const normalizeName = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  const reservedNameKeys = new Set([
-    "home",
-    "house",
-    "my house",
-    "our house",
-    "residence",
-  ]);
-  const includeName = !!name && !reservedNameKeys.has(normalizeName(name));
-
-  // Prefer a disambiguated query, then fall back to plain address.
-  // Add queries to try; currently just the "{name} by {address}" format, but could expand to more variations if needed.
-  // Due to each query hitting the network if not cached, we want to keep the number of queries low and only add variations if there's a demonstrated need for them.
-  const queries = [includeName ? `${name} by ${address}` : ""].filter(Boolean);
-
-  return Array.from(new Set(queries));
 }
 
 export default function CourseForm() {
@@ -457,143 +423,6 @@ export default function CourseForm() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
   }, [form]);
-
-  // Hydrate rest-stop coordinates for ALL splits in the course, including
-  // splits on other pages/collapsed sections that are not currently mounted.
-  // This keeps CourseMap markers accurate without requiring SplitForm mount.
-  const restStopGeocodeGenRef = useRef(0);
-  const prevRestStopAddrRef = useRef<Record<string, string>>({});
-  useEffect(() => {
-    const gen = ++restStopGeocodeGenRef.current;
-    const ctrl = new AbortController();
-
-    const missingQueries = new Set<string>();
-    const changedAddrKeys = new Set<string>();
-    const nextAddrMap: Record<string, string> = {};
-    for (let si = 0; si < form.segments.length; si++) {
-      const seg = form.segments[si];
-      for (let sj = 0; sj < seg.splits.length; sj++) {
-        const split = seg.splits[sj];
-        const rs = split.rest_stop;
-        const splitKey = `${si}:${sj}`;
-        const addr = rs?.enabled ? (rs.address?.trim() ?? "") : "";
-        nextAddrMap[splitKey] = addr;
-        if (prevRestStopAddrRef.current[splitKey] !== addr) {
-          changedAddrKeys.add(splitKey);
-        }
-
-        if (!rs?.enabled) continue;
-        const queries = buildRestStopForwardQueries(rs);
-        if (queries.length === 0) continue;
-        for (const q of queries) {
-          if (getCachedForwardGeocode(q) === undefined) {
-            missingQueries.add(q);
-          }
-        }
-      }
-    }
-    prevRestStopAddrRef.current = nextAddrMap;
-
-    // 1) Normalize synchronously: clear stale coords when disabled/empty,
-    // and fill any known cached coords immediately.
-    setForm((prev) => {
-      let changed = false;
-      const nextSegments = prev.segments.map((seg, si) => {
-        const nextSplits = seg.splits.map((split, sj) => {
-          const rs = split.rest_stop;
-          if (!rs) return split;
-          const splitKey = `${si}:${sj}`;
-          const shouldRefresh = changedAddrKeys.has(splitKey);
-
-          const queries = rs.enabled ? buildRestStopForwardQueries(rs) : [];
-          if (queries.length === 0) {
-            if (rs.lat != null || rs.lon != null) {
-              changed = true;
-              return {
-                ...split,
-                rest_stop: { ...rs, lat: undefined, lon: undefined },
-              };
-            }
-            return split;
-          }
-
-          if (!shouldRefresh && rs.lat != null && rs.lon != null) return split;
-
-          const cached = queries
-            .map((q) => getCachedForwardGeocode(q))
-            .find((entry) => entry != null);
-          if (!cached) return split;
-          if (rs.lat === cached.lat && rs.lon === cached.lon) return split;
-
-          changed = true;
-          return {
-            ...split,
-            rest_stop: { ...rs, lat: cached.lat, lon: cached.lon },
-          };
-        });
-        return nextSplits === seg.splits ? seg : { ...seg, splits: nextSplits };
-      });
-      return changed ? { ...prev, segments: nextSegments } : prev;
-    });
-
-    // 2) Fetch unknown queries and backfill missing coords by matching each
-    // split's current query chain.
-    const run = async () => {
-      for (const query of missingQueries) {
-        if (ctrl.signal.aborted || gen !== restStopGeocodeGenRef.current)
-          return;
-        const result = await forwardGeocode(query, ctrl.signal);
-        if (ctrl.signal.aborted || gen !== restStopGeocodeGenRef.current)
-          return;
-        if (!result) continue;
-
-        setForm((prev) => {
-          let changed = false;
-          const nextSegments = prev.segments.map((seg, si) => {
-            const nextSplits = seg.splits.map((split, sj) => {
-              const rs = split.rest_stop;
-              if (!rs?.enabled) return split;
-              const splitKey = `${si}:${sj}`;
-              const shouldRefresh = changedAddrKeys.has(splitKey);
-
-              const queries = buildRestStopForwardQueries(rs);
-              if (!queries.includes(query)) return split;
-
-              // For unchanged addresses, preserve existing coordinates.
-              if (!shouldRefresh && rs.lat != null && rs.lon != null) {
-                return split;
-              }
-
-              const bestCached = queries
-                .map((q) => getCachedForwardGeocode(q))
-                .find((entry) => entry != null);
-              if (!bestCached) return split;
-              if (rs.lat === bestCached.lat && rs.lon === bestCached.lon) {
-                return split;
-              }
-
-              changed = true;
-              return {
-                ...split,
-                rest_stop: {
-                  ...rs,
-                  lat: bestCached.lat,
-                  lon: bestCached.lon,
-                },
-              };
-            });
-            return nextSplits === seg.splits
-              ? seg
-              : { ...seg, splits: nextSplits };
-          });
-          return changed ? { ...prev, segments: nextSegments } : prev;
-        });
-      }
-    };
-
-    void run();
-    return () => ctrl.abort();
-  }, [form.segments]);
 
   const update = (patch: Partial<CourseFormState>) =>
     setForm((prev) => ({ ...prev, ...patch }));
@@ -1718,7 +1547,7 @@ export default function CourseForm() {
                 onClick={() => setLegendOpen(true)}
                 title="Open the guide"
               >
-                <span className="nav-btn-icon">📘</span>
+                <i className="fa-solid fa-book-atlas"></i>
                 <span className="nav-btn-label">Guide</span>
               </button>
               <div className="nav-btn-group">
@@ -1728,7 +1557,7 @@ export default function CourseForm() {
                   onClick={() => setExamplesOpen(true)}
                   title="Load a pre-built example course"
                 >
-                  <span className="nav-btn-icon">🧪</span>
+                  <i className="fa-solid fa-vial"></i>
                   <span className="nav-btn-label">Examples</span>
                 </button>
                 <button
@@ -1737,7 +1566,9 @@ export default function CourseForm() {
                   onClick={() => fileInputRef.current?.click()}
                   title="Import a previously exported JSON course"
                 >
-                  <span className="nav-btn-icon">📥</span>
+                  <span className="nav-btn-icon">
+                    <i className="fas fa-download" />
+                  </span>
                   <span className="nav-btn-label">Import JSON</span>
                 </button>
                 <input
@@ -1760,7 +1591,9 @@ export default function CourseForm() {
                     </>
                   ) : (
                     <>
-                      <span className="nav-btn-icon">🗺️</span>
+                      <span className="nav-btn-icon">
+                        <i className="fas fa-map" />
+                      </span>
                       <span className="nav-btn-label">Load GPX</span>
                     </>
                   )}
@@ -1827,7 +1660,9 @@ export default function CourseForm() {
           {gpxFileName && gpxTrack && !gpxLoading && (
             <div className="gpx-file-field">
               <div className="gpx-file-meta">
-                <span className="gpx-file-label">🗺 GPX route</span>
+                <span className="gpx-file-label">
+                  <i className="fas fa-map" /> GPX route
+                </span>
                 <span className="gpx-file-name">{gpxFileName}</span>
                 <span className="gpx-file-stats">
                   {form.unitSystem === "imperial"
@@ -1854,7 +1689,10 @@ export default function CourseForm() {
 
           {gpxMissingWarning && (
             <div className="gpx-missing-warning">
-              <span>⚠ {gpxMissingWarning}</span>
+              <span>
+                <i className="fas fa-exclamation-triangle" />{" "}
+                {gpxMissingWarning}
+              </span>
               <button
                 type="button"
                 className="gpx-missing-dismiss"
@@ -1875,7 +1713,11 @@ export default function CourseForm() {
               }}
             >
               <span className="collapse-icon">
-                {courseCollapsed ? "▶" : "▼"}
+                {courseCollapsed ? (
+                  <i className="fas fa-chevron-right" />
+                ) : (
+                  <i className="fas fa-chevron-down" />
+                )}
               </span>
               <div className="split-header-left">
                 <div className="split-header-titlerow">
@@ -1929,7 +1771,7 @@ export default function CourseForm() {
                       : "Export course configuration as JSON"
                   }
                 >
-                  📁 Export
+                  <i className="fa-solid fa-file-export"></i> Export
                 </button>
                 <button
                   className="segments-toggle-btn segments-toggle-btn--reset"
@@ -2237,7 +2079,7 @@ export default function CourseForm() {
                       }
                       title="Quickly build or append segments with uniform split distances"
                     >
-                      ⚡ Quick Setup
+                      <i className="fa-solid fa-bolt"></i> Quick Setup
                     </button>
                     {gpxStartCity && (
                       <button
@@ -2246,7 +2088,7 @@ export default function CourseForm() {
                         onClick={handleAutoName}
                         title="Name all splits and segments using their nearest cities"
                       >
-                        🏷️ Auto-Name
+                        <i className="fa-solid fa-tags"></i> Auto-Name
                       </button>
                     )}
                     <span className="segments-toolbar-sep" />
@@ -2256,7 +2098,8 @@ export default function CourseForm() {
                       onClick={() => setCriteriaModalOpen(true)}
                       title="Configure stop types and search radius used by all split nearby-stop searches"
                     >
-                      🔍 Stop Criteria
+                      <i class="fa-solid fa-magnifying-glass-location"></i> Stop
+                      Criteria
                     </button>
                     <button
                       type="button"
@@ -2264,7 +2107,8 @@ export default function CourseForm() {
                       onClick={() => setEtaMarginsOpen(true)}
                       title="Configure the time windows used for 'near open' and 'near close' ETA badges"
                     >
-                      ⏱️ ETA Margins
+                      <i className="fa-regular fa-hourglass-half"></i> ETA
+                      Margins
                     </button>
                   </div>
                 </div>
@@ -2884,7 +2728,13 @@ export default function CourseForm() {
               className="course-map-collapse-header"
               onClick={() => setMapCollapsed((c) => !c)}
             >
-              <span className="collapse-icon">{mapCollapsed ? "▶" : "▼"}</span>
+              <span className="collapse-icon">
+                {mapCollapsed ? (
+                  <i className="fas fa-chevron-right" />
+                ) : (
+                  <i className="fas fa-chevron-down" />
+                )}
+              </span>
               <span>Course Map</span>
             </div>
             {!mapCollapsed && (
@@ -2918,7 +2768,11 @@ export default function CourseForm() {
               onClick={() => setResultsCollapsed((c) => !c)}
             >
               <span className="collapse-icon">
-                {resultsCollapsed ? "▶" : "▼"}
+                {resultsCollapsed ? (
+                  <i className="fas fa-chevron-right" />
+                ) : (
+                  <i className="fas fa-chevron-down" />
+                )}
               </span>
               <span>Results</span>
             </div>

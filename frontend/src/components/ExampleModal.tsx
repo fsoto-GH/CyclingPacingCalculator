@@ -46,7 +46,7 @@ export default function ExampleModal({
       <div className="legend-header">
         <h2>Load an Example</h2>
         <button className="legend-close" onClick={onClose} aria-label="Close">
-          ✕
+          <i className="fas fa-times" />
         </button>
       </div>
       <div className="legend-body">

@@ -37,7 +37,7 @@ export default function ConfirmModal({
       <div className="legend-header">
         <h2>{title}</h2>
         <button className="legend-close" onClick={onCancel} aria-label="Close">
-          ✕
+          <i className="fas fa-times" />
         </button>
       </div>
       <div className="legend-body">

@@ -120,6 +120,20 @@ function makeTickIcon(label: string) {
   });
 }
 
+function makeEndpointPinIcon(
+  role: Exclude<RouteMarker["role"], "stop">,
+  color: string,
+) {
+  const sizeClass = role === "split" ? "" : " route-endpoint-pin--lg";
+  return divIcon({
+    html: `<div class="route-endpoint-pin${sizeClass}" style="--marker-color:${color}"><i class="fa-solid fa-location-pin"></i></div>`,
+    className: "",
+    iconSize: [22, 30],
+    iconAnchor: [11, 29],
+    popupAnchor: [0, -26],
+  });
+}
+
 /**
  * Interval between markers in km, chosen so markers stay readable at
  * the given Leaflet zoom level. Floor is 1 mi (imperial) or 1 km (metric).
@@ -283,17 +297,12 @@ function SplitMarker({
 }) {
   const map = useMap();
   const canNav = onMarkerClick != null && m.splitIdx >= 0;
+  const icon = useMemo(
+    () => makeEndpointPinIcon(m.role as "start" | "split" | "finish", color),
+    [m.role, color],
+  );
   return (
-    <CircleMarker
-      center={[m.lat, m.lon]}
-      radius={m.role === "start" || m.role === "finish" ? 9 : 7}
-      pathOptions={{
-        color: "#1a1a2e",
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 1,
-      }}
-    >
+    <Marker position={[m.lat, m.lon]} icon={icon}>
       <Popup>
         <strong>{m.label}</strong>
         <br />
@@ -319,7 +328,7 @@ function SplitMarker({
           </>
         )}
       </Popup>
-    </CircleMarker>
+    </Marker>
   );
 }
 
@@ -1014,7 +1023,7 @@ export default function CourseMap({
                     onClick={() => setElevZoomRange(null)}
                     title="Return to full course elevation"
                   >
-                    ↺ Reset
+                    <i className="fa-solid fa-arrow-rotate-left" /> Reset
                   </button>
                 )}
               </div>

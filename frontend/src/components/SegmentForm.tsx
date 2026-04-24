@@ -315,7 +315,11 @@ export default function SegmentFormComponent({
     <div className="segment-form" ref={segRootRef}>
       <div className="segment-header" onClick={() => setCollapsed(!collapsed)}>
         <span className="collapse-icon" style={{ color: segColor }}>
-          {collapsed ? "▶" : "▼"}
+          {collapsed ? (
+            <i className="fas fa-chevron-right" />
+          ) : (
+            <i className="fas fa-chevron-down" />
+          )}
         </span>
         <div className="split-header-left">
           <div className="split-header-titlerow">
@@ -451,7 +455,11 @@ export default function SegmentFormComponent({
                     ) : (
                       (segEndCity ?? null)
                     );
-                    const sleepPart = sleepHms ? `${sleepHms} 💤` : null;
+                    const sleepPart = sleepHms ? (
+                      <>
+                        {sleepHms} <i className="fa-solid fa-moon"></i>
+                      </>
+                    ) : null;
                     if (segEndCityFetching) {
                       return sleepPart ? (
                         <>
@@ -463,7 +471,14 @@ export default function SegmentFormComponent({
                         cityPart
                       );
                     }
-                    return [cityPart, sleepPart].filter(Boolean).join(" · ");
+                    if (!cityPart && !sleepPart) return null;
+                    return (
+                      <>
+                        {cityPart}
+                        {cityPart && sleepPart && " · "}
+                        {sleepPart}
+                      </>
+                    );
                   })()}
                 </span>
               )}
@@ -480,7 +495,7 @@ export default function SegmentFormComponent({
                 title="Export GPX splits for this segment"
                 onClick={() => setShowExportModal(true)}
               >
-                ⬇ GPX
+                <i className="fa-solid fa-download"></i> GPX
               </button>
             )}
             {onZoomToSegment && (
@@ -490,9 +505,10 @@ export default function SegmentFormComponent({
                 title="Zoom course map to this segment"
                 onClick={() => onZoomToSegment()}
               >
-                🗺️
+                <i className="fa-regular fa-map"></i>
               </button>
             )}
+            <span className="view-bar-separator" />
             {canDeleteSegment && (
               <button
                 type="button"
@@ -500,7 +516,7 @@ export default function SegmentFormComponent({
                 title="Delete this segment"
                 onClick={() => setConfirmDeleteSegmentOpen(true)}
               >
-                ✕
+                <i className="fa-solid fa-trash"></i>
               </button>
             )}
           </div>
@@ -557,7 +573,9 @@ export default function SegmentFormComponent({
             className="optional-toggle"
             onClick={() => setShowOptional(!showOptional)}
           >
-            <span className={`chevron${showOptional ? " open" : ""}`}>▶</span>
+            <span className={`chevron${showOptional ? " open" : ""}`}>
+              <i className="fas fa-chevron-right" />
+            </span>
             Optional overrides
           </button>
 

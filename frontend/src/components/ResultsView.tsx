@@ -301,7 +301,12 @@ export default function ResultsView({
             className="results-expand-btn"
             onClick={() => setNarrativeExpanded((v) => !v)}
           >
-            {narrativeExpanded ? "▲ Show less" : "▼ Show more"}
+            {narrativeExpanded ? (
+              <i className="fas fa-chevron-up" />
+            ) : (
+              <i className="fas fa-chevron-down" />
+            )}{" "}
+            {narrativeExpanded ? "Show less" : "Show more"}
           </button>
         </div>
 
@@ -477,7 +482,13 @@ function SegmentSection({
         className="segment-result-header"
         onClick={() => setCollapsed(!collapsed)}
       >
-        <span className="collapse-icon">{collapsed ? "▶" : "▼"}</span>
+        <span className="collapse-icon">
+          {collapsed ? (
+            <i className="fas fa-chevron-right" />
+          ) : (
+            <i className="fas fa-chevron-down" />
+          )}
+        </span>
         <h3>
           {segment.name ?? `Segment ${index + 1}`} —{" "}
           {segment.distance.toLocaleString(undefined, {
@@ -743,7 +754,13 @@ function SplitRow({
         onClick={() => setExpanded(!expanded)}
       >
         <td className="num-col">
-          <span className="collapse-icon-sm">{expanded ? "▼" : "▶"}</span>
+          <span className="collapse-icon-sm">
+            {expanded ? (
+              <i className="fas fa-chevron-down" />
+            ) : (
+              <i className="fas fa-chevron-right" />
+            )}
+          </span>
           {splitNumber}
         </td>
         <td>
@@ -941,7 +958,12 @@ function SplitRow({
                             title={etaInfo.label}
                           >
                             {etaInfo.status === "open" && "✓ Open"}
-                            {etaInfo.status === "near" && "⚠ Near close"}
+                            {etaInfo.status === "near" && (
+                              <>
+                                <i className="fas fa-exclamation-triangle" />{" "}
+                                Near close
+                              </>
+                            )}
                             {etaInfo.status === "closed" && "✗ Closed"}
                           </span>
                           {fmtInTz(split.end_time, splitEndTz ?? courseTz)}

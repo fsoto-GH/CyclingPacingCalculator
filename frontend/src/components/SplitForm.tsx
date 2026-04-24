@@ -504,7 +504,11 @@ export default function SplitFormComponent({
           className="collapse-icon-sm"
           style={segColor ? { color: segColor } : undefined}
         >
-          {collapsed ? "▶" : "▼"}
+          {collapsed ? (
+            <i className="fas fa-chevron-right" />
+          ) : (
+            <i className="fas fa-chevron-down" />
+          )}
         </span>
         <div className="split-header-left">
           <div className="split-header-title-row">
@@ -577,14 +581,16 @@ export default function SplitFormComponent({
                     className="split-header-meta-item split-header-meta-item--gain"
                     title="Elevation gain"
                   >
-                    ⬆ {toElevUnit(gpxProfile.elevGainM)}
+                    <i className="fas fa-arrow-up" />{" "}
+                    {toElevUnit(gpxProfile.elevGainM)}
                     {elevUnit}
                   </span>
                   <span
                     className="split-header-meta-item split-header-meta-item--loss"
                     title="Elevation loss"
                   >
-                    ⬇ {toElevUnit(gpxProfile.elevLossM)}
+                    <i className="fas fa-arrow-down" />{" "}
+                    {toElevUnit(gpxProfile.elevLossM)}
                     {elevUnit}
                   </span>
                   <span
@@ -598,7 +604,8 @@ export default function SplitFormComponent({
                       className="split-header-meta-item split-header-meta-item--steep"
                       title="% of distance with grade > 5%"
                     >
-                      ⚠ {gpxProfile.steepPct}% steep
+                      <i className="fas fa-exclamation-triangle" />{" "}
+                      {gpxProfile.steepPct}% steep
                     </span>
                   )}
                   {gpxProfile.surface !== "unknown" && (
@@ -642,7 +649,7 @@ export default function SplitFormComponent({
                         className={`split-header-meta-item split-header-meta-item--tz${value.tzManuallySet ? " tz-manual" : ""}`}
                         title={`Split timezone: ${effectiveTz}${value.tzManuallySet ? " (manually set — auto-detection paused)" : " (auto-detected)"}`}
                       >
-                        🕐 {tzBadgeAbbr}
+                        <i className="fas fa-clock" /> {tzBadgeAbbr}
                         {value.tzManuallySet && " ✏️"}
                       </span>
                     )}
@@ -739,9 +746,10 @@ export default function SplitFormComponent({
                 title="Zoom course map to this split"
                 onClick={() => onZoomToSplit()}
               >
-                🗺️
+                <i className="fa-regular fa-map"></i>
               </button>
             )}
+            <span className="view-bar-separator" />
             {canMoveToPrevSeg && (
               <button
                 type="button"
@@ -749,7 +757,7 @@ export default function SplitFormComponent({
                 title="Move to previous segment"
                 onClick={() => onMoveToPrevSeg?.()}
               >
-                ⬆ Prev Seg
+                <i className="fas fa-arrow-up" /> Prev Seg
               </button>
             )}
             {canShiftUp && (
@@ -759,7 +767,7 @@ export default function SplitFormComponent({
                 title="Shift up"
                 onClick={() => onShiftUp?.()}
               >
-                ↑
+                <i className="fa-solid fa-arrow-up"></i>
               </button>
             )}
             {canShiftDown && (
@@ -769,7 +777,8 @@ export default function SplitFormComponent({
                 title="Shift down"
                 onClick={() => onShiftDown?.()}
               >
-                ↓
+                {/* ↓ */}
+                <i className="fa-solid fa-arrow-down"></i>
               </button>
             )}
             {canMoveToNextSeg && (
@@ -779,7 +788,7 @@ export default function SplitFormComponent({
                 title="Move to next segment"
                 onClick={() => onMoveToNextSeg?.()}
               >
-                ⬇ Next Seg
+                <i className="fas fa-arrow-down" /> Next Seg
               </button>
             )}
             {canDelete && (
@@ -789,7 +798,7 @@ export default function SplitFormComponent({
                 title="Delete this split"
                 onClick={() => setConfirmDeleteSplitOpen(true)}
               >
-                ✕
+                <i className="fas fa-times" />
               </button>
             )}
           </div>

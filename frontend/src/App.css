@@ -1502,6 +1502,7 @@ h4 {
 .rs-hours-modal-body .per-day-hours .day-hours-input > .pill-group {
   grid-column: 2;
   grid-row: 1;
+  justify-self: start;
 }
 
 /* Time range: row 2, spans both columns */
@@ -4335,6 +4336,15 @@ dialog {
   color: #f87171;
 }
 
+.view-bar-separator {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.15);
+  align-self: center;
+  margin: 0 4px;
+}
+
 /* ── Zoom-to-map button (segment header & split action bar) ── */
 .zoom-to-map-btn {
   padding: 2px 6px;
@@ -5008,6 +5018,22 @@ dialog {
 }
 
 /* ── Rest stop map marker ── */
+.route-endpoint-pin {
+  color: var(--marker-color);
+  font-size: 26px;
+  line-height: 1;
+  display: block;
+  transform: translateY(-1px);
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.2),
+    0 0 0.5px rgba(0, 0, 0, 0.75),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.route-endpoint-pin--lg {
+  font-size: 30px;
+}
+
 .stop-marker-icon {
   font-size: 18px;
   line-height: 1;
