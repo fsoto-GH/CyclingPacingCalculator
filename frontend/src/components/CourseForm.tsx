@@ -212,6 +212,7 @@ export default function CourseForm() {
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [confirmExampleOpen, setConfirmExampleOpen] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [pendingExampleLoad, setPendingExampleLoad] = useState<{
     form: CourseFormState;
     gpxUrl?: string;
@@ -432,6 +433,15 @@ export default function CourseForm() {
     setResult(null);
     setApiError(null);
     setTouched(new Set());
+  }, []);
+
+  const handleConfirmReset = useCallback(() => {
+    handleReset();
+    setConfirmResetOpen(false);
+  }, [handleReset]);
+
+  const handleCancelReset = useCallback(() => {
+    setConfirmResetOpen(false);
   }, []);
 
   const applyAutoName = useCallback(
@@ -1641,6 +1651,15 @@ export default function CourseForm() {
               onConfirm={handleConfirmLoadExample}
               onCancel={handleCancelLoadExample}
             />
+            <ConfirmModal
+              open={confirmResetOpen}
+              title="Reset course?"
+              message="This will clear your current course data and restore defaults. Continue?"
+              confirmLabel="Reset"
+              cancelLabel="Cancel"
+              onConfirm={handleConfirmReset}
+              onCancel={handleCancelReset}
+            />
           </Suspense>
 
           {/* GPX banner */}
@@ -1703,7 +1722,6 @@ export default function CourseForm() {
               </button>
             </div>
           )}
-          <h2>Course Settings</h2>
           {/* Course Settings Card */}
           <div className="segment-form course-settings-card">
             <div
@@ -1776,7 +1794,7 @@ export default function CourseForm() {
                 <button
                   className="segments-toggle-btn segments-toggle-btn--reset"
                   type="button"
-                  onClick={handleReset}
+                  onClick={() => setConfirmResetOpen(true)}
                   title="Reset all form fields to defaults"
                 >
                   ↺ Reset
@@ -2098,8 +2116,8 @@ export default function CourseForm() {
                       onClick={() => setCriteriaModalOpen(true)}
                       title="Configure stop types and search radius used by all split nearby-stop searches"
                     >
-                      <i class="fa-solid fa-magnifying-glass-location"></i> Stop
-                      Criteria
+                      <i className="fa-solid fa-magnifying-glass-location"></i>{" "}
+                      Stop Criteria
                     </button>
                     <button
                       type="button"

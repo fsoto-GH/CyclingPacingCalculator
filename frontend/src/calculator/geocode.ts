@@ -92,6 +92,7 @@ function cacheKey(lat: number, lon: number): string {
 }
 
 interface NominatimResponse {
+  addresstype?: string;
   address?: {
     house_number?: string;
     road?: string;
@@ -99,8 +100,11 @@ interface NominatimResponse {
     town?: string;
     village?: string;
     hamlet?: string;
+    municipality?: string;
     county?: string;
+    state_district?: string;
     state?: string;
+    country?: string;
   };
   error?: string;
 }
@@ -144,10 +148,19 @@ export async function reverseGeocode(
 
   const addr = data.address;
   const place =
-    addr.city ?? addr.town ?? addr.village ?? addr.hamlet ?? addr.county;
+    addr.city ??
+    addr.town ??
+    addr.village ??
+    addr.hamlet ??
+    addr.municipality ??
+    addr.county ??
+    addr.state_district ??
+    addr.state ??
+    addr.country;
   if (!place) return null;
 
-  const label = addr.state ? `${place}, ${addr.state}` : place;
+  const label =
+    addr.state && place !== addr.state ? `${place}, ${addr.state}` : place;
 
   cache.set(key, label);
   lsPersist(key, label);

@@ -132,6 +132,8 @@ export default function SegmentFormComponent({
   const [confirmDeleteSegmentOpen, setConfirmDeleteSegmentOpen] =
     useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
+  const [targetSplitSignal, setTargetSplitSignal] = useState(0);
 
   // When segment transitions to collapsed, cascade a collapse to all splits
   useEffect(() => {
@@ -149,6 +151,10 @@ export default function SegmentFormComponent({
     if (!expandSignal || expandSignal === lastFiredExpandRef.current) return;
     lastFiredExpandRef.current = expandSignal;
     setCollapsed(false);
+    if (expandSplitIdx >= 0) {
+      setTargetSplitIdx(expandSplitIdx);
+      setTargetSplitSignal((s) => s + 1);
+    }
     // Scroll after the DOM has expanded
     requestAnimationFrame(() => {
       segRootRef.current?.scrollIntoView({
@@ -160,7 +166,7 @@ export default function SegmentFormComponent({
       // Reset on unmount so fresh mounts (StrictMode remount or page flip) can fire again
       lastFiredExpandRef.current = undefined;
     };
-  }, [expandSignal]);
+  }, [expandSignal, expandSplitIdx]);
 
   useEffect(() => {
     if (!collapseSignal) return;
@@ -407,7 +413,8 @@ export default function SegmentFormComponent({
                   className="split-header-meta-item split-header-meta-item--steep"
                   title="% of distance with grade > 5%"
                 >
-                  ⚠ {aggGpx.steepPct}% steep
+                  <i className="fa-solid fa-triangle-exclamation"></i>{" "}
+                  {aggGpx.steepPct}% steep
                 </span>
               )}
             </div>
@@ -425,7 +432,7 @@ export default function SegmentFormComponent({
                   className="split-header-meta-item split-header-meta-item--tz"
                   title={`Timezone: ${tz}`}
                 >
-                  🕐 {abbr}
+                  <i className="fa-solid fa-clock-rotate-left"></i> {abbr}
                 </span>
               ))}
               {segCumulativeDist != null && (
@@ -675,7 +682,9 @@ export default function SegmentFormComponent({
                 nearbyCity_fetching={cityFetching?.[j] ?? false}
                 cumulativeDist={cumulativeDists?.[j] ?? null}
                 gpxTotalDist={gpxTotalDist ?? null}
-                expandSignal={expandSplitIdx === j ? expandSignal : undefined}
+                expandSignal={
+                  targetSplitIdx === j ? targetSplitSignal : undefined
+                }
                 collapseSignal={splitCollapseSignal || undefined}
                 expandAllSignal={undefined}
                 splitResult={splitResults?.[j] ?? null}

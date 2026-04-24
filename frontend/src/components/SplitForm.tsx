@@ -201,6 +201,12 @@ export default function SplitFormComponent({
   const [showOptional, setShowOptional] = useState(hasOptionalValues);
   const [collapsed, setCollapsed] = useState(true);
   const [confirmDeleteSplitOpen, setConfirmDeleteSplitOpen] = useState(false);
+  const [jumpHighlight, setJumpHighlight] = useState(false);
+  const prevCollapseSignalRef = useRef(collapseSignal);
+  const prevExpandAllSignalRef = useRef(expandAllSignal);
+  const jumpHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Expand + scroll when CourseMap popup navigates here.
   // lastFiredExpandRef guards against re-firing on remount (e.g. page change)
@@ -210,6 +216,14 @@ export default function SplitFormComponent({
     if (!expandSignal || expandSignal === lastFiredExpandRef.current) return;
     lastFiredExpandRef.current = expandSignal;
     setCollapsed(false);
+    setJumpHighlight(true);
+    if (jumpHighlightTimerRef.current !== null) {
+      clearTimeout(jumpHighlightTimerRef.current);
+    }
+    jumpHighlightTimerRef.current = setTimeout(() => {
+      setJumpHighlight(false);
+      jumpHighlightTimerRef.current = null;
+    }, 2200);
     requestAnimationFrame(() => {
       splitFormRef.current?.scrollIntoView({
         behavior: "smooth",
@@ -222,11 +236,23 @@ export default function SplitFormComponent({
   }, [expandSignal]);
 
   useEffect(() => {
+    return () => {
+      if (jumpHighlightTimerRef.current !== null) {
+        clearTimeout(jumpHighlightTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (collapseSignal === prevCollapseSignalRef.current) return;
+    prevCollapseSignalRef.current = collapseSignal;
     if (!collapseSignal) return;
     setCollapsed(true);
   }, [collapseSignal]);
 
   useEffect(() => {
+    if (expandAllSignal === prevExpandAllSignalRef.current) return;
+    prevExpandAllSignalRef.current = expandAllSignal;
     if (!expandAllSignal) return;
     setCollapsed(false);
   }, [expandAllSignal]);
@@ -498,7 +524,10 @@ export default function SplitFormComponent({
     : null;
 
   return (
-    <div className="split-form" ref={splitFormRef}>
+    <div
+      className={`split-form${jumpHighlight ? " split-form--jump-highlight" : ""}`}
+      ref={splitFormRef}
+    >
       <div className="split-header" onClick={() => setCollapsed((c) => !c)}>
         <span
           className="collapse-icon-sm"
@@ -604,7 +633,7 @@ export default function SplitFormComponent({
                       className="split-header-meta-item split-header-meta-item--steep"
                       title="% of distance with grade > 5%"
                     >
-                      <i className="fas fa-exclamation-triangle" />{" "}
+                      <i className="fa-solid fa-triangle-exclamation"></i>{" "}
                       {gpxProfile.steepPct}% steep
                     </span>
                   )}
@@ -649,7 +678,8 @@ export default function SplitFormComponent({
                         className={`split-header-meta-item split-header-meta-item--tz${value.tzManuallySet ? " tz-manual" : ""}`}
                         title={`Split timezone: ${effectiveTz}${value.tzManuallySet ? " (manually set — auto-detection paused)" : " (auto-detected)"}`}
                       >
-                        <i className="fas fa-clock" /> {tzBadgeAbbr}
+                        <i className="fa-solid fa-clock-rotate-left"></i>{" "}
+                        {tzBadgeAbbr}
                         {value.tzManuallySet && " ✏️"}
                       </span>
                     )}

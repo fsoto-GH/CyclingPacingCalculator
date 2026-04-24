@@ -111,6 +111,16 @@ function makeUndefinedEndpointIcon() {
   });
 }
 
+function makeRestStopIcon() {
+  return divIcon({
+    html: '<div class="split-rest-stop-pin"><i class="fa-solid fa-location-dot"></i></div>',
+    className: "",
+    iconSize: [20, 28],
+    iconAnchor: [10, 27],
+    popupAnchor: [0, -24],
+  });
+}
+
 /** Small distance label pinned to the route. */
 function makeTickIcon(label: string) {
   return divIcon({
@@ -370,6 +380,7 @@ export default function SplitEndpointMap({
     }
     return null;
   }, [restStop?.lat, restStop?.lon]);
+  const restStopIcon = useMemo(() => makeRestStopIcon(), []);
 
   // Geocode the rest stop address when the map mounts or the address changes,
   // but only when coords are not already set. This keeps the logic local to the
@@ -681,22 +692,16 @@ export default function SplitEndpointMap({
 
           {/* Rest stop marker — purple, geocoded from address */}
           {restStop?.enabled && restStopCoords && (
-            <CircleMarker
-              center={[restStopCoords.lat, restStopCoords.lon]}
-              radius={9}
-              pathOptions={{
-                color: "#1a1a2e",
-                weight: 2,
-                fillColor: "#a855f7",
-                fillOpacity: 1,
-              }}
+            <Marker
+              position={[restStopCoords.lat, restStopCoords.lon]}
+              icon={restStopIcon}
             >
               <Popup>
                 <strong>Rest Stop</strong>
                 <br />
                 {restStop?.name || restStop?.address}
               </Popup>
-            </CircleMarker>
+            </Marker>
           )}
 
           {/* Nearby amenity pins — only shown after user requests them */}
