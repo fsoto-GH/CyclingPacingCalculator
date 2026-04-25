@@ -575,6 +575,11 @@ export default function SegmentFormComponent({
                         segmentResult.start_time,
                         segmentStartTz ?? courseTz,
                       )}
+                      {segmentStartTz && segmentStartTz !== courseTz && (
+                        <span className="split-end-tz">
+                          {fmtInTz(segmentResult.start_time, courseTz)}
+                        </span>
+                      )}
                     </dd>
                   </div>
                   <div>
@@ -583,6 +588,11 @@ export default function SegmentFormComponent({
                       {fmtInTz(
                         segmentResult.end_time,
                         segmentEndTz ?? courseTz,
+                      )}
+                      {segmentEndTz && segmentEndTz !== courseTz && (
+                        <span className="split-end-tz">
+                          {fmtInTz(segmentResult.end_time, courseTz)}
+                        </span>
                       )}
                     </dd>
                   </div>
