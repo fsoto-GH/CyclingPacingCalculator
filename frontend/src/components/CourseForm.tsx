@@ -2263,6 +2263,7 @@ export default function CourseForm() {
                             result?.segment_details[i]?.split_details ??
                             undefined
                           }
+                          segmentResult={result?.segment_details[i] ?? null}
                           etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
                           etaMarginClose={parseInt(etaMargins.close, 10) || 7}
                           onZoomToSegment={

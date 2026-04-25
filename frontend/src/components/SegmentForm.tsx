@@ -9,12 +9,14 @@ import type {
   SplitGpxProfile,
   GpxTrackPoint,
   SplitDetail,
+  SegmentDetail,
   SubSplitMode,
 } from "../types";
 import {
   speedLabel,
   distanceLabel,
   minutesToHms,
+  formatHours,
   SEGMENT_COLORS,
 } from "../utils";
 import { makeDefaultSplit } from "../defaults";
@@ -59,6 +61,8 @@ interface SegmentFormProps {
   expandAllSignal?: number;
   /** Calculated split results for inline display inside each SplitForm. */
   splitResults?: (SplitDetail | null)[];
+  /** Calculated segment result for inline display at segment level. */
+  segmentResult?: SegmentDetail | null;
   /** Course-level sub-split mode default; splits may override. */
   courseSplitMode: SubSplitMode;
   /** Total number of segments in the course */
@@ -97,6 +101,7 @@ export default function SegmentFormComponent({
   collapseSignal,
   expandAllSignal,
   splitResults,
+  segmentResult,
   courseSplitMode,
   totalSegments = 1,
   onMoveSplitToPrevSeg,
@@ -132,6 +137,7 @@ export default function SegmentFormComponent({
   const [confirmDeleteSegmentOpen, setConfirmDeleteSegmentOpen] =
     useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
   const [targetSplitSignal, setTargetSplitSignal] = useState(0);
 
@@ -231,6 +237,23 @@ export default function SegmentFormComponent({
   const segCumulativeDist = cumulativeDists?.[lastSplitIdx] ?? null;
   const segEndCity = cityLabels?.[lastSplitIdx] ?? null;
   const segEndCityFetching = cityFetching?.[lastSplitIdx] ?? false;
+  const segmentStartTz =
+    segmentResult?.split_details?.[0]?.start_timezone ?? null;
+  const segmentEndTz =
+    segmentResult?.split_details?.[segmentResult.split_details.length - 1]
+      ?.end_timezone ?? null;
+
+  function fmtInTz(iso: string, tz: string) {
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: "short",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: tz,
+      timeZoneName: "short",
+    });
+  }
 
   // Ordered, adjacent-deduplicated TZ abbreviations across this segment's splits.
   // The effective TZ per split mirrors the logic in SplitForm's auto-detection useEffect
@@ -494,6 +517,15 @@ export default function SegmentFormComponent({
       </div>
       {!collapsed && (
         <div className="segment-view-bar">
+          <div className="split-layout-toggles">
+            <button
+              type="button"
+              className={`split-layout-btn${showResults ? " active" : ""}`}
+              onClick={() => setShowResults((v) => !v)}
+            >
+              Results
+            </button>
+          </div>
           <div className="split-action-buttons">
             {gpxTrack && (
               <button
@@ -532,6 +564,118 @@ export default function SegmentFormComponent({
 
       {!collapsed && (
         <div className="segment-body">
+          {showResults && (
+            <div className="split-results-panel">
+              {segmentResult ? (
+                <dl className="split-results-grid">
+                  <div>
+                    <dt title="Segment start time">Start</dt>
+                    <dd>
+                      {fmtInTz(
+                        segmentResult.start_time,
+                        segmentStartTz ?? courseTz,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Segment end time">End</dt>
+                    <dd>
+                      {fmtInTz(
+                        segmentResult.end_time,
+                        segmentEndTz ?? courseTz,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Time spent actively riding or moving">Active</dt>
+                    <dd
+                      title={formatHours(
+                        segmentResult.active_time_hours,
+                        "full",
+                      )}
+                    >
+                      {formatHours(segmentResult.active_time_hours)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Time spent moving (excludes down time)">
+                      Moving
+                    </dt>
+                    <dd
+                      title={formatHours(
+                        segmentResult.moving_time_hours,
+                        "full",
+                      )}
+                    >
+                      {formatHours(segmentResult.moving_time_hours)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Time stopped or inactive">Down</dt>
+                    <dd
+                      title={formatHours(segmentResult.down_time_hours, "full")}
+                    >
+                      {formatHours(segmentResult.down_time_hours)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Sleep time in this segment">Sleep</dt>
+                    <dd
+                      title={formatHours(
+                        segmentResult.sleep_time_hours,
+                        "full",
+                      )}
+                    >
+                      {formatHours(segmentResult.sleep_time_hours)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Total elapsed time for this segment">Elapsed</dt>
+                    <dd
+                      title={formatHours(
+                        segmentResult.elapsed_time_hours,
+                        "full",
+                      )}
+                    >
+                      {formatHours(segmentResult.elapsed_time_hours)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Average speed across this segment">Speed</dt>
+                    <dd>
+                      {segmentResult.end_moving_speed.toFixed(2)} {sLabel}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Average pace across this segment">Pace</dt>
+                    <dd>
+                      {segmentResult.pace.toFixed(2)} {sLabel}
+                    </dd>
+                  </div>
+                  {segmentResult.adjustment_time_hours != null &&
+                    segmentResult.adjustment_time_hours !== 0 && (
+                      <div>
+                        <dt title="Manual time adjustment applied to this segment">
+                          Adj. Time
+                        </dt>
+                        <dd
+                          title={formatHours(
+                            segmentResult.adjustment_time_hours,
+                            "full",
+                          )}
+                        >
+                          {formatHours(segmentResult.adjustment_time_hours)}
+                        </dd>
+                      </div>
+                    )}
+                </dl>
+              ) : (
+                <div className="split-results-panel split-results-panel--empty">
+                  <span>No results — calculate first</span>
+                </div>
+              )}
+            </div>
+          )}
           <div className="fields-grid">
             <TimeInput
               id={`${prefix}-sleep-time`}
@@ -688,6 +832,7 @@ export default function SegmentFormComponent({
                 collapseSignal={splitCollapseSignal || undefined}
                 expandAllSignal={undefined}
                 splitResult={splitResults?.[j] ?? null}
+                showResults={showResults}
                 courseSplitMode={courseSplitMode}
                 canShiftUp={j > 0}
                 canShiftDown={j < value.splits.length - 1}

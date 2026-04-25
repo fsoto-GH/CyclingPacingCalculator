@@ -110,6 +110,8 @@ interface SplitFormProps {
   expandAllSignal?: number;
   /** Calculated split result from the current course calculation, for inline display. */
   splitResult?: SplitDetail | null;
+  /** Controlled by SegmentForm: when true, show inline split results panel. */
+  showResults?: boolean;
   /** Segment color for the collapse icon (matches segment header). */
   segColor?: string;
   /** Course-level sub-split mode default; splits may override. */
@@ -151,6 +153,7 @@ export default function SplitFormComponent({
   collapseSignal,
   expandAllSignal,
   splitResult,
+  showResults = false,
   segColor,
   courseSplitMode,
   canShiftUp,
@@ -202,6 +205,8 @@ export default function SplitFormComponent({
   const [collapsed, setCollapsed] = useState(true);
   const [confirmDeleteSplitOpen, setConfirmDeleteSplitOpen] = useState(false);
   const [jumpHighlight, setJumpHighlight] = useState(false);
+  const [showForm, setShowForm] = useState(true);
+  const [showMap, setShowMap] = useState(false);
   const prevCollapseSignalRef = useRef(collapseSignal);
   const prevExpandAllSignalRef = useRef(expandAllSignal);
   const jumpHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -257,10 +262,6 @@ export default function SplitFormComponent({
     setCollapsed(false);
   }, [expandAllSignal]);
 
-  // ── Three toggle panels (Form | Map | Results) ────────────────────────────
-  const [showForm, setShowForm] = useState(true);
-  const [showMap, setShowMap] = useState(false);
-  const [showResults, setShowResults] = useState(false);
   const [formColWidth, setFormColWidth] = useState(350);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
@@ -315,9 +316,9 @@ export default function SplitFormComponent({
   useEffect(() => {
     if (!mapAvailable && showMap) {
       setShowMap(false);
-      if (!showForm && !showResults) setShowForm(true);
+      if (!showForm) setShowForm(true);
     }
-  }, [mapAvailable, showMap, showForm, showResults]);
+  }, [mapAvailable, showMap, showForm]);
 
   // Mouse drag — attach to document so the handle doesn't need to be held
   useEffect(() => {
@@ -739,7 +740,7 @@ export default function SplitFormComponent({
               type="button"
               className={`split-layout-btn${showForm ? " active" : ""}`}
               onClick={() => {
-                if (showForm && !showMap && !showResults) return;
+                if (showForm && !showMap) return;
                 setShowForm((v) => !v);
               }}
             >
@@ -750,22 +751,11 @@ export default function SplitFormComponent({
               className={`split-layout-btn${showMap ? " active" : ""}`}
               disabled={!mapAvailable}
               onClick={() => {
-                if (!showForm && showMap && !showResults) return;
+                if (!showForm && showMap) return;
                 setShowMap((v) => !v);
               }}
             >
               Map
-            </button>
-            <button
-              type="button"
-              className={`split-layout-btn${showResults ? " active" : ""}`}
-              disabled={!splitResult}
-              onClick={() => {
-                if (!showForm && !showMap && showResults) return;
-                setShowResults((v) => !v);
-              }}
-            >
-              Results
             </button>
           </div>
           <div className="split-action-buttons">
@@ -1207,8 +1197,7 @@ export default function SplitFormComponent({
                   </div>
                 )}
               </dl>
-              {!showForm &&
-                value.rest_stop.enabled &&
+              {value.rest_stop.enabled &&
                 (value.rest_stop.name ||
                   value.rest_stop.address ||
                   value.rest_stop.alt ||
@@ -1294,10 +1283,7 @@ export default function SplitFormComponent({
             </div>
           );
 
-          // ── Layout: Results always takes a full-width row above Form/Map ──
           const hasFormOrMap = showForm || (showMap && mapAvailable);
-
-          // Build the form/map pane (may be absent)
           const formMapPane = hasFormOrMap
             ? (() => {
                 if (isNarrow) {
@@ -1348,13 +1334,11 @@ export default function SplitFormComponent({
             : null;
 
           if (!showResults) {
-            // No results row — just form/map (or fallback to form)
             return (
               formMapPane ?? <div className="split-body">{formContent}</div>
             );
           }
 
-          // Results row, always in split-stacked-layout (with or without form/map below)
           return (
             <div className="split-stacked-layout">
               <div className="split-results-row">{resultsContent}</div>
