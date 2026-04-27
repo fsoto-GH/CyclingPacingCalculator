@@ -85,7 +85,6 @@ h1 {
 .course-form {
   border: 1px solid #2e2e2e;
   border-radius: 0 0 6px 6px;
-  padding: 1.25rem;
   margin-bottom: 1.5rem;
 }
 
@@ -650,6 +649,22 @@ h4 {
   background: #1e1e1e;
 }
 
+/* ── Course Settings Card (top-level, non-collapsible) ── */
+.course-settings-card {
+  background: #1e1e1e;
+}
+
+.course-settings-header {
+  font-size: 0.95rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  user-select: none;
+  background: #252525;
+  flex-wrap: wrap;
+}
+
 .segment-header {
   font-size: 0.95rem;
   display: flex;
@@ -850,7 +865,7 @@ h4 {
 }
 
 @media (max-width: 500px) {
-  .course-settings-card > .segment-header {
+  .course-settings-card > .course-settings-header {
     flex-wrap: wrap;
   }
   .course-header-actions {

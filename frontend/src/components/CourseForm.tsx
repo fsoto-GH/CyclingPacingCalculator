@@ -383,8 +383,7 @@ export default function CourseForm() {
   const clampedSegPage = Math.min(segPage, Math.max(0, totalSegPages - 1));
   if (clampedSegPage !== segPage) setSegPage(clampedSegPage);
 
-  // Course settings card — collapsible + inline name editing
-  const [courseCollapsed, setCourseCollapsed] = useState(false);
+  // Course settings card — inline name editing
   const [mapCollapsed, setMapCollapsed] = useState(false);
   const [isEditingCourseName, setIsEditingCourseName] = useState(false);
   const courseNameInputRef = useRef<HTMLInputElement | null>(null);
@@ -1784,20 +1783,8 @@ export default function CourseForm() {
             }
           >
             {/* Course Settings Card */}
-            <div className="segment-form course-settings-card">
-              <div
-                className="segment-header"
-                onClick={() => {
-                  if (!isEditingCourseName) setCourseCollapsed((c) => !c);
-                }}
-              >
-                <span className="collapse-icon">
-                  {courseCollapsed ? (
-                    <i className="fas fa-chevron-right" />
-                  ) : (
-                    <i className="fas fa-chevron-down" />
-                  )}
-                </span>
+            <div className="course-settings-card">
+              <div className="course-settings-header">
                 <div className="split-header-left">
                   <div className="split-header-titlerow">
                     {isEditingCourseName ? (
@@ -1863,500 +1850,492 @@ export default function CourseForm() {
                 </div>
               </div>
 
-              {!courseCollapsed && (
-                <div className="segment-body">
-                  {/* Unit & Mode Toggles */}
-                  <div className="toggle-row--inline">
-                    <div className="toggle-row-label-group">
-                      <span id="units-label">Units</span>
-                    </div>
-                    <div
-                      className="toggle-group"
-                      role="group"
-                      aria-labelledby="units-label"
-                    >
-                      <button
-                        type="button"
-                        className={
-                          form.unitSystem === "imperial" ? "active" : ""
-                        }
-                        onClick={() => update({ unitSystem: "imperial" })}
-                      >
-                        Imperial
-                      </button>
-                      <button
-                        type="button"
-                        className={form.unitSystem === "metric" ? "active" : ""}
-                        onClick={() => update({ unitSystem: "metric" })}
-                      >
-                        Metric
-                      </button>
-                    </div>
+              <div className="segment-body">
+                {/* Unit & Mode Toggles */}
+                <div className="toggle-row--inline">
+                  <div className="toggle-row-label-group">
+                    <span id="units-label">Units</span>
                   </div>
-
-                  <div className="toggle-row--inline">
-                    <div className="toggle-row-label-group">
-                      <span id="mode-label">Distance Mode</span>
-                      <span className="hint">
-                        {form.mode === "distance"
-                          ? "Distance values define the length of each split."
-                          : "Distance values define course mile-markers."}
-                      </span>
-                    </div>
-                    <div
-                      className="toggle-group"
-                      role="group"
-                      aria-labelledby="mode-label"
-                    >
-                      <button
-                        type="button"
-                        className={form.mode === "distance" ? "active" : ""}
-                        onClick={() => update({ mode: "distance" })}
-                      >
-                        Split
-                      </button>
-                      <button
-                        type="button"
-                        className={
-                          form.mode === "target_distance" ? "active" : ""
-                        }
-                        onClick={() => update({ mode: "target_distance" })}
-                      >
-                        Target
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Course-level inputs */}
-                  <div className="fields-grid">
-                    <div className="field">
-                      <label htmlFor="course-init-speed">
-                        Speed ({sLabel}) *
-                      </label>
-                      <NumberInput
-                        id="course-init-speed"
-                        step="any"
-                        min="0"
-                        value={form.init_moving_speed}
-                        onChange={(v) => update({ init_moving_speed: v })}
-                        placeholder="e.g. 16"
-                      />
-                      <FieldError fieldId="course-init-speed" />
-                    </div>
-
-                    <div className="field">
-                      <label htmlFor="course-min-speed">
-                        Min Speed ({sLabel}) *
-                      </label>
-                      <NumberInput
-                        id="course-min-speed"
-                        step="1"
-                        min="0"
-                        value={form.min_moving_speed}
-                        onChange={(v) => update({ min_moving_speed: v })}
-                        placeholder="e.g. 14"
-                      />
-                      <FieldError fieldId="course-min-speed" />
-                    </div>
-
-                    <div className="field">
-                      <label htmlFor="course-dtr">Down Time Ratio *</label>
-                      <NumberInput
-                        id="course-dtr"
-                        step="0.05"
-                        min="0"
-                        max="1"
-                        value={form.down_time_ratio}
-                        onChange={(v) => update({ down_time_ratio: v })}
-                        placeholder="e.g. 0.05"
-                      />
-                      <FieldError fieldId="course-dtr" />
-                    </div>
-
-                    <div className="field">
-                      <label
-                        htmlFor="course-split-delta"
-                        title="Per-split speed change: positive builds, negative fades."
-                      >
-                        Speed ∆ ({sLabel}) *
-                      </label>
-                      <NumberInput
-                        id="course-split-delta"
-                        step="0.05"
-                        value={form.split_delta}
-                        onChange={(v) => update({ split_delta: v })}
-                        placeholder="0"
-                      />
-                      <FieldError fieldId="course-split-delta" />
-                    </div>
-
-                    <div className="field span-two-columns">
-                      <label htmlFor="course-start-time">Start Time *</label>
-                      <input
-                        id="course-start-time"
-                        type="datetime-local"
-                        value={form.start_time}
-                        onChange={(e) => update({ start_time: e.target.value })}
-                      />
-                      {form.timezone !== browserTimezone &&
-                        (() => {
-                          const hint = formatStartTimeHint(
-                            form.start_time,
-                            form.timezone,
-                          );
-                          return hint ? (
-                            <span className="start-time-tz-hint">
-                              Interpreted as {hint}
-                            </span>
-                          ) : null;
-                        })()}
-                    </div>
-
-                    <div className="field span-two-columns">
-                      <label htmlFor="course-tz">
-                        Timezone
-                        {detectedCourseTz &&
-                          form.timezone !== detectedCourseTz && (
-                            <button
-                              type="button"
-                              className="tz-reset-btn"
-                              title="Reset to GPS auto-detected timezone"
-                              onClick={() =>
-                                update({ timezone: detectedCourseTz })
-                              }
-                            >
-                              ✕ Reset to auto
-                            </button>
-                          )}
-                      </label>
-                      <TimezoneSelect
-                        id="course-tz"
-                        value={form.timezone}
-                        onChange={(tz) => update({ timezone: tz })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="course-ss-mode">Sub-Split Mode</label>
-                      <select
-                        id="course-ss-mode"
-                        value={form.sub_split_mode}
-                        onChange={(e) =>
-                          update({
-                            sub_split_mode: e.target.value as SubSplitMode,
-                          })
-                        }
-                      >
-                        <option value="hour">Hourly</option>
-                        <option value="even">Even</option>
-                        <option value="fixed">Fixed Size</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                    </div>
-
-                    {form.sub_split_mode === "even" && (
-                      <div className="field">
-                        <label htmlFor="course-ss-count">Count *</label>
-                        <NumberInput
-                          id="course-ss-count"
-                          min="1"
-                          step="1"
-                          value={form.sub_split_count ?? ""}
-                          onChange={(v) => update({ sub_split_count: v })}
-                          placeholder="1"
-                        />
-                        <FieldError fieldId="course-ss-count" />
-                      </div>
-                    )}
-
-                    {form.sub_split_mode === "fixed" && (
-                      <>
-                        <div className="field">
-                          <label htmlFor="course-ss-distance">
-                            Size ({distanceLabel(form.unitSystem)}) *
-                          </label>
-                          <NumberInput
-                            id="course-ss-distance"
-                            step="any"
-                            value={form.sub_split_distance ?? ""}
-                            onChange={(v) => update({ sub_split_distance: v })}
-                            placeholder="e.g. 20"
-                          />
-                          <FieldError fieldId="course-ss-distance" />
-                        </div>
-                        <div className="field">
-                          <label htmlFor="course-ss-threshold">
-                            Last Threshold ({distanceLabel(form.unitSystem)}) *
-                          </label>
-                          <NumberInput
-                            id="course-ss-threshold"
-                            step="any"
-                            value={form.last_sub_split_threshold ?? ""}
-                            onChange={(v) =>
-                              update({ last_sub_split_threshold: v })
-                            }
-                            placeholder="e.g. 10"
-                          />
-                          <FieldError fieldId="course-ss-threshold" />
-                        </div>
-                      </>
-                    )}
-
-                    {form.sub_split_mode === "custom" && (
-                      <div className="field field--full-width">
-                        <label htmlFor="course-ss-distances">
-                          Distances (comma-sep.) *
-                        </label>
-                        <input
-                          id="course-ss-distances"
-                          type="text"
-                          value={form.sub_split_distances ?? ""}
-                          onChange={(e) =>
-                            update({ sub_split_distances: e.target.value })
-                          }
-                          placeholder="e.g. 10, 20, 30"
-                        />
-                        <FieldError fieldId="course-ss-distances" />
-                      </div>
-                    )}
-
-                    <div className="field">
-                      <label htmlFor="course-seg-count"># of Segments</label>
-                      <NumberInput
-                        id="course-seg-count"
-                        min="1"
-                        step="1"
-                        value={form.segmentCount}
-                        onChange={(v) => handleSegmentCountChange(v)}
-                        placeholder="1"
-                      />
-                      <FieldError fieldId="course-seg-count" />
-                    </div>
-                  </div>
-
-                  {/* Segments Toolbar */}
-                  <div className="segments-toolbar">
-                    <div className="segments-toolbar-left">
-                      <button
-                        className="segments-toggle-btn"
-                        onClick={() => setCollapseAllSignal((s) => s + 1)}
-                        title="Collapse all segments and their splits"
-                      >
-                        ▶ Collapse
-                      </button>
-                      <button
-                        className="segments-toggle-btn"
-                        onClick={() => setExpandAllSignal((s) => s + 1)}
-                        title="Expand all segments"
-                      >
-                        ▼ Expand
-                      </button>
-                    </div>
-                    <div className="segments-toolbar-right">
-                      <button
-                        type="button"
-                        className="segments-toggle-btn"
-                        onClick={() =>
-                          setQuickSetup((q) => ({ ...q, open: true }))
-                        }
-                        title="Quickly build or append segments with uniform split distances"
-                      >
-                        <i className="fa-solid fa-bolt"></i> Quick Setup
-                      </button>
-                      {gpxStartCity && (
-                        <button
-                          type="button"
-                          className="segments-toggle-btn"
-                          onClick={handleAutoName}
-                          title="Name all splits and segments using their nearest cities"
-                        >
-                          <i className="fa-solid fa-tags"></i> Auto-Name
-                        </button>
-                      )}
-                      <span className="segments-toolbar-sep" />
-                      <button
-                        type="button"
-                        className="segments-toggle-btn"
-                        onClick={() => setCriteriaModalOpen(true)}
-                        title="Configure stop types and search radius used by all split nearby-stop searches"
-                      >
-                        <i className="fa-solid fa-magnifying-glass-location"></i>{" "}
-                        Stop Criteria
-                      </button>
-                      <button
-                        type="button"
-                        className="segments-toggle-btn"
-                        onClick={() => setEtaMarginsOpen(true)}
-                        title="Configure the time windows used for 'near open' and 'near close' ETA badges"
-                      >
-                        <i className="fa-regular fa-hourglass-half"></i> ETA
-                        Margins
-                      </button>
-                    </div>
-                  </div>
-                  {/* Pagination controls — always present so page-size preference persists */}
-                  <div className="seg-pagination">
+                  <div
+                    className="toggle-group"
+                    role="group"
+                    aria-labelledby="units-label"
+                  >
                     <button
                       type="button"
-                      className="seg-page-btn seg-page-btn--first"
-                      disabled={clampedSegPage === 0}
-                      onClick={() => setSegPage(0)}
-                      title="First page"
+                      className={form.unitSystem === "imperial" ? "active" : ""}
+                      onClick={() => update({ unitSystem: "imperial" })}
                     >
-                      «
+                      Imperial
                     </button>
                     <button
                       type="button"
-                      className="seg-page-btn"
-                      disabled={clampedSegPage === 0}
-                      onClick={() => setSegPage((p) => Math.max(0, p - 1))}
-                      title="Previous page"
+                      className={form.unitSystem === "metric" ? "active" : ""}
+                      onClick={() => update({ unitSystem: "metric" })}
                     >
-                      ‹ Prev
+                      Metric
                     </button>
-                    <span className="seg-page-label">
-                      {totalSegPages > 1
-                        ? `Segments ${clampedSegPage * segPageSize + 1}–${Math.min(
-                            (clampedSegPage + 1) * segPageSize,
-                            form.segments.length,
-                          )} of ${form.segments.length}`
-                        : `${form.segments.length} segment${form.segments.length !== 1 ? "s" : ""}`}
-                    </span>
-                    <button
-                      type="button"
-                      className="seg-page-btn"
-                      disabled={clampedSegPage >= totalSegPages - 1}
-                      onClick={() =>
-                        setSegPage((p) => Math.min(totalSegPages - 1, p + 1))
-                      }
-                      title="Next page"
-                    >
-                      Next ›
-                    </button>
-                    <button
-                      type="button"
-                      className="seg-page-btn seg-page-btn--last"
-                      disabled={clampedSegPage >= totalSegPages - 1}
-                      onClick={() => setSegPage(Math.max(0, totalSegPages - 1))}
-                      title="Last page"
-                    >
-                      »
-                    </button>
-                    <select
-                      className="seg-page-size"
-                      value={segPageSize}
-                      onChange={(e) => {
-                        const newSize = Number(e.target.value);
-                        // Keep the first visible segment on screen after resize.
-                        const firstVisible = clampedSegPage * segPageSize;
-                        setSegPageSize(newSize);
-                        setSegPage(Math.floor(firstVisible / newSize));
-                      }}
-                      title="Segments per page"
-                    >
-                      <option value={5}>5 / page</option>
-                      <option value={10}>10 / page</option>
-                      <option value={20}>20 / page</option>
-                    </select>
-                  </div>
-                  <div className="segments-container">
-                    {form.segments
-                      .slice(
-                        clampedSegPage * segPageSize,
-                        (clampedSegPage + 1) * segPageSize,
-                      )
-                      .map((seg, localIdx) => {
-                        const i = clampedSegPage * segPageSize + localIdx;
-                        return (
-                          <SegmentFormComponent
-                            key={i}
-                            segIndex={i}
-                            value={seg}
-                            onChange={(s) => updateSegment(i, s)}
-                            unitSystem={form.unitSystem}
-                            mode={form.mode}
-                            isLastSeg={i === form.segments.length - 1}
-                            totalSegments={form.segments.length}
-                            onMoveSplitToPrevSeg={(splitIdx) =>
-                              moveSplitToPrevSeg(i, splitIdx)
-                            }
-                            onMoveSplitToNextSeg={(splitIdx) =>
-                              moveSplitToNextSeg(i, splitIdx)
-                            }
-                            onDeleteSplit={(splitIdx) =>
-                              deleteSplit(i, splitIdx)
-                            }
-                            canDeleteSegment={form.segments.length > 1}
-                            onDeleteSegment={() => deleteSegment(i)}
-                            prevSegNullified={
-                              i > 0 ? !!form.segments[i - 1].nullified : false
-                            }
-                            nextSegNullified={
-                              i < form.segments.length - 1
-                                ? !!form.segments[i + 1].nullified
-                                : false
-                            }
-                            gpxProfiles={gpxProfiles?.[i] ?? null}
-                            gpxTrack={gpxTrack}
-                            courseTz={form.timezone}
-                            courseSplitMode={form.sub_split_mode}
-                            splitStatuses={splitGpxStatuses[i]}
-                            cityLabels={cityLabels[i]}
-                            cityFetching={cityFetching[i]}
-                            cumulativeDists={
-                              splitCumulativeDists?.[i] ?? undefined
-                            }
-                            segmentStartDist={
-                              i === 0
-                                ? 0
-                                : (splitCumulativeDists?.[i - 1]?.[
-                                    form.segments[i - 1].splits.length - 1
-                                  ] ?? null)
-                            }
-                            gpxTotalDist={gpxTotalDistUser}
-                            segmentStartCity={
-                              i === 0
-                                ? gpxStartCity
-                                : (cityLabels[i - 1]?.[
-                                    form.segments[i - 1].splits.length - 1
-                                  ] ?? null)
-                            }
-                            expandSignal={
-                              mapNavTarget?.segIdx === i
-                                ? mapNavTarget.rev
-                                : undefined
-                            }
-                            expandSplitIdx={
-                              mapNavTarget?.segIdx === i
-                                ? mapNavTarget.splitIdx
-                                : -1
-                            }
-                            collapseSignal={collapseAllSignal || undefined}
-                            expandAllSignal={expandAllSignal || undefined}
-                            splitResults={
-                              result?.segment_details[i]?.split_details ??
-                              undefined
-                            }
-                            segmentResult={result?.segment_details[i] ?? null}
-                            etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
-                            etaMarginClose={parseInt(etaMargins.close, 10) || 7}
-                            onZoomToSegment={
-                              gpxTrack
-                                ? () => handleZoomToSegment(i)
-                                : undefined
-                            }
-                            onZoomToSplit={
-                              gpxTrack
-                                ? (splitIdx: number) =>
-                                    handleZoomToSplit(i, splitIdx)
-                                : undefined
-                            }
-                            splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
-                          />
-                        );
-                      })}
                   </div>
                 </div>
-              )}
+
+                <div className="toggle-row--inline">
+                  <div className="toggle-row-label-group">
+                    <span id="mode-label">Distance Mode</span>
+                    <span className="hint">
+                      {form.mode === "distance"
+                        ? "Distance values define the length of each split."
+                        : "Distance values define course mile-markers."}
+                    </span>
+                  </div>
+                  <div
+                    className="toggle-group"
+                    role="group"
+                    aria-labelledby="mode-label"
+                  >
+                    <button
+                      type="button"
+                      className={form.mode === "distance" ? "active" : ""}
+                      onClick={() => update({ mode: "distance" })}
+                    >
+                      Split
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        form.mode === "target_distance" ? "active" : ""
+                      }
+                      onClick={() => update({ mode: "target_distance" })}
+                    >
+                      Target
+                    </button>
+                  </div>
+                </div>
+
+                {/* Course-level inputs */}
+                <div className="fields-grid">
+                  <div className="field">
+                    <label htmlFor="course-init-speed">
+                      Speed ({sLabel}) *
+                    </label>
+                    <NumberInput
+                      id="course-init-speed"
+                      step="any"
+                      min="0"
+                      value={form.init_moving_speed}
+                      onChange={(v) => update({ init_moving_speed: v })}
+                      placeholder="e.g. 16"
+                    />
+                    <FieldError fieldId="course-init-speed" />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="course-min-speed">
+                      Min Speed ({sLabel}) *
+                    </label>
+                    <NumberInput
+                      id="course-min-speed"
+                      step="1"
+                      min="0"
+                      value={form.min_moving_speed}
+                      onChange={(v) => update({ min_moving_speed: v })}
+                      placeholder="e.g. 14"
+                    />
+                    <FieldError fieldId="course-min-speed" />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="course-dtr">Down Time Ratio *</label>
+                    <NumberInput
+                      id="course-dtr"
+                      step="0.05"
+                      min="0"
+                      max="1"
+                      value={form.down_time_ratio}
+                      onChange={(v) => update({ down_time_ratio: v })}
+                      placeholder="e.g. 0.05"
+                    />
+                    <FieldError fieldId="course-dtr" />
+                  </div>
+
+                  <div className="field">
+                    <label
+                      htmlFor="course-split-delta"
+                      title="Per-split speed change: positive builds, negative fades."
+                    >
+                      Speed ∆ ({sLabel}) *
+                    </label>
+                    <NumberInput
+                      id="course-split-delta"
+                      step="0.05"
+                      value={form.split_delta}
+                      onChange={(v) => update({ split_delta: v })}
+                      placeholder="0"
+                    />
+                    <FieldError fieldId="course-split-delta" />
+                  </div>
+
+                  <div className="field span-two-columns">
+                    <label htmlFor="course-start-time">Start Time *</label>
+                    <input
+                      id="course-start-time"
+                      type="datetime-local"
+                      value={form.start_time}
+                      onChange={(e) => update({ start_time: e.target.value })}
+                    />
+                    {form.timezone !== browserTimezone &&
+                      (() => {
+                        const hint = formatStartTimeHint(
+                          form.start_time,
+                          form.timezone,
+                        );
+                        return hint ? (
+                          <span className="start-time-tz-hint">
+                            Interpreted as {hint}
+                          </span>
+                        ) : null;
+                      })()}
+                  </div>
+
+                  <div className="field span-two-columns">
+                    <label htmlFor="course-tz">
+                      Timezone
+                      {detectedCourseTz &&
+                        form.timezone !== detectedCourseTz && (
+                          <button
+                            type="button"
+                            className="tz-reset-btn"
+                            title="Reset to GPS auto-detected timezone"
+                            onClick={() =>
+                              update({ timezone: detectedCourseTz })
+                            }
+                          >
+                            ✕ Reset to auto
+                          </button>
+                        )}
+                    </label>
+                    <TimezoneSelect
+                      id="course-tz"
+                      value={form.timezone}
+                      onChange={(tz) => update({ timezone: tz })}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="course-ss-mode">Sub-Split Mode</label>
+                    <select
+                      id="course-ss-mode"
+                      value={form.sub_split_mode}
+                      onChange={(e) =>
+                        update({
+                          sub_split_mode: e.target.value as SubSplitMode,
+                        })
+                      }
+                    >
+                      <option value="hour">Hourly</option>
+                      <option value="even">Even</option>
+                      <option value="fixed">Fixed Size</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+
+                  {form.sub_split_mode === "even" && (
+                    <div className="field">
+                      <label htmlFor="course-ss-count">Count *</label>
+                      <NumberInput
+                        id="course-ss-count"
+                        min="1"
+                        step="1"
+                        value={form.sub_split_count ?? ""}
+                        onChange={(v) => update({ sub_split_count: v })}
+                        placeholder="1"
+                      />
+                      <FieldError fieldId="course-ss-count" />
+                    </div>
+                  )}
+
+                  {form.sub_split_mode === "fixed" && (
+                    <>
+                      <div className="field">
+                        <label htmlFor="course-ss-distance">
+                          Size ({distanceLabel(form.unitSystem)}) *
+                        </label>
+                        <NumberInput
+                          id="course-ss-distance"
+                          step="any"
+                          value={form.sub_split_distance ?? ""}
+                          onChange={(v) => update({ sub_split_distance: v })}
+                          placeholder="e.g. 20"
+                        />
+                        <FieldError fieldId="course-ss-distance" />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="course-ss-threshold">
+                          Last Threshold ({distanceLabel(form.unitSystem)}) *
+                        </label>
+                        <NumberInput
+                          id="course-ss-threshold"
+                          step="any"
+                          value={form.last_sub_split_threshold ?? ""}
+                          onChange={(v) =>
+                            update({ last_sub_split_threshold: v })
+                          }
+                          placeholder="e.g. 10"
+                        />
+                        <FieldError fieldId="course-ss-threshold" />
+                      </div>
+                    </>
+                  )}
+
+                  {form.sub_split_mode === "custom" && (
+                    <div className="field field--full-width">
+                      <label htmlFor="course-ss-distances">
+                        Distances (comma-sep.) *
+                      </label>
+                      <input
+                        id="course-ss-distances"
+                        type="text"
+                        value={form.sub_split_distances ?? ""}
+                        onChange={(e) =>
+                          update({ sub_split_distances: e.target.value })
+                        }
+                        placeholder="e.g. 10, 20, 30"
+                      />
+                      <FieldError fieldId="course-ss-distances" />
+                    </div>
+                  )}
+
+                  <div className="field">
+                    <label htmlFor="course-seg-count"># of Segments</label>
+                    <NumberInput
+                      id="course-seg-count"
+                      min="1"
+                      step="1"
+                      value={form.segmentCount}
+                      onChange={(v) => handleSegmentCountChange(v)}
+                      placeholder="1"
+                    />
+                    <FieldError fieldId="course-seg-count" />
+                  </div>
+                </div>
+
+                {/* Segments Toolbar */}
+                <div className="segments-toolbar">
+                  <div className="segments-toolbar-left">
+                    <button
+                      className="segments-toggle-btn"
+                      onClick={() => setCollapseAllSignal((s) => s + 1)}
+                      title="Collapse all segments and their splits"
+                    >
+                      ▶ Collapse
+                    </button>
+                    <button
+                      className="segments-toggle-btn"
+                      onClick={() => setExpandAllSignal((s) => s + 1)}
+                      title="Expand all segments"
+                    >
+                      ▼ Expand
+                    </button>
+                  </div>
+                  <div className="segments-toolbar-right">
+                    <button
+                      type="button"
+                      className="segments-toggle-btn"
+                      onClick={() =>
+                        setQuickSetup((q) => ({ ...q, open: true }))
+                      }
+                      title="Quickly build or append segments with uniform split distances"
+                    >
+                      <i className="fa-solid fa-bolt"></i> Quick Setup
+                    </button>
+                    {gpxStartCity && (
+                      <button
+                        type="button"
+                        className="segments-toggle-btn"
+                        onClick={handleAutoName}
+                        title="Name all splits and segments using their nearest cities"
+                      >
+                        <i className="fa-solid fa-tags"></i> Auto-Name
+                      </button>
+                    )}
+                    <span className="segments-toolbar-sep" />
+                    <button
+                      type="button"
+                      className="segments-toggle-btn"
+                      onClick={() => setCriteriaModalOpen(true)}
+                      title="Configure stop types and search radius used by all split nearby-stop searches"
+                    >
+                      <i className="fa-solid fa-magnifying-glass-location"></i>{" "}
+                      Stop Criteria
+                    </button>
+                    <button
+                      type="button"
+                      className="segments-toggle-btn"
+                      onClick={() => setEtaMarginsOpen(true)}
+                      title="Configure the time windows used for 'near open' and 'near close' ETA badges"
+                    >
+                      <i className="fa-regular fa-hourglass-half"></i> ETA
+                      Margins
+                    </button>
+                  </div>
+                </div>
+                {/* Pagination controls — always present so page-size preference persists */}
+                <div className="seg-pagination">
+                  <button
+                    type="button"
+                    className="seg-page-btn seg-page-btn--first"
+                    disabled={clampedSegPage === 0}
+                    onClick={() => setSegPage(0)}
+                    title="First page"
+                  >
+                    «
+                  </button>
+                  <button
+                    type="button"
+                    className="seg-page-btn"
+                    disabled={clampedSegPage === 0}
+                    onClick={() => setSegPage((p) => Math.max(0, p - 1))}
+                    title="Previous page"
+                  >
+                    ‹ Prev
+                  </button>
+                  <span className="seg-page-label">
+                    {totalSegPages > 1
+                      ? `Segments ${clampedSegPage * segPageSize + 1}–${Math.min(
+                          (clampedSegPage + 1) * segPageSize,
+                          form.segments.length,
+                        )} of ${form.segments.length}`
+                      : `${form.segments.length} segment${form.segments.length !== 1 ? "s" : ""}`}
+                  </span>
+                  <button
+                    type="button"
+                    className="seg-page-btn"
+                    disabled={clampedSegPage >= totalSegPages - 1}
+                    onClick={() =>
+                      setSegPage((p) => Math.min(totalSegPages - 1, p + 1))
+                    }
+                    title="Next page"
+                  >
+                    Next ›
+                  </button>
+                  <button
+                    type="button"
+                    className="seg-page-btn seg-page-btn--last"
+                    disabled={clampedSegPage >= totalSegPages - 1}
+                    onClick={() => setSegPage(Math.max(0, totalSegPages - 1))}
+                    title="Last page"
+                  >
+                    »
+                  </button>
+                  <select
+                    className="seg-page-size"
+                    value={segPageSize}
+                    onChange={(e) => {
+                      const newSize = Number(e.target.value);
+                      // Keep the first visible segment on screen after resize.
+                      const firstVisible = clampedSegPage * segPageSize;
+                      setSegPageSize(newSize);
+                      setSegPage(Math.floor(firstVisible / newSize));
+                    }}
+                    title="Segments per page"
+                  >
+                    <option value={5}>5 / page</option>
+                    <option value={10}>10 / page</option>
+                    <option value={20}>20 / page</option>
+                  </select>
+                </div>
+                <div className="segments-container">
+                  {form.segments
+                    .slice(
+                      clampedSegPage * segPageSize,
+                      (clampedSegPage + 1) * segPageSize,
+                    )
+                    .map((seg, localIdx) => {
+                      const i = clampedSegPage * segPageSize + localIdx;
+                      return (
+                        <SegmentFormComponent
+                          key={i}
+                          segIndex={i}
+                          value={seg}
+                          onChange={(s) => updateSegment(i, s)}
+                          unitSystem={form.unitSystem}
+                          mode={form.mode}
+                          isLastSeg={i === form.segments.length - 1}
+                          totalSegments={form.segments.length}
+                          onMoveSplitToPrevSeg={(splitIdx) =>
+                            moveSplitToPrevSeg(i, splitIdx)
+                          }
+                          onMoveSplitToNextSeg={(splitIdx) =>
+                            moveSplitToNextSeg(i, splitIdx)
+                          }
+                          onDeleteSplit={(splitIdx) => deleteSplit(i, splitIdx)}
+                          canDeleteSegment={form.segments.length > 1}
+                          onDeleteSegment={() => deleteSegment(i)}
+                          prevSegNullified={
+                            i > 0 ? !!form.segments[i - 1].nullified : false
+                          }
+                          nextSegNullified={
+                            i < form.segments.length - 1
+                              ? !!form.segments[i + 1].nullified
+                              : false
+                          }
+                          gpxProfiles={gpxProfiles?.[i] ?? null}
+                          gpxTrack={gpxTrack}
+                          courseTz={form.timezone}
+                          courseSplitMode={form.sub_split_mode}
+                          splitStatuses={splitGpxStatuses[i]}
+                          cityLabels={cityLabels[i]}
+                          cityFetching={cityFetching[i]}
+                          cumulativeDists={
+                            splitCumulativeDists?.[i] ?? undefined
+                          }
+                          segmentStartDist={
+                            i === 0
+                              ? 0
+                              : (splitCumulativeDists?.[i - 1]?.[
+                                  form.segments[i - 1].splits.length - 1
+                                ] ?? null)
+                          }
+                          gpxTotalDist={gpxTotalDistUser}
+                          segmentStartCity={
+                            i === 0
+                              ? gpxStartCity
+                              : (cityLabels[i - 1]?.[
+                                  form.segments[i - 1].splits.length - 1
+                                ] ?? null)
+                          }
+                          expandSignal={
+                            mapNavTarget?.segIdx === i
+                              ? mapNavTarget.rev
+                              : undefined
+                          }
+                          expandSplitIdx={
+                            mapNavTarget?.segIdx === i
+                              ? mapNavTarget.splitIdx
+                              : -1
+                          }
+                          collapseSignal={collapseAllSignal || undefined}
+                          expandAllSignal={expandAllSignal || undefined}
+                          splitResults={
+                            result?.segment_details[i]?.split_details ??
+                            undefined
+                          }
+                          segmentResult={result?.segment_details[i] ?? null}
+                          etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
+                          etaMarginClose={parseInt(etaMargins.close, 10) || 7}
+                          onZoomToSegment={
+                            gpxTrack ? () => handleZoomToSegment(i) : undefined
+                          }
+                          onZoomToSplit={
+                            gpxTrack
+                              ? (splitIdx: number) =>
+                                  handleZoomToSplit(i, splitIdx)
+                              : undefined
+                          }
+                          splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
+                        />
+                      );
+                    })}
+                </div>
+              </div>
             </div>
 
             {/* API error */}
