@@ -56,7 +56,6 @@ function CourseMapDeferred(props: React.ComponentProps<typeof CourseMap>) {
   );
 }
 
-const ResultsView = lazy(() => import("./ResultsView"));
 const LegendModal = lazy(() => import("./LegendModal"));
 const ExampleModal = lazy(() => import("./ExampleModal"));
 const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
@@ -1548,105 +1547,200 @@ export default function CourseForm() {
   return (
     <AllErrorsContext.Provider value={allErrors}>
       <FieldErrorContext.Provider value={visibleErrors}>
-        <div className="course-form" onBlur={handleBlur}>
-          <div className="title-row">
-            <h1>
-              Ultra Cycling Planner{" "}
-              <span className="app-version">v{__APP_VERSION__}</span>
-            </h1>
-            <div className="title-nav-buttons">
+        <div className="title-row">
+          <h1>
+            Ultra Cycling Planner{" "}
+            <span className="app-version">v{__APP_VERSION__}</span>
+          </h1>
+          <div className="title-nav-buttons">
+            <button
+              type="button"
+              className="nav-btn nav-btn-legend"
+              onClick={() => setLegendOpen(true)}
+              title="Open the guide"
+            >
+              <i className="fa-solid fa-book-atlas"></i>
+              <span className="nav-btn-label">Guide</span>
+            </button>
+            <div className="nav-btn-group">
               <button
                 type="button"
-                className="nav-btn nav-btn-legend"
-                onClick={() => setLegendOpen(true)}
-                title="Open the guide"
+                className="nav-btn"
+                onClick={() => setExamplesOpen(true)}
+                title="Load a pre-built example course"
               >
-                <i className="fa-solid fa-book-atlas"></i>
-                <span className="nav-btn-label">Guide</span>
+                <i className="fa-solid fa-vial"></i>
+                <span className="nav-btn-label">Examples</span>
               </button>
-              <div className="nav-btn-group">
-                <button
-                  type="button"
-                  className="nav-btn"
-                  onClick={() => setExamplesOpen(true)}
-                  title="Load a pre-built example course"
-                >
-                  <i className="fa-solid fa-vial"></i>
-                  <span className="nav-btn-label">Examples</span>
-                </button>
-                <button
-                  type="button"
-                  className="nav-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Import a previously exported JSON course"
-                >
-                  <span className="nav-btn-icon">
-                    <i className="fas fa-download" />
-                  </span>
-                  <span className="nav-btn-label">Import JSON</span>
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".json"
-                  style={{ display: "none" }}
-                  onChange={handleImport}
-                />
-                <button
-                  type="button"
-                  className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
-                  onClick={() => !gpxLoading && gpxFileRef.current?.click()}
-                  disabled={gpxLoading}
-                  title="Load a GPX track file for elevation profiles and nearby stops"
-                >
-                  {gpxLoading ? (
-                    <>
-                      <span className="btn-spinner btn-spinner-sm" /> Parsing…
-                    </>
-                  ) : (
-                    <>
-                      <span className="nav-btn-icon">
-                        <i className="fas fa-map" />
-                      </span>
-                      <span className="nav-btn-label">Load GPX</span>
-                    </>
-                  )}
-                </button>
-                <input
-                  ref={gpxFileRef}
-                  type="file"
-                  accept=".gpx"
-                  style={{ display: "none" }}
-                  onChange={handleGpxLoad}
-                />
-              </div>
+              <button
+                type="button"
+                className="nav-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Import a previously exported JSON course"
+              >
+                <span className="nav-btn-icon">
+                  <i className="fas fa-download" />
+                </span>
+                <span className="nav-btn-label">Import JSON</span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                style={{ display: "none" }}
+                onChange={handleImport}
+              />
+              <button
+                type="button"
+                className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
+                onClick={() => !gpxLoading && gpxFileRef.current?.click()}
+                disabled={gpxLoading}
+                title="Load a GPX track file for elevation profiles and nearby stops"
+              >
+                {gpxLoading ? (
+                  <>
+                    <span className="btn-spinner btn-spinner-sm" /> Parsing…
+                  </>
+                ) : (
+                  <>
+                    <span className="nav-btn-icon">
+                      <i className="fas fa-map" />
+                    </span>
+                    <span className="nav-btn-label">Load GPX</span>
+                  </>
+                )}
+              </button>
+              <input
+                ref={gpxFileRef}
+                type="file"
+                accept=".gpx"
+                style={{ display: "none" }}
+                onChange={handleGpxLoad}
+              />
             </div>
           </div>
-          <p className="app-description">
-            Plan multi-day cycling events with detailed pacing, rest stops, and
-            time estimates. Define segments and splits with custom speeds, decay
-            rates, sub-split strategies, and rest stop open hours. The
-            calculator projects arrival times, checks them against business
-            hours, and supports timezone-aware scheduling across regions.
-          </p>
-          <div className="app-tab-bar" role="tablist">
+        </div>
+        <p className="app-description">
+          Plan multi-day cycling events with detailed pacing, rest stops, and
+          time estimates. Define segments and splits with custom speeds, decay
+          rates, sub-split strategies, and rest stop open hours. The calculator
+          projects arrival times, checks them against business hours, and
+          supports timezone-aware scheduling across regions.
+        </p>
+
+        {/* GPX banner — independent of tab state */}
+        {gpxFileName && gpxLoading && (
+          <div className="gpx-file-field gpx-file-field-loading">
+            <div className="gpx-file-meta">
+              <span className="gpx-file-label gpx-label-loading">
+                <span className="btn-spinner btn-spinner-sm" /> Parsing GPX
+              </span>
+              <span className="gpx-file-name">{gpxFileName}</span>
+              <span className="gpx-file-stats gpx-stats-loading">
+                Reading track points…
+              </span>
+            </div>
+          </div>
+        )}
+        {gpxFileName && gpxTrack && !gpxLoading && (
+          <div className="gpx-file-field">
+            <div className="gpx-file-meta">
+              <span className="gpx-file-label">
+                <i className="fas fa-map" /> GPX route
+              </span>
+              <span className="gpx-file-name">{gpxFileName}</span>
+              <span className="gpx-file-stats">
+                {form.unitSystem === "imperial"
+                  ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
+                  : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
+                {" · "}
+                {form.unitSystem === "imperial"
+                  ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
+                  : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
+                {" · "}
+                {gpxTrack.length.toLocaleString()} pts
+              </span>
+            </div>
             <button
-              role="tab"
               type="button"
-              className={`app-tab-btn${activeTab === "planning" ? " active" : ""}`}
-              onClick={() => setActiveTab("planning")}
+              className="gpx-file-remove"
+              onClick={handleGpxClear}
+              aria-label="Remove GPX route"
             >
-              <i className="fas fa-pencil-alt" /> Planning
-            </button>
-            <button
-              role="tab"
-              type="button"
-              className={`app-tab-btn${activeTab === "projections" ? " active" : ""}`}
-              onClick={() => setActiveTab("projections")}
-            >
-              <i className="fas fa-chart-line" /> Projections
+              Remove
             </button>
           </div>
+        )}
+        {gpxMissingWarning && (
+          <div className="gpx-missing-warning">
+            <span>
+              <i className="fas fa-exclamation-triangle" /> {gpxMissingWarning}
+            </span>
+            <button
+              type="button"
+              className="gpx-missing-dismiss"
+              onClick={() => setGpxMissingWarning(null)}
+              aria-label="Dismiss warning"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Course map — independent of tab state */}
+        {gpxTrack && splitBoundariesKm && (
+          <div className="course-map-collapsible" ref={courseMapContainerRef}>
+            <div
+              className="course-map-collapse-header"
+              onClick={() => setMapCollapsed((c) => !c)}
+            >
+              <span className="collapse-icon">
+                {mapCollapsed ? (
+                  <i className="fas fa-chevron-right" />
+                ) : (
+                  <i className="fas fa-chevron-down" />
+                )}
+              </span>
+              <span>Course Map</span>
+            </div>
+            {!mapCollapsed && (
+              <Suspense
+                fallback={<div className="map-loading">Loading map…</div>}
+              >
+                <CourseMapDeferred
+                  gpxTrack={gpxTrack}
+                  splitBoundariesKm={splitBoundariesKm}
+                  formSegments={form.segments}
+                  unitSystem={form.unitSystem}
+                  gpxProfiles={gpxProfiles}
+                  onMarkerClick={handleMapMarkerClick}
+                  courseName={form.name?.trim() || undefined}
+                  zoomTarget={mapZoomTarget}
+                />
+              </Suspense>
+            )}
+          </div>
+        )}
+
+        <div className="app-tab-bar" role="tablist">
+          <button
+            role="tab"
+            type="button"
+            className={`app-tab-btn${activeTab === "planning" ? " active" : ""}`}
+            onClick={() => setActiveTab("planning")}
+          >
+            <i className="fas fa-pencil-alt" /> Planning
+          </button>
+          <button
+            role="tab"
+            type="button"
+            className={`app-tab-btn${activeTab === "projections" ? " active" : ""}`}
+            onClick={() => setActiveTab("projections")}
+          >
+            <i className="fas fa-chart-line" /> Projections
+          </button>
+        </div>
+        <div className="course-form" onBlur={handleBlur}>
           <Suspense fallback={null}>
             <LegendModal
               open={legendOpen}
@@ -1683,66 +1777,6 @@ export default function CourseForm() {
               onCancel={handleCancelReset}
             />
           </Suspense>
-
-          {/* GPX banner — outside tab panels; relevant to both Planning and Projections */}
-          {gpxFileName && gpxLoading && (
-            <div className="gpx-file-field gpx-file-field-loading">
-              <div className="gpx-file-meta">
-                <span className="gpx-file-label gpx-label-loading">
-                  <span className="btn-spinner btn-spinner-sm" /> Parsing GPX
-                </span>
-                <span className="gpx-file-name">{gpxFileName}</span>
-                <span className="gpx-file-stats gpx-stats-loading">
-                  Reading track points…
-                </span>
-              </div>
-            </div>
-          )}
-          {gpxFileName && gpxTrack && !gpxLoading && (
-            <div className="gpx-file-field">
-              <div className="gpx-file-meta">
-                <span className="gpx-file-label">
-                  <i className="fas fa-map" /> GPX route
-                </span>
-                <span className="gpx-file-name">{gpxFileName}</span>
-                <span className="gpx-file-stats">
-                  {form.unitSystem === "imperial"
-                    ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
-                    : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
-                  {" · "}
-                  {form.unitSystem === "imperial"
-                    ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
-                    : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
-                  {" · "}
-                  {gpxTrack.length.toLocaleString()} pts
-                </span>
-              </div>
-              <button
-                type="button"
-                className="gpx-file-remove"
-                onClick={handleGpxClear}
-                aria-label="Remove GPX route"
-              >
-                Remove
-              </button>
-            </div>
-          )}
-          {gpxMissingWarning && (
-            <div className="gpx-missing-warning">
-              <span>
-                <i className="fas fa-exclamation-triangle" />{" "}
-                {gpxMissingWarning}
-              </span>
-              <button
-                type="button"
-                className="gpx-missing-dismiss"
-                onClick={() => setGpxMissingWarning(null)}
-                aria-label="Dismiss warning"
-              >
-                ✕
-              </button>
-            </div>
-          )}
 
           <div
             className={
@@ -2811,45 +2845,6 @@ export default function CourseForm() {
             </button>
           </div>
         </dialog>
-
-        {/* Live course map — shown when a GPX and distances are set */}
-        {gpxTrack && splitBoundariesKm && (
-          <div className="course-map-collapsible" ref={courseMapContainerRef}>
-            <div
-              className="course-map-collapse-header"
-              onClick={() => setMapCollapsed((c) => !c)}
-            >
-              <span className="collapse-icon">
-                {mapCollapsed ? (
-                  <i className="fas fa-chevron-right" />
-                ) : (
-                  <i className="fas fa-chevron-down" />
-                )}
-              </span>
-              <span>Course Map</span>
-            </div>
-            {!mapCollapsed && (
-              <Suspense
-                fallback={<div className="map-loading">Loading map…</div>}
-              >
-                {/* Use deferred values for the two props that change on every
-                     keystroke. React renders the map at low priority — input
-                     fields stay responsive and the map catches up after the
-                     user pauses. */}
-                <CourseMapDeferred
-                  gpxTrack={gpxTrack}
-                  splitBoundariesKm={splitBoundariesKm}
-                  formSegments={form.segments}
-                  unitSystem={form.unitSystem}
-                  gpxProfiles={gpxProfiles}
-                  onMarkerClick={handleMapMarkerClick}
-                  courseName={form.name?.trim() || undefined}
-                  zoomTarget={mapZoomTarget}
-                />
-              </Suspense>
-            )}
-          </div>
-        )}
       </FieldErrorContext.Provider>
     </AllErrorsContext.Provider>
   );
