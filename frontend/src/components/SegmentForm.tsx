@@ -624,7 +624,7 @@ export default function SegmentFormComponent({
                   </label>
                   <NumberInput
                     id={`${prefix}-transit-dist`}
-                    step="0.5"
+                    step="0.25"
                     min="0"
                     value={value.splits[0]?.distance ?? ""}
                     onChange={(v) => {

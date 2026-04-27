@@ -837,7 +837,7 @@ export default function SplitFormComponent({
                 </label>
                 <NumberInput
                   id={`${prefix}-distance`}
-                  step="0.5"
+                  step="0.25"
                   min="0"
                   value={value.distance}
                   onChange={(v) => update({ distance: v })}

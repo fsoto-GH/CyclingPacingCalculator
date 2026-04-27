@@ -4,14 +4,15 @@ import type { SplitPayload } from "../types";
  * Given a split's sub-split configuration and its (per-split, normalized) distance,
  * returns an array of individual sub-split distances.
  *
- * @param pace - Effective distance per elapsed hour (moving + down time). Used by
- *   the "hour" mode to place sub-split boundaries every elapsed hour rather than
- *   every moving hour. When omitted, falls back to movingSpeed.
+ * @param downTimeRatio - Effective down-time ratio for the split (down_time / moving_time).
+ *   Used by the "hour" mode: distPerHour = movingSpeed / (1 + downTimeRatio), so each
+ *   sub-split boundary falls exactly one elapsed hour (moving + down time) apart.
+ *   When omitted, defaults to 0 (no down time).
  */
 export function computeSubSplitDistances(
   split: SplitPayload,
   movingSpeed?: number,
-  pace?: number,
+  downTimeRatio?: number,
 ): number[] {
   const { distance } = split;
 
@@ -47,9 +48,9 @@ export function computeSubSplitDistances(
     case "hour": {
       if (!movingSpeed || movingSpeed <= 0) return [distance];
 
-      // Use pace (dist/elapsed-hour) so each sub-split boundary falls on a
-      // wall-clock hour boundary, accounting for down time within the split.
-      const distPerHour = pace ?? movingSpeed;
+      // distPerHour = movingSpeed / (1 + dtr) so each sub-split spans exactly
+      // one elapsed hour: moving time 1/(1+dtr) h + down time dtr/(1+dtr) h = 1 h.
+      const distPerHour = movingSpeed / (1 + (downTimeRatio ?? 0));
       const fullCount = Math.floor(distance / distPerHour);
 
       if (fullCount === 0) return [distance];

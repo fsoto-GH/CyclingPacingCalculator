@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class SubSplitMode:
-    def sub_splits(self, distance: float, moving_speed: float | None = None, pace: float | None = None) -> list[float]:
+    def sub_splits(self, distance: float, moving_speed: float | None = None, down_time_ratio: float = 0.0) -> list[float]:
         raise NotImplementedError('sub_splits method must be implemented by subclasses')
 
 
@@ -11,7 +11,7 @@ class SubSplitMode:
 class EvenSubSplitMode(SubSplitMode):
     sub_split_count: int
 
-    def sub_splits(self, distance, moving_speed=None, pace=None) -> list[float]:
+    def sub_splits(self, distance, moving_speed=None, down_time_ratio=0.0) -> list[float]:
         return [distance / self.sub_split_count for _ in range(self.sub_split_count)]
 
 
@@ -20,7 +20,7 @@ class FixedDistanceSubSplitMode(SubSplitMode):
     sub_split_distance: float
     last_sub_split_threshold: float | None = None
 
-    def sub_splits(self, distance, moving_speed=None, pace=None) -> list[float]:
+    def sub_splits(self, distance, moving_speed=None, down_time_ratio=0.0) -> list[float]:
         full_sub_split_count = int(distance // self.sub_split_distance)
         if full_sub_split_count == 0:
             return [distance]
@@ -47,25 +47,25 @@ class CustomSubSplitMode(SubSplitMode):
     """
     sub_split_distances: list[float]
 
-    def sub_splits(self, distance, moving_speed=None, pace=None) -> list[float]:
+    def sub_splits(self, distance, moving_speed=None, down_time_ratio=0.0) -> list[float]:
         return self.sub_split_distances
 
 
 @dataclass
 class HourSubSplitMode(SubSplitMode):
     """
-    A SubSplitMode where each sub-split represents one elapsed hour (moving + down time).
-    The distance per sub-split equals the pace (distance/elapsed-hour), which accounts
-    for down time within the split. Falls back to moving_speed when pace is not provided.
+    A SubSplitMode where each sub-split spans exactly one elapsed hour.
+    distPerHour = moving_speed / (1 + down_time_ratio), so moving time per
+    sub-split = 1/(1+dtr) h and down time = dtr/(1+dtr) h, summing to 1 h.
     The final sub-split covers whatever distance remains.
     """
 
-    def sub_splits(self, distance, moving_speed=None, pace=None) -> list[float]:
+    def sub_splits(self, distance, moving_speed=None, down_time_ratio=0.0) -> list[float]:
         if moving_speed is None or moving_speed <= 0:
             return [distance]
 
-        # Use pace (dist/elapsed-hour) so boundaries fall on wall-clock hour marks.
-        dist_per_hour = pace or moving_speed
+        # Each sub-split = 1 elapsed hour: dist_per_hour = speed / (1 + dtr).
+        dist_per_hour = moving_speed / (1 + down_time_ratio)
         full_count = int(distance // dist_per_hour)
 
         if full_count == 0:

@@ -138,17 +138,38 @@ function computeSubSplitDetails(
   // Compute pace (dist/elapsed-hour) for the "hour" sub-split mode so that
   // boundaries fall on wall-clock hour marks, not pure moving-time hours.
   const _movingMs = (split.distance / movingSpeed) * 3_600_000;
-  const _pace = split.distance / msToHours(_movingMs + splitDownTimeMs);
-  const subDistances = computeSubSplitDistances(split, movingSpeed, _pace);
-  const downPerSubMs =
+  const _effectiveDtr = _movingMs > 0 ? splitDownTimeMs / _movingMs : 0;
+  const subDistances = computeSubSplitDistances(
+    split,
+    movingSpeed,
+    _effectiveDtr,
+  );
+  let downPerSubMs =
     splitDownTimeMs !== 0 ? splitDownTimeMs / subDistances.length : 0;
 
   const result: SubSplitDetail[] = [];
   let currTimeMs = startTimeMs;
   let currDist = startDistance;
+  let remainingDownTimeMs = splitDownTimeMs;
 
   for (const subDist of subDistances) {
     const movingMs = (subDist / movingSpeed) * 3_600_000;
+
+    if (split.sub_split_mode === "hour") {
+      // each sub-split's moving and down time should sum to exactly one elapsed hour by definition, so override any floating-point imprecision
+      downPerSubMs = 3_600_000 - movingMs;
+
+      // Case 1: we have less down time allotted to complete the hour
+      if (remainingDownTimeMs > 0 && remainingDownTimeMs - downPerSubMs < 0) {
+        downPerSubMs = remainingDownTimeMs;
+      }
+      // if remaining is negative we are in case 2 territory and just set downPerSubMs to 0, but we also need to make sure to not add negative down time if we had some leftover from the previous sub-split
+      if (remainingDownTimeMs <= 0) {
+        downPerSubMs = 0;
+        remainingDownTimeMs = 0;
+      }
+      remainingDownTimeMs -= downPerSubMs;
+    }
     const activeMs = movingMs + downPerSubMs;
 
     result.push({
