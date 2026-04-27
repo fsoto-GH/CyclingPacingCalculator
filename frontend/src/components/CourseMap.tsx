@@ -343,10 +343,11 @@ function StopMarker({
   const icon = useMemo(
     () =>
       divIcon({
-        html: `<div class="stop-marker-icon${m.backup ? " stop-marker-backup" : ""}">🛑</div>`,
+        html: `<div class="split-rest-stop-pin${m.backup ? " stop-marker-backup" : ""}"><i class="fa-solid fa-location-dot"></i></div>`,
         className: "",
-        iconSize: [22, 22],
-        iconAnchor: [11, 26],
+        iconSize: [20, 28],
+        iconAnchor: [10, 27],
+        popupAnchor: [0, -24],
       }),
     [m.backup],
   );
@@ -701,9 +702,7 @@ export default function CourseMap({
           aria-label={showMarkers ? "Hide mile markers" : "Show mile markers"}
           style={{ opacity: showMarkers ? 1 : 0.5 }}
         >
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-          </svg>
+          <i className="fa-solid fa-flag" />
         </button>
         <button
           className="map-stop-btn"
@@ -714,13 +713,9 @@ export default function CourseMap({
           aria-label={
             showRestStops ? "Hide rest stop markers" : "Show rest stop markers"
           }
-          style={{
-            opacity: showRestStops ? 1 : 0.5,
-            fontSize: "14px",
-            lineHeight: 1,
-          }}
+          style={{ opacity: showRestStops ? 1 : 0.5 }}
         >
-          🛑
+          <i className="fa-solid fa-location-dot" />
         </button>
         <button
           className="map-topo-btn"
