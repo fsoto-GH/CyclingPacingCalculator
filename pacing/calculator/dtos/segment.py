@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Optional
 
 from pacing.calculator.dtos.split import Split
 
@@ -14,3 +15,5 @@ class Segment:
     sleep_time: timedelta = timedelta(hours=0)
     no_end_down_time: bool = True  # if True, no down_time is added after the last split of the segment
     name: str | None = None
+    nullified: bool = False
+    fixed_elapsed_time: Optional[timedelta] = None

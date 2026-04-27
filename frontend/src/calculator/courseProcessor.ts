@@ -135,7 +135,11 @@ function computeSubSplitDetails(
   movingSpeed: number,
   startDistance: number,
 ): SubSplitDetail[] {
-  const subDistances = computeSubSplitDistances(split, movingSpeed);
+  // Compute pace (dist/elapsed-hour) for the "hour" sub-split mode so that
+  // boundaries fall on wall-clock hour marks, not pure moving-time hours.
+  const _movingMs = (split.distance / movingSpeed) * 3_600_000;
+  const _pace = split.distance / msToHours(_movingMs + splitDownTimeMs);
+  const subDistances = computeSubSplitDistances(split, movingSpeed, _pace);
   const downPerSubMs =
     splitDownTimeMs !== 0 ? splitDownTimeMs / subDistances.length : 0;
 
@@ -265,6 +269,74 @@ function computeSegmentDetail(
   startDistance: number,
   startTz: string | null,
 ): { segDetail: SegmentDetail; endTz: string | null } {
+  // ── Nullified (transit) segment: fixed elapsed time, no pace calculation ──
+  if (seg.nullified && seg.fixed_elapsed_time_seconds != null) {
+    const activeMs = seg.fixed_elapsed_time_seconds * 1000;
+    const split = seg.splits[0];
+    const splitDist = split?.distance ?? 0;
+    const endTimeMs = startTimeMs + activeMs;
+    const sleepMs = (seg.sleep_time ?? 0) * 1000;
+    const elapsedMs = activeMs + sleepMs;
+    const paceVal =
+      splitDist > 0 && activeMs > 0 ? splitDist / msToHours(activeMs) : 0;
+    const endTz = split?.end_timezone ?? startTz;
+
+    const splitDetail: SplitDetail = {
+      name: split?.name ?? null,
+      start_timezone: startTz,
+      end_timezone: endTz,
+      distance: splitDist,
+      start_time: new Date(startTimeMs).toISOString(),
+      end_time: new Date(endTimeMs).toISOString(),
+      moving_speed: movingSpeed,
+      moving_time: secondsToString(0),
+      down_time: secondsToString(0),
+      split_time: secondsToString(0),
+      active_time: secondsToString(activeMs / 1000),
+      pace: paceVal,
+      start_distance: startDistance,
+      span: [startDistance, startDistance + splitDist],
+      moving_time_hours: 0,
+      down_time_hours: 0,
+      active_time_hours: msToHours(activeMs),
+      sub_splits: [],
+      adjustment_start: new Date(startTimeMs).toISOString(),
+      adjustment_time: secondsToString(0),
+      adjustment_time_hours: 0,
+      rest_stop: null,
+    };
+
+    return {
+      segDetail: {
+        split_details: [splitDetail],
+        start_time: new Date(startTimeMs).toISOString(),
+        end_time: new Date(endTimeMs).toISOString(),
+        end_moving_speed: movingSpeed,
+        distance: splitDist,
+        start_distance: startDistance,
+        moving_time: secondsToString(0),
+        down_time: secondsToString(0),
+        sleep_time: secondsToString(sleepMs / 1000),
+        adjustment_time: secondsToString(0),
+        elapsed_time: secondsToString(elapsedMs / 1000),
+        active_time: secondsToString(activeMs / 1000),
+        span: [startDistance, startDistance + splitDist],
+        pace: paceVal,
+        moving_time_hours: 0,
+        down_time_hours: 0,
+        adjustment_time_hours: 0,
+        elapsed_time_hours: msToHours(elapsedMs),
+        active_time_hours: msToHours(activeMs),
+        sleep_time_hours: msToHours(sleepMs),
+        moving_speed: null,
+        adjustment_start: null,
+        name: seg.name ?? null,
+        nullified: true,
+      },
+      endTz,
+    };
+  }
+
   // Apply segment-level overrides
   let currSpeed = seg.moving_speed ?? movingSpeed;
   const currMin = seg.min_moving_speed ?? minMovingSpeed;

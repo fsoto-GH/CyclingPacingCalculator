@@ -77,6 +77,8 @@ function makeDefaultSegment(): SegmentFormState {
     min_moving_speed: "",
     splitCount: "1",
     splits: [makeDefaultSplit()],
+    nullified: false,
+    fixed_elapsed_time: "",
   };
 }
 
@@ -2222,6 +2224,14 @@ export default function CourseForm() {
                           onDeleteSplit={(splitIdx) => deleteSplit(i, splitIdx)}
                           canDeleteSegment={form.segments.length > 1}
                           onDeleteSegment={() => deleteSegment(i)}
+                          prevSegNullified={
+                            i > 0 ? !!form.segments[i - 1].nullified : false
+                          }
+                          nextSegNullified={
+                            i < form.segments.length - 1
+                              ? !!form.segments[i + 1].nullified
+                              : false
+                          }
                           gpxProfiles={gpxProfiles?.[i] ?? null}
                           gpxTrack={gpxTrack}
                           courseTz={form.timezone}

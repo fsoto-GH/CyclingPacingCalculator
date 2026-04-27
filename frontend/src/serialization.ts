@@ -118,7 +118,9 @@ function serializeSegment(
 ): SegmentPayload {
   const payload: SegmentPayload = {
     name: seg.name?.trim() || null,
-    splits: seg.splits.map((s) => serializeSplit(s, courseDefaults)),
+    splits: seg.nullified
+      ? seg.splits.slice(0, 1).map((s) => serializeSplit(s, courseDefaults))
+      : seg.splits.map((s) => serializeSplit(s, courseDefaults)),
     sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
     no_end_down_time: !seg.include_end_down_time,
   };
@@ -134,6 +136,12 @@ function serializeSegment(
 
   const mms = parseOptionalFloat(seg.min_moving_speed);
   if (mms !== null) payload.min_moving_speed = mms;
+
+  if (seg.nullified) {
+    payload.nullified = true;
+    const fixedSecs = minutesToSeconds(seg.fixed_elapsed_time ?? "");
+    if (fixedSecs !== undefined) payload.fixed_elapsed_time_seconds = fixedSecs;
+  }
 
   return payload;
 }

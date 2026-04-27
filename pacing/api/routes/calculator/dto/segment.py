@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -16,3 +17,5 @@ class Segment(BaseModel):
     sleep_time: timedelta = timedelta(hours=0)
     no_end_down_time: bool = True
     name: str | None = None
+    nullified: bool = False
+    fixed_elapsed_time_seconds: Optional[int] = None

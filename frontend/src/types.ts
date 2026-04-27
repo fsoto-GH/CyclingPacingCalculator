@@ -58,6 +58,8 @@ export interface SegmentPayload {
   min_moving_speed?: number | null;
   sleep_time?: number; // seconds
   no_end_down_time: boolean;
+  nullified?: boolean;
+  fixed_elapsed_time_seconds?: number; // seconds
 }
 
 export interface CoursePayload {
@@ -135,6 +137,8 @@ export interface SegmentForm {
   min_moving_speed: string;
   splitCount: string;
   splits: SplitForm[];
+  nullified?: boolean;
+  fixed_elapsed_time: string; // minutes
 }
 
 export interface CourseForm {
@@ -215,6 +219,7 @@ export interface SegmentDetail {
   moving_speed: null;
   adjustment_start: null;
   name: string | null;
+  nullified?: boolean;
 }
 
 export interface CourseDetail {

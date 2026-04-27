@@ -30,6 +30,9 @@ def validate_course(course: Course) -> list[str]:
                    f"min_moving_speed '{course.min_moving_speed}'.")
 
     for i, segment in enumerate(course.segments):
+        if segment.nullified and not segment.fixed_elapsed_time_seconds:
+            res.append(f"Segment {i} is marked as nullified (transit) but has no fixed_elapsed_time_seconds set.")
+
         if segment.sleep_time < timedelta(hours=0):
             res.append(f"Segment {i} has invalid sleep_time '{segment.sleep_time}'. Sleep time cannot be negative.")
         for j, split in enumerate(segment.splits):
@@ -82,7 +85,11 @@ def course_to_dto(course: Course) -> CourseDto:
             min_moving_speed=segment.min_moving_speed,
             sleep_time=segment.sleep_time,
             no_end_down_time=segment.no_end_down_time,
-            name=segment.name
+            name=segment.name,
+            nullified=segment.nullified,
+            fixed_elapsed_time=timedelta(seconds=segment.fixed_elapsed_time_seconds)
+            if segment.fixed_elapsed_time_seconds
+            else None,
         )
         for segment in course.segments
     ]

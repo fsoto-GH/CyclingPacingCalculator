@@ -15,6 +15,10 @@ def process_segment(segment: Segment,
                     split_delta: float,
                     distance: float,
                     ) -> SegmentDetail:
+    # Nullified (transit) segments bypass all pace/speed calculations.
+    if segment.nullified and segment.fixed_elapsed_time is not None:
+        return __compute_nullified_segment_detail(segment, start_time, moving_speed, distance)
+
     is_valid = __validate_segment(segment, moving_speed, min_moving_speed)
     if not is_valid:
         # in theory, this failed for an unexpected reason
@@ -28,6 +32,55 @@ def process_segment(segment: Segment,
                                     down_time_ratio=down_time_ratio,
                                     split_delta=split_delta,
                                     distance=distance)
+
+
+def __compute_nullified_segment_detail(segment: Segment,
+                                       start_time: datetime,
+                                       moving_speed: float,
+                                       distance: float,
+                                       ) -> SegmentDetail:
+    """Build a SegmentDetail for a nullified (transit) segment.
+
+    A nullified segment has a fixed elapsed time instead of pace-based
+    calculations. moving_time and down_time are both zero; the supplied
+    moving_speed is carried through unchanged to the next segment.
+    """
+    elapsed: timedelta = segment.fixed_elapsed_time  # type: ignore[assignment]
+    split = segment.splits[0]
+    elapsed_hours = elapsed.total_seconds() / 3600
+    pace = split.distance / elapsed_hours if elapsed_hours > 0 and split.distance > 0 else 0.0
+
+    nullified_split = SplitDetail(
+        distance=split.distance,
+        start_time=start_time,
+        end_time=start_time + elapsed,
+        moving_speed=moving_speed,
+        moving_time=timedelta(0),
+        down_time=timedelta(0),
+        split_time=timedelta(0),
+        active_time=elapsed,
+        pace=pace,
+        start_distance=distance,
+        sub_splits=[],
+        adjustment_start=start_time,
+        adjustment_time=timedelta(0),
+        name=split.name,
+    )
+
+    return SegmentDetail(
+        split_details=[nullified_split],
+        start_time=start_time,
+        end_time=start_time + elapsed,
+        end_moving_speed=moving_speed,
+        distance=split.distance,
+        start_distance=distance,
+        moving_time=timedelta(0),
+        down_time=timedelta(0),
+        sleep_time=segment.sleep_time,
+        adjustment_time=timedelta(0),
+        name=segment.name,
+        nullified=True,
+    )
 
 
 def __validate_segment(segment: Segment, moving_speed: float, min_moving_speed) -> bool:
@@ -176,7 +229,14 @@ def __compute_sub_split_detail(split: Split,
                                down_time: timedelta,
                                moving_speed: float,
                                no_end_down_time: bool) -> list[SubSplitDetail]:
-    sub_split_distances = split.sub_split_mode.sub_splits(split.distance, moving_speed)
+    # Compute pace (dist/elapsed-hour) so the "hour" mode places boundaries on
+    # wall-clock hour marks rather than pure moving-time hours.
+    moving_time_h = split.distance / moving_speed
+    down_time_h = down_time.total_seconds() / 3600
+    active_time_h = moving_time_h + down_time_h
+    pace = split.distance / active_time_h if active_time_h > 0 else moving_speed
+
+    sub_split_distances = split.sub_split_mode.sub_splits(split.distance, moving_speed, pace=pace)
     res: list[SubSplitDetail] = []
 
     # avoid technical computations and evenly split down_time

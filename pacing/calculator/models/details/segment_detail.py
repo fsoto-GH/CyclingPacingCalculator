@@ -30,6 +30,7 @@ class SegmentDetail:
     moving_speed: None = None
     adjustment_start: None = None
     name: str | None = None
+    nullified: bool = False
 
     @computed_field
     @property
