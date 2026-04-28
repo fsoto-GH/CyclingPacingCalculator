@@ -94,6 +94,7 @@ function cacheKey(lat: number, lon: number): string {
 interface NominatimResponse {
   addresstype?: string;
   address?: {
+    "ISO3166-2-lvl4"?: string;
     house_number?: string;
     road?: string;
     city?: string;
@@ -147,6 +148,15 @@ export async function reverseGeocode(
   if (data.error || !data.address) return null;
 
   const addr = data.address;
+  const subdivisionCode = addr["ISO3166-2-lvl4"];
+  const subdivisionAbbrev = (() => {
+    if (!subdivisionCode) return null;
+    const parts = subdivisionCode.split("-");
+    if (parts.length < 2) return null;
+    const code = parts[parts.length - 1].trim();
+    // Keep this conservative so we don't emit odd numeric/long codes.
+    return /^[A-Z]{2,3}$/.test(code) ? code : null;
+  })();
   const place =
     addr.city ??
     addr.town ??
@@ -159,8 +169,9 @@ export async function reverseGeocode(
     addr.country;
   if (!place) return null;
 
+  const stateLabel = subdivisionAbbrev ?? addr.state ?? null;
   const label =
-    addr.state && place !== addr.state ? `${place}, ${addr.state}` : place;
+    stateLabel && place !== addr.state ? `${place}, ${stateLabel}` : place;
 
   cache.set(key, label);
   lsPersist(key, label);

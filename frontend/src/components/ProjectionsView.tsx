@@ -537,6 +537,17 @@ function ProjectionSegment({
                     <i className="fa-solid fa-clock-rotate-left"></i> {abbr}
                   </span>
                 ))}
+                {segCumulativeDist != null && (
+                  <>
+                    <span className="split-header-dist">
+                      {segCumulativeDist.toLocaleString(undefined, {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      })}{" "}
+                      {dLabel}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -587,18 +598,6 @@ function ProjectionSegment({
           )}
 
           <div className="proj-segment-header-timing split-header-city">
-            {segCumulativeDist != null && (
-              <>
-                <span className="split-header-dist">
-                  {segCumulativeDist.toLocaleString(undefined, {
-                    minimumFractionDigits: 1,
-                    maximumFractionDigits: 1,
-                  })}{" "}
-                  {dLabel}
-                </span>
-                <span className="proj-city-sep"> · </span>
-              </>
-            )}
             <span className="proj-city-duration">
               {formatHours(segment.elapsed_time_hours)}
             </span>
