@@ -638,6 +638,7 @@ export default function SegmentFormComponent({
                     }}
                     placeholder="0"
                   />
+                  <FieldError fieldId={`${prefix}-transit-dist`} />
                 </div>
               </div>
               {gpxTrack &&

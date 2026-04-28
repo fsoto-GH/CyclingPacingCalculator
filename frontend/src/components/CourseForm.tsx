@@ -1530,14 +1530,26 @@ export default function CourseForm() {
           const prevSeg = f.segments[i - 1];
           const prevLastSplit = prevSeg.splits[prevSeg.splits.length - 1];
           const prevLastDist = parseFloat(prevLastSplit?.distance ?? "");
-          const firstDist = parseFloat(seg.splits[0]?.distance ?? "");
-          if (
-            !isNaN(prevLastDist) &&
-            !isNaN(firstDist) &&
-            firstDist <= prevLastDist
-          )
-            e[`${sp}-split0-distance`] =
-              `Must be > ${prevLastDist} (previous segment's last split)`;
+          if (seg.nullified) {
+            // Transit segment: validate the transit distance input
+            const transitDist = parseFloat(seg.splits[0]?.distance ?? "");
+            if (
+              !isNaN(prevLastDist) &&
+              !isNaN(transitDist) &&
+              transitDist <= prevLastDist
+            )
+              e[`${sp}-transit-dist`] =
+                `Must be > ${prevLastDist} (previous segment's last split)`;
+          } else {
+            const firstDist = parseFloat(seg.splits[0]?.distance ?? "");
+            if (
+              !isNaN(prevLastDist) &&
+              !isNaN(firstDist) &&
+              firstDist <= prevLastDist
+            )
+              e[`${sp}-split0-distance`] =
+                `Must be > ${prevLastDist} (previous segment's last split)`;
+          }
         }
 
         if (seg.down_time_ratio.trim() !== "") {

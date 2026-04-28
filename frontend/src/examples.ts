@@ -21,6 +21,7 @@ const SIMPLE_EXAMPLE_FORM: CourseFormState = {
   unitSystem: "imperial",
   timezone: browserTimezone,
   mode: "distance",
+  sub_split_mode: "hour",
   init_moving_speed: "18",
   min_moving_speed: "16",
   down_time_ratio: "0.05",
@@ -35,6 +36,7 @@ const SIMPLE_EXAMPLE_FORM: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "2",
       splits: [
         exampleSplit({
@@ -75,6 +77,7 @@ const COMPLEX_EXAMPLE_FORM: CourseFormState = {
   unitSystem: "imperial",
   timezone: browserTimezone,
   mode: "target_distance",
+  sub_split_mode: "hour",
   init_moving_speed: "17",
   min_moving_speed: "16",
   down_time_ratio: "0.1",
@@ -89,6 +92,7 @@ const COMPLEX_EXAMPLE_FORM: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "2",
       splits: [
         exampleSplit({
@@ -149,6 +153,7 @@ const COMPLEX_EXAMPLE_FORM: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "2",
       splits: [
         exampleSplit({
@@ -193,6 +198,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
   unitSystem: "imperial",
   timezone: "America/Chicago",
   mode: "target_distance",
+  sub_split_mode: "hour",
   init_moving_speed: "16.5",
   min_moving_speed: "15",
   down_time_ratio: "0.12",
@@ -209,6 +215,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "5",
       splits: [
         {
@@ -382,6 +389,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "5",
       splits: [
         {
@@ -553,6 +561,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
   name: "Trans Am Classic 2026",
   unitSystem: "imperial",
   mode: "distance",
+  sub_split_mode: "hour",
   timezone: "America/Los_Angeles",
   init_moving_speed: "16",
   min_moving_speed: "10",
@@ -569,6 +578,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -845,6 +855,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -1121,6 +1132,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -1397,6 +1409,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -1673,6 +1686,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -1949,6 +1963,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -2225,6 +2240,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -2501,6 +2517,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -2777,6 +2794,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -3053,6 +3071,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -3329,6 +3348,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -3605,6 +3625,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -3881,6 +3902,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -4157,6 +4179,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -4433,6 +4456,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -4709,6 +4733,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "4",
       splits: [
         {
@@ -4985,6 +5010,7 @@ const TRANS_AM_CLASSIC_2026: CourseFormState = {
       split_delta: "",
       moving_speed: "",
       min_moving_speed: "",
+      fixed_elapsed_time: "",
       splitCount: "3",
       splits: [
         {
