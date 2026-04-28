@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CourseForm as CourseFormState,
   CourseDetail,
-  DayHoursEntry,
   GpxTrackPoint,
   SegmentDetail,
   SegmentForm,
@@ -18,67 +17,24 @@ import {
   minutesToHms,
   speedLabel,
 } from "../utils";
+import {
+  buildDetailedNearDetail,
+  checkArrivalVsHoursDetailed,
+  dayIndexInTimezone,
+  formatIsoInTzShort,
+  formatRatioPercent,
+  formatRawDualRatio,
+  hoursLabelForEntry,
+} from "../timeMath";
 
 const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
-
-function timeToMin(t: string): number {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
+const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
 
 interface EtaInfo {
   status: "open" | "near-open" | "near-close" | "closed";
   statusWord: string;
   hoursLabel: string;
   nearDetail: string | null;
-}
-
-function checkArrivalVsHours(
-  arrivalIso: string,
-  entry: DayHoursEntry,
-  tz: string,
-  marginOpen = 15,
-  marginClose = 7,
-): "open" | "closed" | "near-open" | "near-close" | null {
-  if (entry.mode === "24h") return "open";
-  if (entry.mode === "closed") return "closed";
-
-  const arrival = new Date(arrivalIso);
-  const arrivalStr = arrival.toLocaleTimeString("en-US", {
-    timeZone: tz,
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const arrMin = timeToMin(arrivalStr);
-  const openMin = timeToMin(entry.opens);
-  const closeMin = timeToMin(entry.closes);
-
-  const dOpen = Math.min(
-    (arrMin - openMin + 1440) % 1440,
-    (openMin - arrMin + 1440) % 1440,
-  );
-  const dClose = Math.min(
-    (arrMin - closeMin + 1440) % 1440,
-    (closeMin - arrMin + 1440) % 1440,
-  );
-
-  if (dClose <= marginClose) return "near-close";
-  if (dOpen <= marginOpen) return "near-open";
-
-  if (closeMin > openMin) {
-    return arrMin >= openMin && arrMin <= closeMin ? "open" : "closed";
-  }
-  return arrMin >= openMin || arrMin <= closeMin ? "open" : "closed";
-}
-
-function fmt12h(hhmm: string): string {
-  const [hStr, mStr] = hhmm.split(":");
-  let h = parseInt(hStr, 10);
-  const ampm = h >= 12 ? "PM" : "AM";
-  if (h === 0) h = 12;
-  else if (h > 12) h -= 12;
-  return `${h}:${mStr} ${ampm}`;
 }
 
 function buildEtaInfo(
@@ -98,26 +54,10 @@ function buildEtaInfo(
       : null);
   const tz = splitEndTz ?? courseTz;
 
-  const arrival = new Date(splitResult.end_time);
-  const dayName = arrival.toLocaleDateString("en-US", {
-    timeZone: tz,
-    weekday: "long",
-  });
-  const dayMap: Record<string, number> = {
-    Monday: 0,
-    Tuesday: 1,
-    Wednesday: 2,
-    Thursday: 3,
-    Friday: 4,
-    Saturday: 5,
-    Sunday: 6,
-  };
-  const dayIdx = dayMap[dayName] ?? 0;
-  const entry: DayHoursEntry = rs.sameHoursEveryDay
-    ? rs.allDays
-    : rs.perDay[dayIdx];
+  const dayIdx = dayIndexInTimezone(splitResult.end_time, tz);
+  const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
 
-  const status = checkArrivalVsHours(
+  const status = checkArrivalVsHoursDetailed(
     splitResult.end_time,
     entry,
     tz,
@@ -126,60 +66,12 @@ function buildEtaInfo(
   );
   if (!status) return null;
 
-  let hoursLabel: string;
-  if (entry.mode === "24h") hoursLabel = "24 hours";
-  else if (entry.mode === "closed") hoursLabel = "Closed";
-  else hoursLabel = `${fmt12h(entry.opens)} – ${fmt12h(entry.closes)}`;
+  const hoursLabel = hoursLabelForEntry(entry);
 
-  let nearDetail: string | null = null;
-  if (
-    (status === "near-open" || status === "near-close") &&
-    entry.mode === "hours"
-  ) {
-    const arrivalStr = arrival.toLocaleTimeString("en-US", {
-      timeZone: tz,
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    const arrMin = timeToMin(arrivalStr);
-    const openMin = timeToMin(entry.opens);
-    const closeMin = timeToMin(entry.closes);
-
-    if (status === "near-open") {
-      const minsAfterOpen = (arrMin - openMin + 1440) % 1440;
-      const minsBeforeOpen = (openMin - arrMin + 1440) % 1440;
-      if (minsAfterOpen <= minsBeforeOpen) {
-        nearDetail =
-          minsAfterOpen === 0
-            ? "Arriving exactly at opening"
-            : minsAfterOpen === 1
-              ? "1 min after opening"
-              : `${minsAfterOpen} min after opening`;
-      } else {
-        nearDetail =
-          minsBeforeOpen === 1
-            ? "1 min before opening"
-            : `${minsBeforeOpen} min before opening`;
-      }
-    } else {
-      const minsBeforeClose = (closeMin - arrMin + 1440) % 1440;
-      const minsAfterClose = (arrMin - closeMin + 1440) % 1440;
-      if (minsBeforeClose <= minsAfterClose) {
-        nearDetail =
-          minsBeforeClose === 0
-            ? "Arriving exactly at closing"
-            : minsBeforeClose === 1
-              ? "1 min before closing"
-              : `${minsBeforeClose} min before closing`;
-      } else {
-        nearDetail =
-          minsAfterClose === 1
-            ? "1 min after closing"
-            : `${minsAfterClose} min after closing`;
-      }
-    }
-  }
+  const nearDetail =
+    status === "near-open" || status === "near-close"
+      ? buildDetailedNearDetail(status, splitResult.end_time, entry, tz)
+      : null;
 
   const statusWords: Record<string, string> = {
     open: "Open",
@@ -191,21 +83,7 @@ function buildEtaInfo(
   return { status, statusWord: statusWords[status], hoursLabel, nearDetail };
 }
 
-const DATE_OPTS: Intl.DateTimeFormatOptions = {
-  weekday: "short",
-  month: "numeric",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-};
-
-function fmtInTz(iso: string, tz: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    ...DATE_OPTS,
-    timeZone: tz,
-    timeZoneName: "short",
-  });
-}
+const fmtInTz = formatIsoInTzShort;
 
 interface ProjectionsViewProps {
   result: CourseDetail | null;
@@ -214,6 +92,7 @@ interface ProjectionsViewProps {
   courseTz: string;
   courseStartCity?: string | null;
   segmentIndexes?: number[];
+  mapNavTarget?: { segIdx: number; splitIdx: number; rev: number } | null;
   collapseSignal?: number;
   expandAllSignal?: number;
   gpxTrack?: GpxTrackPoint[] | null;
@@ -232,6 +111,7 @@ export default function ProjectionsView({
   courseTz,
   courseStartCity,
   segmentIndexes,
+  mapNavTarget,
   collapseSignal = 0,
   expandAllSignal = 0,
   gpxTrack,
@@ -281,6 +161,12 @@ export default function ProjectionsView({
                     (form.segments[segIndex - 1]?.splits.length ?? 1) - 1
                   ] ?? null)
             }
+            expandSignal={
+              mapNavTarget?.segIdx === segIndex ? mapNavTarget.rev : undefined
+            }
+            expandSplitIdx={
+              mapNavTarget?.segIdx === segIndex ? mapNavTarget.splitIdx : -1
+            }
             collapseSignal={collapseSignal}
             expandAllSignal={expandAllSignal}
             gpxTrack={gpxTrack ?? null}
@@ -313,6 +199,8 @@ function ProjectionSegment({
   dLabel,
   courseTz,
   segmentStartCity,
+  expandSignal,
+  expandSplitIdx,
   collapseSignal,
   expandAllSignal,
   gpxTrack,
@@ -332,6 +220,8 @@ function ProjectionSegment({
   dLabel: string;
   courseTz: string;
   segmentStartCity: string | null;
+  expandSignal?: number;
+  expandSplitIdx?: number;
   collapseSignal: number;
   expandAllSignal: number;
   gpxTrack: GpxTrackPoint[] | null;
@@ -345,9 +235,56 @@ function ProjectionSegment({
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
+  const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
+  const [targetSplitSignal, setTargetSplitSignal] = useState(0);
+  const [transitJumpPulse, setTransitJumpPulse] = useState(false);
+  const transitPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const prevCollapseSignalRef = useRef(collapseSignal);
   const prevExpandAllSignalRef = useRef(expandAllSignal);
+  const segRootRef = useRef<HTMLDivElement | null>(null);
+  const lastFiredExpandRef = useRef<number | undefined>(undefined);
   const segColor = SEGMENT_COLORS[segIndex % SEGMENT_COLORS.length];
+  const isTransitSegment = !!formSegment?.nullified;
+
+  useEffect(() => {
+    if (!expandSignal || expandSignal === lastFiredExpandRef.current) return;
+    lastFiredExpandRef.current = expandSignal;
+    setCollapsed(false);
+    if (isTransitSegment) {
+      setTransitJumpPulse(true);
+      if (transitPulseTimerRef.current !== null) {
+        clearTimeout(transitPulseTimerRef.current);
+      }
+      transitPulseTimerRef.current = setTimeout(() => {
+        setTransitJumpPulse(false);
+        transitPulseTimerRef.current = null;
+      }, 2200);
+    }
+    const targetIdx = expandSplitIdx ?? -1;
+    if (targetIdx >= 0) {
+      setTargetSplitIdx(targetIdx);
+      setTargetSplitSignal((s) => s + 1);
+    }
+    requestAnimationFrame(() => {
+      segRootRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => {
+      lastFiredExpandRef.current = undefined;
+    };
+  }, [expandSignal, expandSplitIdx, isTransitSegment]);
+
+  useEffect(() => {
+    return () => {
+      if (transitPulseTimerRef.current !== null) {
+        clearTimeout(transitPulseTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (collapseSignal === prevCollapseSignalRef.current) return;
@@ -484,20 +421,33 @@ function ProjectionSegment({
       ? `${segmentStartCity} — ${segEndCity}`
       : (segEndCity ?? segmentStartCity ?? null);
   const adjustmentHours = segment.adjustment_time_hours ?? 0;
-  const fmtRawHours = (hours: number) => `${hours.toFixed(1)}h`;
-  const rawRatio = (numerator: number, denominator: number) =>
-    `${fmtRawHours(numerator)} / ${fmtRawHours(denominator)}`;
-  const rawDualRatio = (
-    numerator: number,
-    activeDenominator: number,
-    elapsedDenominator: number,
-  ) =>
-    `${rawRatio(numerator, activeDenominator)} (${rawRatio(numerator, elapsedDenominator)})`;
-  const ratioPct = (numerator: number, denominator: number) =>
-    denominator > 0 ? `${((numerator / denominator) * 100).toFixed(1)}%` : "-";
+  const transitSplit = segment.split_details[0] ?? null;
+  const transitFormSplit = formSegment?.splits[0];
+  const transitProfile = gpxProfiles?.[0] ?? null;
+  const transitEtaInfo =
+    transitSplit && transitFormSplit
+      ? buildEtaInfo(
+          transitSplit,
+          transitFormSplit,
+          courseTz,
+          etaMarginOpen,
+          etaMarginClose,
+        )
+      : null;
+  const transitMapAvailable = !!gpxTrack && !!transitProfile;
+  const transitStartTz = transitSplit?.start_timezone || null;
+  const transitEndTz =
+    transitSplit?.end_timezone ||
+    (transitFormSplit?.differentTimezone && transitFormSplit.timezone
+      ? transitFormSplit.timezone
+      : null);
+  const transitTimeHours = segment.elapsed_time_hours;
 
   return (
-    <div className="segment-form">
+    <div
+      className={`segment-form${transitJumpPulse ? " segment-form--transit-jump-pulse" : ""}`}
+      ref={segRootRef}
+    >
       <div
         className="segment-header"
         onClick={() => setCollapsed((c) => !c)}
@@ -521,7 +471,16 @@ function ProjectionSegment({
         <div className="proj-segment-header-grid">
           <div className="split-header-left proj-segment-header-title">
             <div className="split-header-titlerow">
-              <span className="split-header-title">{title}</span>
+              <span className="split-header-title">
+                {isTransitSegment && (
+                  <i
+                    className="fa-solid fa-forward-fast"
+                    title="Transit segment — fixed elapsed time"
+                    style={{ marginRight: "0.4em", opacity: 0.8 }}
+                  />
+                )}
+                {title}
+              </span>
             </div>
           </div>
 
@@ -601,10 +560,14 @@ function ProjectionSegment({
             <span className="proj-city-duration">
               {formatHours(segment.elapsed_time_hours)}
             </span>
-            <span className="proj-city-sep"> · </span>
-            <span className="proj-city-pace">
-              {segment.pace.toFixed(2)} {sLabel}
-            </span>
+            {!isTransitSegment && (
+              <>
+                <span className="proj-city-sep"> · </span>
+                <span className="proj-city-pace">
+                  {segment.pace.toFixed(2)} {sLabel}
+                </span>
+              </>
+            )}
           </div>
 
           {(citySummary || sleepHms) && (
@@ -637,18 +600,20 @@ function ProjectionSegment({
 
       {!collapsed && (
         <div className="segment-body">
-          <button
-            type="button"
-            className="optional-toggle"
-            onClick={() => setShowResultsGrid((v) => !v)}
-          >
-            <span className={`chevron${showResultsGrid ? " open" : ""}`}>
-              ▶
-            </span>
-            View detailed projections
-          </button>
+          {!isTransitSegment && (
+            <button
+              type="button"
+              className="optional-toggle"
+              onClick={() => setShowResultsGrid((v) => !v)}
+            >
+              <span className={`chevron${showResultsGrid ? " open" : ""}`}>
+                ▶
+              </span>
+              View detailed projections
+            </button>
+          )}
 
-          {showResultsGrid && (
+          {!isTransitSegment && showResultsGrid && (
             <div className="split-results-panel">
               <dl className="split-results-grid">
                 <div>
@@ -755,14 +720,22 @@ function ProjectionSegment({
                   </dt>
                   <dd
                     className="proj-segment-ratio-value"
-                    title={rawDualRatio(
+                    title={formatRawDualRatio(
                       adjustmentHours,
                       segment.active_time_hours,
                       segment.elapsed_time_hours,
                     )}
                   >
-                    {ratioPct(adjustmentHours, segment.active_time_hours)} (
-                    {ratioPct(adjustmentHours, segment.elapsed_time_hours)})
+                    {formatRatioPercent(
+                      adjustmentHours,
+                      segment.active_time_hours,
+                    )}{" "}
+                    (
+                    {formatRatioPercent(
+                      adjustmentHours,
+                      segment.elapsed_time_hours,
+                    )}
+                    )
                   </dd>
                 </div>
                 <div>
@@ -771,18 +744,18 @@ function ProjectionSegment({
                   </dt>
                   <dd
                     className="proj-segment-ratio-value"
-                    title={rawDualRatio(
+                    title={formatRawDualRatio(
                       segment.down_time_hours,
                       segment.active_time_hours,
                       segment.elapsed_time_hours,
                     )}
                   >
-                    {ratioPct(
+                    {formatRatioPercent(
                       segment.down_time_hours,
                       segment.active_time_hours,
                     )}{" "}
                     (
-                    {ratioPct(
+                    {formatRatioPercent(
                       segment.down_time_hours,
                       segment.elapsed_time_hours,
                     )}
@@ -795,18 +768,18 @@ function ProjectionSegment({
                   </dt>
                   <dd
                     className="proj-segment-ratio-value"
-                    title={rawDualRatio(
+                    title={formatRawDualRatio(
                       segment.moving_time_hours,
                       segment.active_time_hours,
                       segment.elapsed_time_hours,
                     )}
                   >
-                    {ratioPct(
+                    {formatRatioPercent(
                       segment.moving_time_hours,
                       segment.active_time_hours,
                     )}{" "}
                     (
-                    {ratioPct(
+                    {formatRatioPercent(
                       segment.moving_time_hours,
                       segment.elapsed_time_hours,
                     )}
@@ -819,18 +792,18 @@ function ProjectionSegment({
                   </dt>
                   <dd
                     className="proj-segment-ratio-value"
-                    title={rawDualRatio(
+                    title={formatRawDualRatio(
                       segment.sleep_time_hours,
                       segment.active_time_hours,
                       segment.elapsed_time_hours,
                     )}
                   >
-                    {ratioPct(
+                    {formatRatioPercent(
                       segment.sleep_time_hours,
                       segment.active_time_hours,
                     )}{" "}
                     (
-                    {ratioPct(
+                    {formatRatioPercent(
                       segment.sleep_time_hours,
                       segment.elapsed_time_hours,
                     )}
@@ -843,18 +816,18 @@ function ProjectionSegment({
                   </dt>
                   <dd
                     className="proj-segment-ratio-value"
-                    title={rawDualRatio(
+                    title={formatRawDualRatio(
                       segment.down_time_hours,
                       segment.moving_time_hours,
                       segment.elapsed_time_hours,
                     )}
                   >
-                    {ratioPct(
+                    {formatRatioPercent(
                       segment.down_time_hours,
                       segment.moving_time_hours,
                     )}{" "}
                     (
-                    {ratioPct(
+                    {formatRatioPercent(
                       segment.down_time_hours,
                       segment.elapsed_time_hours,
                     )}
@@ -865,36 +838,162 @@ function ProjectionSegment({
             </div>
           )}
 
-          <div
-            className="splits-container"
-            style={{ borderLeftColor: `${segColor}33` }}
-          >
-            {segment.split_details.map((split, splitIndex) => (
-              <ProjectionSplit
-                key={splitIndex}
-                split={split}
-                splitIndex={splitIndex}
-                formSplit={formSegment?.splits[splitIndex]}
-                profile={gpxProfiles?.[splitIndex] ?? null}
-                courseTz={courseTz}
-                dLabel={dLabel}
-                sLabel={sLabel}
-                unitSystem={unitSystem}
-                gpxTrack={gpxTrack}
-                cumulativeDist={splitCumulativeDists?.[splitIndex] ?? null}
-                prevCumulativeDist={
-                  splitIndex === 0
-                    ? (segmentStartDist ?? 0)
-                    : (splitCumulativeDists?.[splitIndex - 1] ?? 0)
-                }
-                gpxTotalDist={gpxTotalDist}
-                nearbyCity={cityLabels[splitIndex] ?? null}
-                etaMarginOpen={etaMarginOpen}
-                etaMarginClose={etaMarginClose}
-                segColor={segColor}
-              />
-            ))}
-          </div>
+          {isTransitSegment ? (
+            <div className="split-results-panel">
+              {transitSplit && (
+                <dl className="split-results-grid proj-split-results-grid">
+                  <div>
+                    <dt title="Transit start time">Start</dt>
+                    <dd>
+                      {fmtInTz(
+                        transitSplit.start_time,
+                        transitStartTz ?? courseTz,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Transit end time">End</dt>
+                    <dd>
+                      {fmtInTz(transitSplit.end_time, transitEndTz ?? courseTz)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Transit distance">Distance</dt>
+                    <dd>
+                      {transitSplit.distance.toLocaleString(undefined, {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      })}{" "}
+                      {dLabel}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Transit segment elapsed time">Transit Time</dt>
+                    <dd title={formatHours(transitTimeHours, "full")}>
+                      {formatHours(transitTimeHours)}
+                    </dd>
+                  </div>
+                  {transitEtaInfo && (
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <dt title="Hours for the transit endpoint rest stop at ETA.">
+                        Rest Stop Hours
+                      </dt>
+                      <dd>
+                        <span>{transitEtaInfo.hoursLabel}</span>
+                        {transitEtaInfo.nearDetail && (
+                          <span className="split-results-near-detail">
+                            {transitEtaInfo.nearDetail}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              )}
+
+              {transitFormSplit?.rest_stop.enabled &&
+                (transitFormSplit.rest_stop.name ||
+                  transitFormSplit.rest_stop.address ||
+                  transitFormSplit.rest_stop.alt ||
+                  transitFormSplit.notes) && (
+                  <div className="split-results-rs-info">
+                    {transitFormSplit.rest_stop.name && (
+                      <div className="split-results-rs-name">
+                        {transitFormSplit.rest_stop.alt ? (
+                          <a
+                            href={transitFormSplit.rest_stop.alt}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {transitFormSplit.rest_stop.name}
+                          </a>
+                        ) : (
+                          transitFormSplit.rest_stop.name
+                        )}
+                      </div>
+                    )}
+                    {transitFormSplit.rest_stop.address && (
+                      <div className="split-results-rs-address">
+                        {transitFormSplit.rest_stop.address}
+                      </div>
+                    )}
+                    {!transitFormSplit.rest_stop.name &&
+                      transitFormSplit.rest_stop.alt && (
+                        <div className="split-results-rs-address">
+                          <a
+                            href={transitFormSplit.rest_stop.alt}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {transitFormSplit.rest_stop.alt}
+                          </a>
+                        </div>
+                      )}
+                    {transitFormSplit.notes && (
+                      <div className="split-results-rs-notes">
+                        {transitFormSplit.notes}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              {transitMapAvailable && (
+                <div className="split-two-pane">
+                  <div className="split-map-col--full">
+                    <Suspense
+                      fallback={
+                        <div className="map-loading">Loading map...</div>
+                      }
+                    >
+                      <TransitSegmentMap
+                        gpxTrack={gpxTrack}
+                        startKm={transitProfile.startKm}
+                        endKm={transitProfile.endKm}
+                        unitSystem={unitSystem}
+                        segmentColor={segColor}
+                      />
+                    </Suspense>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              className="splits-container"
+              style={{ borderLeftColor: `${segColor}33` }}
+            >
+              {segment.split_details.map((split, splitIndex) => (
+                <ProjectionSplit
+                  key={splitIndex}
+                  split={split}
+                  splitIndex={splitIndex}
+                  formSplit={formSegment?.splits[splitIndex]}
+                  profile={gpxProfiles?.[splitIndex] ?? null}
+                  courseTz={courseTz}
+                  dLabel={dLabel}
+                  sLabel={sLabel}
+                  unitSystem={unitSystem}
+                  gpxTrack={gpxTrack}
+                  cumulativeDist={splitCumulativeDists?.[splitIndex] ?? null}
+                  prevCumulativeDist={
+                    splitIndex === 0
+                      ? (segmentStartDist ?? 0)
+                      : (splitCumulativeDists?.[splitIndex - 1] ?? 0)
+                  }
+                  gpxTotalDist={gpxTotalDist}
+                  nearbyCity={cityLabels[splitIndex] ?? null}
+                  etaMarginOpen={etaMarginOpen}
+                  etaMarginClose={etaMarginClose}
+                  segColor={segColor}
+                  expandSignal={
+                    targetSplitIdx === splitIndex
+                      ? targetSplitSignal
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -918,6 +1017,7 @@ function ProjectionSplit({
   etaMarginOpen,
   etaMarginClose,
   segColor,
+  expandSignal,
 }: {
   split: SplitDetail;
   splitIndex: number;
@@ -935,9 +1035,27 @@ function ProjectionSplit({
   etaMarginOpen: number;
   etaMarginClose: number;
   segColor: string;
+  expandSignal?: number;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
+  const splitRootRef = useRef<HTMLDivElement | null>(null);
+  const lastFiredExpandRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!expandSignal || expandSignal === lastFiredExpandRef.current) return;
+    lastFiredExpandRef.current = expandSignal;
+    setCollapsed(false);
+    requestAnimationFrame(() => {
+      splitRootRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => {
+      lastFiredExpandRef.current = undefined;
+    };
+  }, [expandSignal]);
 
   const splitStartTz = split.start_timezone || null;
   const splitEndTz =
@@ -1004,7 +1122,7 @@ function ProjectionSplit({
   const mapAvailable = !!gpxTrack && !!profile;
 
   return (
-    <div className="split-form">
+    <div className="split-form" ref={splitRootRef}>
       <div
         className="split-header"
         onClick={() => setCollapsed((c) => !c)}
@@ -1099,8 +1217,6 @@ function ProjectionSplit({
                   {tzBadgeAbbr}
                 </span>
               )}
-            </div>
-            <div className="split-header-city">
               {hasDist && (
                 <>
                   <span
@@ -1113,16 +1229,19 @@ function ProjectionSplit({
                     })}{" "}
                     {dLabel}
                   </span>
-                  <span className="proj-city-sep"> · </span>
                 </>
               )}
+            </div>
+            <div className="split-header-city">
               <span className="proj-city-duration">
                 {formatHours(splitTimeHours)}
               </span>
-              <span className="proj-city-sep"> · </span>
-              <span className="proj-city-pace">
-                {split.pace.toFixed(2)} {sLabel}
-              </span>
+              <>
+                <span className="proj-city-sep"> · </span>
+                <span className="proj-city-pace">
+                  {split.pace.toFixed(2)} {sLabel}
+                </span>
+              </>
             </div>
           </div>
 

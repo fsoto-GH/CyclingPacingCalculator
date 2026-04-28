@@ -27,6 +27,12 @@ import {
   formatHours,
   formatStartTimeHint,
 } from "../utils";
+import {
+  formatIsoInTzShort,
+  formatRawDualRatio,
+  formatRawRatio,
+  formatRatioPercent,
+} from "../timeMath";
 import { makeDefaultSplit } from "../defaults";
 import { serializeCourse } from "../serialization";
 import { calculateCourse } from "../api";
@@ -994,27 +1000,7 @@ export default function CourseForm() {
 
   const sLabel = speedLabel(form.unitSystem);
   const dLabel = distanceLabel(form.unitSystem);
-  const fmtInTz = (iso: string, tz: string) =>
-    new Date(iso).toLocaleString(undefined, {
-      weekday: "short",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: tz,
-      timeZoneName: "short",
-    });
-  const fmtRawHours = (hours: number) => `${hours.toFixed(1)}h`;
-  const rawRatio = (numerator: number, denominator: number) =>
-    `${fmtRawHours(numerator)} / ${fmtRawHours(denominator)}`;
-  const rawDualRatio = (
-    numerator: number,
-    activeDenominator: number,
-    elapsedDenominator: number,
-  ) =>
-    `${rawRatio(numerator, activeDenominator)} (${rawRatio(numerator, elapsedDenominator)})`;
-  const ratioPct = (numerator: number, denominator: number) =>
-    denominator > 0 ? `${((numerator / denominator) * 100).toFixed(1)}%` : "-";
+  const fmtInTz = formatIsoInTzShort;
   const courseEndTz = useMemo(() => {
     if (!result || result.segment_details.length === 0) return null;
     const lastSeg = result.segment_details[result.segment_details.length - 1];
@@ -2738,7 +2724,7 @@ export default function CourseForm() {
                           </dt>
                           <dd
                             className="proj-segment-ratio-value"
-                            title={rawDualRatio(
+                            title={formatRawDualRatio(
                               result.moving_time_hours,
                               Math.max(
                                 0,
@@ -2748,7 +2734,7 @@ export default function CourseForm() {
                               result.elapsed_time_hours,
                             )}
                           >
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.moving_time_hours,
                               Math.max(
                                 0,
@@ -2757,7 +2743,7 @@ export default function CourseForm() {
                               ),
                             )}{" "}
                             (
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.moving_time_hours,
                               result.elapsed_time_hours,
                             )}
@@ -2770,7 +2756,7 @@ export default function CourseForm() {
                           </dt>
                           <dd
                             className="proj-segment-ratio-value"
-                            title={rawDualRatio(
+                            title={formatRawDualRatio(
                               result.down_time_hours,
                               Math.max(
                                 0,
@@ -2780,7 +2766,7 @@ export default function CourseForm() {
                               result.elapsed_time_hours,
                             )}
                           >
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.down_time_hours,
                               Math.max(
                                 0,
@@ -2789,7 +2775,7 @@ export default function CourseForm() {
                               ),
                             )}{" "}
                             (
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.down_time_hours,
                               result.elapsed_time_hours,
                             )}
@@ -2802,7 +2788,7 @@ export default function CourseForm() {
                           </dt>
                           <dd
                             className="proj-segment-ratio-value"
-                            title={rawDualRatio(
+                            title={formatRawDualRatio(
                               result.sleep_time_hours,
                               Math.max(
                                 0,
@@ -2812,7 +2798,7 @@ export default function CourseForm() {
                               result.elapsed_time_hours,
                             )}
                           >
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.sleep_time_hours,
                               Math.max(
                                 0,
@@ -2821,7 +2807,7 @@ export default function CourseForm() {
                               ),
                             )}{" "}
                             (
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.sleep_time_hours,
                               result.elapsed_time_hours,
                             )}
@@ -2834,7 +2820,7 @@ export default function CourseForm() {
                           </dt>
                           <dd
                             className="proj-segment-ratio-value"
-                            title={rawDualRatio(
+                            title={formatRawDualRatio(
                               result.adjustment_time_hours,
                               Math.max(
                                 0,
@@ -2844,7 +2830,7 @@ export default function CourseForm() {
                               result.elapsed_time_hours,
                             )}
                           >
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.adjustment_time_hours,
                               Math.max(
                                 0,
@@ -2853,7 +2839,7 @@ export default function CourseForm() {
                               ),
                             )}{" "}
                             (
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.adjustment_time_hours,
                               result.elapsed_time_hours,
                             )}
@@ -2866,12 +2852,12 @@ export default function CourseForm() {
                           </dt>
                           <dd
                             className="proj-segment-ratio-value"
-                            title={rawRatio(
+                            title={formatRawRatio(
                               result.down_time_hours,
                               result.moving_time_hours,
                             )}
                           >
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.down_time_hours,
                               result.moving_time_hours,
                             )}
@@ -2883,13 +2869,13 @@ export default function CourseForm() {
                           </dt>
                           <dd
                             className="proj-segment-ratio-value"
-                            title={rawRatio(
+                            title={formatRawRatio(
                               result.elapsed_time_hours -
                                 result.sleep_time_hours,
                               result.elapsed_time_hours,
                             )}
                           >
-                            {ratioPct(
+                            {formatRatioPercent(
                               result.elapsed_time_hours -
                                 result.sleep_time_hours,
                               result.elapsed_time_hours,
@@ -2993,6 +2979,7 @@ export default function CourseForm() {
                   courseTz={form.timezone}
                   courseStartCity={gpxStartCity}
                   segmentIndexes={pagedSegmentIndexes}
+                  mapNavTarget={mapNavTarget}
                   collapseSignal={collapseAllSignal}
                   expandAllSignal={expandAllSignal}
                   gpxTrack={gpxTrack}

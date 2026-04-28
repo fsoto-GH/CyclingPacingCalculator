@@ -7,15 +7,16 @@ import type {
   GpxTrackPoint,
   SplitDetail,
   SubSplitDetail,
-  DayHoursEntry,
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
-
-/** Convert HH:MM to minutes since midnight. */
-function timeToMin(t: string): number {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
+import {
+  buildDetailedNearDetail,
+  checkArrivalVsHoursDetailed,
+  dayIndexInTimezone,
+  formatArrivalTimeWithTz,
+  hoursLabelForEntry,
+  timezoneAbbreviationAt,
+} from "../timeMath";
 
 interface EtaInfo {
   status: "open" | "near-open" | "near-close" | "closed";
@@ -25,50 +26,6 @@ interface EtaInfo {
   arrivalTime: string; // e.g. "1:31 PM EDT"
 }
 
-function checkArrivalVsHours(
-  arrivalIso: string,
-  entry: DayHoursEntry,
-  tz: string,
-  marginOpen = 15,
-  marginClose = 7,
-): "open" | "closed" | "near-open" | "near-close" | null {
-  if (entry.mode === "24h") return "open";
-  if (entry.mode === "closed") return "closed";
-
-  const arrival = new Date(arrivalIso);
-  const arrivalStr = arrival.toLocaleTimeString("en-US", {
-    timeZone: tz,
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const arrMin = timeToMin(arrivalStr);
-  const openMin = timeToMin(entry.opens);
-  const closeMin = timeToMin(entry.closes);
-
-  const MARGIN_OPEN = marginOpen;
-  const MARGIN_CLOSE = marginClose;
-
-  // Shortest distance on the 24-hour clock to each boundary
-  const dOpen = Math.min(
-    (arrMin - openMin + 1440) % 1440,
-    (openMin - arrMin + 1440) % 1440,
-  );
-  const dClose = Math.min(
-    (arrMin - closeMin + 1440) % 1440,
-    (closeMin - arrMin + 1440) % 1440,
-  );
-
-  if (dClose <= MARGIN_CLOSE) return "near-close";
-  if (dOpen <= MARGIN_OPEN) return "near-open";
-
-  // Check if inside open window
-  if (closeMin > openMin) {
-    return arrMin >= openMin && arrMin <= closeMin ? "open" : "closed";
-  } else {
-    return arrMin >= openMin || arrMin <= closeMin ? "open" : "closed";
-  }
-}
 import TimeInput from "./TimeInput";
 import RestStopFormComponent from "./RestStopForm";
 import TimezoneSelect from "./TimezoneSelect";
@@ -383,25 +340,9 @@ export default function SplitFormComponent({
     if (!splitResult || !value.rest_stop.enabled) return null;
     const rs = value.rest_stop;
     const tz = splitEndTz ?? courseTz;
-    const arrival = new Date(splitResult.end_time);
-    const dayName = arrival.toLocaleDateString("en-US", {
-      timeZone: tz,
-      weekday: "long",
-    });
-    const dayMap: Record<string, number> = {
-      Monday: 0,
-      Tuesday: 1,
-      Wednesday: 2,
-      Thursday: 3,
-      Friday: 4,
-      Saturday: 5,
-      Sunday: 6,
-    };
-    const dayIdx = dayMap[dayName] ?? 0;
-    const entry: DayHoursEntry = rs.sameHoursEveryDay
-      ? rs.allDays
-      : rs.perDay[dayIdx];
-    const status = checkArrivalVsHours(
+    const dayIdx = dayIndexInTimezone(splitResult.end_time, tz);
+    const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
+    const status = checkArrivalVsHoursDetailed(
       splitResult.end_time,
       entry,
       tz,
@@ -410,70 +351,11 @@ export default function SplitFormComponent({
     );
     if (!status) return null;
 
-    // Build human-readable hours label
-    function fmt12h(hhmm: string): string {
-      const [hStr, mStr] = hhmm.split(":");
-      let h = parseInt(hStr, 10);
-      const ampm = h >= 12 ? "PM" : "AM";
-      if (h === 0) h = 12;
-      else if (h > 12) h -= 12;
-      return `${h}:${mStr} ${ampm}`;
-    }
-    let hoursLabel: string;
-    if (entry.mode === "24h") hoursLabel = "24 hours";
-    else if (entry.mode === "closed") hoursLabel = "Closed";
-    else hoursLabel = `${fmt12h(entry.opens)} – ${fmt12h(entry.closes)}`;
-
-    // Compute near-detail delta
-    let nearDetail: string | null = null;
-    if (
-      (status === "near-open" || status === "near-close") &&
-      entry.mode === "hours"
-    ) {
-      const arrivalStr = arrival.toLocaleTimeString("en-US", {
-        timeZone: tz,
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      const arrMin = timeToMin(arrivalStr);
-      const openMin = timeToMin(entry.opens);
-      const closeMin = timeToMin(entry.closes);
-
-      if (status === "near-open") {
-        const minsAfterOpen = (arrMin - openMin + 1440) % 1440;
-        const minsBeforeOpen = (openMin - arrMin + 1440) % 1440;
-        if (minsAfterOpen <= minsBeforeOpen) {
-          nearDetail =
-            minsAfterOpen === 0
-              ? "Arriving exactly at opening"
-              : minsAfterOpen === 1
-                ? "1 min after opening"
-                : `${minsAfterOpen} min after opening`;
-        } else {
-          nearDetail =
-            minsBeforeOpen === 1
-              ? "1 min before opening"
-              : `${minsBeforeOpen} min before opening`;
-        }
-      } else {
-        const minsBeforeClose = (closeMin - arrMin + 1440) % 1440;
-        const minsAfterClose = (arrMin - closeMin + 1440) % 1440;
-        if (minsBeforeClose <= minsAfterClose) {
-          nearDetail =
-            minsBeforeClose === 0
-              ? "Arriving exactly at closing"
-              : minsBeforeClose === 1
-                ? "1 min before closing"
-                : `${minsBeforeClose} min before closing`;
-        } else {
-          nearDetail =
-            minsAfterClose === 1
-              ? "1 min after closing"
-              : `${minsAfterClose} min after closing`;
-        }
-      }
-    }
+    const hoursLabel = hoursLabelForEntry(entry);
+    const nearDetail =
+      status === "near-open" || status === "near-close"
+        ? buildDetailedNearDetail(status, splitResult.end_time, entry, tz)
+        : null;
 
     const statusWords: Record<string, string> = {
       open: "Open",
@@ -482,21 +364,7 @@ export default function SplitFormComponent({
       closed: "Closed",
     };
 
-    // Format arrival time with timezone abbreviation
-    const arrivalTime =
-      arrival.toLocaleTimeString("en-US", {
-        timeZone: tz,
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }) +
-      " " +
-      (new Intl.DateTimeFormat("en-US", {
-        timeZone: tz,
-        timeZoneName: "short",
-      })
-        .formatToParts(arrival)
-        .find((p) => p.type === "timeZoneName")?.value ?? "");
+    const arrivalTime = formatArrivalTimeWithTz(splitResult.end_time, tz);
 
     return {
       status,
@@ -516,12 +384,7 @@ export default function SplitFormComponent({
         ? gpxProfile.endTimezone
         : null;
   const tzBadgeAbbr = effectiveTz
-    ? (new Intl.DateTimeFormat("en-US", {
-        timeZone: effectiveTz,
-        timeZoneName: "short",
-      })
-        .formatToParts(new Date())
-        .find((p) => p.type === "timeZoneName")?.value ?? effectiveTz)
+    ? timezoneAbbreviationAt(new Date().toISOString(), effectiveTz)
     : null;
 
   return (

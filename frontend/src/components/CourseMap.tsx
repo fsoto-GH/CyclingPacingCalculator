@@ -425,9 +425,13 @@ export default function CourseMap({
         segBounds[segBounds.length - 1]?.[1] ??
         gpxTrack[gpxTrack.length - 1].cumDist;
       const slice = sliceTrackPoints(gpxTrack, startKm, endKm);
-      return { positions: decimateTrack(slice), segIdx: si };
+      return {
+        positions: decimateTrack(slice),
+        segIdx: si,
+        isTransit: !!formSegments[si]?.nullified,
+      };
     });
-  }, [gpxTrack, splitBoundariesKm]);
+  }, [gpxTrack, splitBoundariesKm, formSegments]);
 
   const bounds = useMemo<LatLngBoundsExpression>(() => {
     let minLat = Infinity,
@@ -462,7 +466,6 @@ export default function CourseMap({
     });
 
     // One marker per split end
-    let markerCount = 0;
     for (let si = 0; si < splitBoundariesKm.length; si++) {
       const segBounds = splitBoundariesKm[si];
       for (let sj = 0; sj < segBounds.length; sj++) {
@@ -481,7 +484,6 @@ export default function CourseMap({
         const distUser = toUserDist(endKm);
         const distanceStr = `${distUser.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`;
 
-        markerCount++;
         result.push({
           lat: coord.lat,
           lon: coord.lon,
@@ -811,7 +813,7 @@ export default function CourseMap({
             pane="route-lines"
           />
           {/* Colored segment overlays — paint over the ghost where splits are defined */}
-          {segmentPolylines.map(({ positions, segIdx }) => (
+          {segmentPolylines.map(({ positions, segIdx, isTransit }) => (
             <Polyline
               key={segIdx}
               positions={positions as LatLngExpression[]}
@@ -819,6 +821,7 @@ export default function CourseMap({
                 color: SEGMENT_COLORS[segIdx % SEGMENT_COLORS.length],
                 weight: 3,
                 opacity: 0.85,
+                dashArray: isTransit ? "12 12" : undefined,
               }}
               pane="route-lines"
             />

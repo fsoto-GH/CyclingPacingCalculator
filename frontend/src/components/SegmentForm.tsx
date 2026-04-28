@@ -19,9 +19,11 @@ import {
   minutesToHms,
   SEGMENT_COLORS,
 } from "../utils";
+import { buildSegmentTimezoneSequence } from "../timeMath";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import SplitFormComponent from "./SplitForm";
+import RestStopFormComponent from "./RestStopForm";
 import { FieldError } from "./FieldError";
 import NumberInput from "./NumberInput";
 import ConfirmModal from "./ConfirmModal";
@@ -153,6 +155,10 @@ export default function SegmentFormComponent({
   const [showExportModal, setShowExportModal] = useState(false);
   const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
   const [targetSplitSignal, setTargetSplitSignal] = useState(0);
+  const [transitJumpPulse, setTransitJumpPulse] = useState(false);
+  const transitPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const splitHasDistanceValue = (split: SplitFormType): boolean => {
     const raw = split.distance?.trim();
@@ -193,6 +199,16 @@ export default function SegmentFormComponent({
     if (!expandSignal || expandSignal === lastFiredExpandRef.current) return;
     lastFiredExpandRef.current = expandSignal;
     setCollapsed(false);
+    if (value.nullified) {
+      setTransitJumpPulse(true);
+      if (transitPulseTimerRef.current !== null) {
+        clearTimeout(transitPulseTimerRef.current);
+      }
+      transitPulseTimerRef.current = setTimeout(() => {
+        setTransitJumpPulse(false);
+        transitPulseTimerRef.current = null;
+      }, 2200);
+    }
     if (expandSplitIdx >= 0) {
       setTargetSplitIdx(expandSplitIdx);
       setTargetSplitSignal((s) => s + 1);
@@ -208,7 +224,15 @@ export default function SegmentFormComponent({
       // Reset on unmount so fresh mounts (StrictMode remount or page flip) can fire again
       lastFiredExpandRef.current = undefined;
     };
-  }, [expandSignal, expandSplitIdx]);
+  }, [expandSignal, expandSplitIdx, value.nullified]);
+
+  useEffect(() => {
+    return () => {
+      if (transitPulseTimerRef.current !== null) {
+        clearTimeout(transitPulseTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!collapseSignal) return;
@@ -273,57 +297,11 @@ export default function SegmentFormComponent({
   const segCumulativeDist = cumulativeDists?.[lastSplitIdx] ?? null;
   const segEndCity = cityLabels?.[lastSplitIdx] ?? null;
   const segEndCityFetching = cityFetching?.[lastSplitIdx] ?? false;
-  // Ordered, adjacent-deduplicated TZ abbreviations across this segment's splits.
-  // The effective TZ per split mirrors the logic in SplitForm's auto-detection useEffect
-  // so that badges stay accurate even when the segment is collapsed (splits unmounted):
-  //   - tzManuallySet → honour the stored differentTimezone / timezone fields as-is
-  //   - otherwise     → derive from gpxProfile.endTimezone vs courseTz (same as the effect)
-  // The leading entry is dropped when it matches the course TZ (not a "new" zone).
-  const segTzSequence = (() => {
-    const courseTzAbbr =
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: courseTz,
-        timeZoneName: "short",
-      })
-        .formatToParts(new Date())
-        .find((p) => p.type === "timeZoneName")?.value ?? courseTz;
-
-    const result: { tz: string; abbr: string }[] = [];
-    let prevAbbr: string | null = null;
-
-    value.splits.forEach((split, j) => {
-      let tz: string;
-      if (split.tzManuallySet) {
-        // User explicitly set TZ — trust the stored flag.
-        tz =
-          split.differentTimezone && split.timezone ? split.timezone : courseTz;
-      } else {
-        // Auto-detected: mirror SplitForm's useEffect logic so the badge is
-        // correct even before the effect has a chance to run on mount.
-        const detectedTz = gpxProfiles?.[j]?.endTimezone ?? null;
-        tz = detectedTz && detectedTz !== courseTz ? detectedTz : courseTz;
-      }
-
-      const abbr =
-        new Intl.DateTimeFormat("en-US", {
-          timeZone: tz,
-          timeZoneName: "short",
-        })
-          .formatToParts(new Date())
-          .find((p) => p.type === "timeZoneName")?.value ?? tz;
-
-      if (abbr !== prevAbbr) {
-        result.push({ tz, abbr });
-        prevAbbr = abbr;
-      }
-    });
-
-    // Drop the leading entry if it just reflects the course TZ.
-    if (result.length > 0 && result[0].abbr === courseTzAbbr) {
-      return result.slice(1);
-    }
-    return result;
-  })();
+  const segTzSequence = buildSegmentTimezoneSequence(
+    value.splits,
+    courseTz,
+    gpxProfiles,
+  );
 
   // Aggregate GPX stats across all splits
   const validProfiles = (gpxProfiles ?? []).filter(
@@ -359,7 +337,10 @@ export default function SegmentFormComponent({
       : null;
 
   return (
-    <div className="segment-form" ref={segRootRef}>
+    <div
+      className={`segment-form${transitJumpPulse ? " segment-form--transit-jump-pulse" : ""}`}
+      ref={segRootRef}
+    >
       <div className="segment-header" onClick={() => setCollapsed(!collapsed)}>
         <span className="collapse-icon" style={{ color: segColor }}>
           {collapsed ? (
@@ -615,54 +596,72 @@ export default function SegmentFormComponent({
       {!collapsed && (
         <div className="segment-body">
           {value.nullified ? (
-            <>
-              <div className="fields-grid">
-                <TimeInput
-                  id={`${prefix}-transit-time`}
-                  label="Transit Time"
-                  value={value.fixed_elapsed_time ?? ""}
-                  onChange={(v) => update({ fixed_elapsed_time: v })}
-                />
-                <div className="field">
-                  <label htmlFor={`${prefix}-transit-dist`}>
-                    Distance ({dLabel})
-                  </label>
-                  <NumberInput
-                    id={`${prefix}-transit-dist`}
-                    step="0.25"
-                    min="0"
-                    value={value.splits[0]?.distance ?? ""}
-                    onChange={(v) => {
-                      const base = value.splits[0] ?? makeDefaultSplit();
-                      update({ splits: [{ ...base, distance: v }] });
-                    }}
-                    placeholder="0"
+            (() => {
+              const transitSplit = value.splits[0] ?? makeDefaultSplit();
+              return (
+                <>
+                  <div className="fields-grid">
+                    <TimeInput
+                      id={`${prefix}-transit-time`}
+                      label="Transit Time"
+                      value={value.fixed_elapsed_time ?? ""}
+                      onChange={(v) => update({ fixed_elapsed_time: v })}
+                    />
+                    <div className="field">
+                      <label htmlFor={`${prefix}-transit-dist`}>
+                        Distance ({dLabel})
+                      </label>
+                      <NumberInput
+                        id={`${prefix}-transit-dist`}
+                        step="0.25"
+                        min="0"
+                        value={value.splits[0]?.distance ?? ""}
+                        onChange={(v) => {
+                          update({
+                            splits: [{ ...transitSplit, distance: v }],
+                          });
+                        }}
+                        placeholder="0"
+                      />
+                      <FieldError fieldId={`${prefix}-transit-dist`} />
+                    </div>
+                  </div>
+
+                  <RestStopFormComponent
+                    prefix={`${prefix}-transit-rs`}
+                    value={transitSplit.rest_stop}
+                    onChange={(rs) =>
+                      update({ splits: [{ ...transitSplit, rest_stop: rs }] })
+                    }
                   />
-                  <FieldError fieldId={`${prefix}-transit-dist`} />
-                </div>
-              </div>
-              {gpxTrack &&
-                validProfiles.length > 0 &&
-                (() => {
-                  const firstProfile = validProfiles[0];
-                  const lastProfile = validProfiles[validProfiles.length - 1];
-                  return (
-                    <Suspense
-                      fallback={<div className="map-loading">Loading map…</div>}
-                    >
-                      <div className="transit-segment-map">
-                        <TransitSegmentMap
-                          gpxTrack={gpxTrack}
-                          startKm={firstProfile.startKm}
-                          endKm={lastProfile.endKm}
-                          unitSystem={unitSystem}
-                          segmentColor={segColor}
-                        />
-                      </div>
-                    </Suspense>
-                  );
-                })()}
-            </>
+
+                  {gpxTrack &&
+                    validProfiles.length > 0 &&
+                    (() => {
+                      const firstProfile = validProfiles[0];
+                      const lastProfile =
+                        validProfiles[validProfiles.length - 1];
+                      return (
+                        <Suspense
+                          fallback={
+                            <div className="map-loading">Loading map…</div>
+                          }
+                        >
+                          <div className="transit-segment-map">
+                            <TransitSegmentMap
+                              gpxTrack={gpxTrack}
+                              startKm={firstProfile.startKm}
+                              endKm={lastProfile.endKm}
+                              unitSystem={unitSystem}
+                              segmentColor={segColor}
+                            />
+                          </div>
+                        </Suspense>
+                      );
+                    })()}
+                </>
+              );
+            })()
           ) : (
             <>
               <div className="fields-grid">

@@ -6,11 +6,16 @@ import type {
   SubSplitDetail,
   UnitSystem,
   SegmentForm,
-  DayHoursEntry,
   GpxTrackPoint,
   SplitGpxProfile,
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
+import {
+  checkArrivalVsHoursSimple,
+  dayIndexInTimezone,
+  dayNameInTimezone,
+  hoursLabelForEntry,
+} from "../timeMath";
 import CourseSummaryNarrative from "./CourseSummaryNarrative";
 import type { SplitWeather } from "../calculator/weather";
 import {
@@ -20,58 +25,6 @@ import {
   windDirectionLabel,
 } from "../calculator/weather";
 const GpxExportModal = lazy(() => import("./GpxExportModal"));
-
-/** Convert HH:MM to minutes since midnight. */
-function timeToMin(t: string): number {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-
-/**
- * Check if a given arrival UTC ISO string falls within the open hours
- * specified by a DayHoursEntry, considering the rest stop's timezone.
- * Returns "open" | "closed" | "near" (within 30 min of open/close) | null (no data).
- */
-function checkArrivalVsHours(
-  arrivalIso: string,
-  entry: DayHoursEntry,
-  tz: string,
-): "open" | "closed" | "near" | null {
-  if (entry.mode === "24h") return "open";
-  if (entry.mode === "closed") return "closed";
-
-  // Get arrival time in the rest stop's timezone
-  const arrival = new Date(arrivalIso);
-  const arrivalStr = arrival.toLocaleTimeString("en-US", {
-    timeZone: tz,
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const arrMin = timeToMin(arrivalStr);
-  const openMin = timeToMin(entry.opens);
-  const closeMin = timeToMin(entry.closes);
-
-  const MARGIN = 30;
-
-  if (closeMin > openMin) {
-    // Same-day range (e.g. 06:00-22:00)
-    if (arrMin >= openMin && arrMin <= closeMin) {
-      if (arrMin - openMin < MARGIN || closeMin - arrMin < MARGIN)
-        return "near";
-      return "open";
-    }
-    return "closed";
-  } else {
-    // Overnight range (e.g. 05:30-02:00 = open 05:30→midnight, midnight→02:00)
-    if (arrMin >= openMin || arrMin <= closeMin) {
-      if (arrMin >= openMin && arrMin - openMin < MARGIN) return "near";
-      if (arrMin <= closeMin && closeMin - arrMin < MARGIN) return "near";
-      return "open";
-    }
-    return "closed";
-  }
-}
 
 /**
  * Get the ETA status for a split's rest stop against form open hours.
@@ -93,27 +46,11 @@ function getEtaStatus(
     split.differentTimezone && split.timezone ? split.timezone : courseTz;
 
   // Get arrival day-of-week in rest stop timezone (0=Mon..6=Sun)
-  const arrival = new Date(arrivalIso);
-  const dayName = arrival.toLocaleDateString("en-US", {
-    timeZone: tz,
-    weekday: "long",
-  });
-  const dayMap: Record<string, number> = {
-    Monday: 0,
-    Tuesday: 1,
-    Wednesday: 2,
-    Thursday: 3,
-    Friday: 4,
-    Saturday: 5,
-    Sunday: 6,
-  };
-  const dayIdx = dayMap[dayName] ?? 0;
+  const dayIdx = dayIndexInTimezone(arrivalIso, tz);
 
-  const entry: DayHoursEntry = rs.sameHoursEveryDay
-    ? rs.allDays
-    : rs.perDay[dayIdx];
+  const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
 
-  const status = checkArrivalVsHours(arrivalIso, entry, tz);
+  const status = checkArrivalVsHoursSimple(arrivalIso, entry, tz);
   if (!status) return null;
 
   const labels: Record<string, string> = {
@@ -123,16 +60,6 @@ function getEtaStatus(
   };
 
   return { status, label: labels[status] };
-}
-
-/** Format a HH:MM (24h) string to 12h display. */
-function fmt12h(time24: string): string {
-  const [hStr, mStr] = time24.split(":");
-  let h = parseInt(hStr, 10);
-  const ampm = h >= 12 ? "PM" : "AM";
-  if (h === 0) h = 12;
-  else if (h > 12) h -= 12;
-  return `${h}:${mStr} ${ampm}`;
 }
 
 /** Get a human-readable hours string for the arrival day. */
@@ -152,30 +79,12 @@ function getArrivalDayHours(
   const tz =
     split.differentTimezone && split.timezone ? split.timezone : courseTz;
 
-  const arrival = new Date(arrivalIso);
-  const dayName = arrival.toLocaleDateString("en-US", {
-    timeZone: tz,
-    weekday: "long",
-  });
-  const dayMap: Record<string, number> = {
-    Monday: 0,
-    Tuesday: 1,
-    Wednesday: 2,
-    Thursday: 3,
-    Friday: 4,
-    Saturday: 5,
-    Sunday: 6,
-  };
-  const dayIdx = dayMap[dayName] ?? 0;
+  const dayName = dayNameInTimezone(arrivalIso, tz);
+  const dayIdx = dayIndexInTimezone(arrivalIso, tz);
 
-  const entry: DayHoursEntry = rs.sameHoursEveryDay
-    ? rs.allDays
-    : rs.perDay[dayIdx];
+  const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
 
-  let hoursLabel: string;
-  if (entry.mode === "24h") hoursLabel = "24 hours";
-  else if (entry.mode === "closed") hoursLabel = "Closed";
-  else hoursLabel = `${fmt12h(entry.opens)} – ${fmt12h(entry.closes)}`;
+  const hoursLabel = hoursLabelForEntry(entry);
 
   return { dayLabel: dayName, hoursLabel };
 }

@@ -177,34 +177,47 @@ function ZoomableMarkers({
 }) {
   const map = useMap();
   const [zoom, setZoom] = useState(() => map.getZoom());
-  const [viewport, setViewport] = useState(() => {
-    const b = map.getBounds();
-    const s = b.getSouth(),
-      n = b.getNorth(),
-      w = b.getWest(),
-      e = b.getEast();
-    if (isNaN(s) || isNaN(n) || isNaN(w) || isNaN(e)) {
-      return { s: -90, n: 90, w: -180, e: 180 };
-    }
-    return { s, n, w, e };
+  const [viewport, setViewport] = useState({
+    s: -90,
+    n: 90,
+    w: -180,
+    e: 180,
   });
+
+  const readViewport = useCallback(() => {
+    try {
+      const b = map.getBounds();
+      const s = b.getSouth();
+      const n = b.getNorth();
+      const w = b.getWest();
+      const e = b.getEast();
+      if (
+        !Number.isFinite(s) ||
+        !Number.isFinite(n) ||
+        !Number.isFinite(w) ||
+        !Number.isFinite(e)
+      ) {
+        return null;
+      }
+      return { s, n, w, e };
+    } catch {
+      return null;
+    }
+  }, [map]);
 
   useEffect(() => {
     const update = () => {
       setZoom(map.getZoom());
-      const b = map.getBounds();
-      const s = b.getSouth(),
-        n = b.getNorth(),
-        w = b.getWest(),
-        e = b.getEast();
-      if (isNaN(s) || isNaN(n) || isNaN(w) || isNaN(e)) return;
-      setViewport({ s, n, w, e });
+      const nextViewport = readViewport();
+      if (nextViewport) setViewport(nextViewport);
     };
-    map.on("zoomend moveend", update);
+
+    update();
+    map.on("zoomend moveend resize load", update);
     return () => {
-      map.off("zoomend moveend", update);
+      map.off("zoomend moveend resize load", update);
     };
-  }, [map]);
+  }, [map, readViewport]);
 
   // Stage 1: precompute all positions within ±SLICE_KM — reruns on zoom/unit/endpoint change
   const allMarkers = useMemo(() => {

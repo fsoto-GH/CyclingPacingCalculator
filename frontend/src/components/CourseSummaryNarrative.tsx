@@ -2,54 +2,15 @@ import type {
   CourseDetail,
   SplitDetail,
   SegmentForm,
-  DayHoursEntry,
   UnitSystem,
 } from "../types";
 import { distanceLabel, formatHours } from "../utils";
-
-// ── Open-hours helpers (mirrors ResultsView logic, self-contained) ─────────
-
-function timeToMin(t: string): number {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-
-function checkArrivalVsHours(
-  arrivalIso: string,
-  entry: DayHoursEntry,
-  tz: string,
-): "open" | "closed" | "near" | null {
-  if (entry.mode === "24h") return "open";
-  if (entry.mode === "closed") return "closed";
-
-  const arrival = new Date(arrivalIso);
-  const arrivalStr = arrival.toLocaleTimeString("en-US", {
-    timeZone: tz,
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const arrMin = timeToMin(arrivalStr);
-  const openMin = timeToMin(entry.opens);
-  const closeMin = timeToMin(entry.closes);
-  const MARGIN = 30;
-
-  if (closeMin > openMin) {
-    if (arrMin >= openMin && arrMin <= closeMin) {
-      if (arrMin - openMin < MARGIN || closeMin - arrMin < MARGIN)
-        return "near";
-      return "open";
-    }
-    return "closed";
-  } else {
-    if (arrMin >= openMin || arrMin <= closeMin) {
-      if (arrMin >= openMin && arrMin - openMin < MARGIN) return "near";
-      if (arrMin <= closeMin && closeMin - arrMin < MARGIN) return "near";
-      return "open";
-    }
-    return "closed";
-  }
-}
+import {
+  checkArrivalVsHoursSimple,
+  dayIndexInTimezone,
+  getSegmentTimezoneAbbreviationShifts,
+  timezoneAbbreviationAt,
+} from "../timeMath";
 
 function getStopStatus(
   split: SplitDetail,
@@ -67,23 +28,9 @@ function getStopStatus(
       ? formSplit.timezone
       : courseTz;
 
-  const arrival = new Date(split.end_time);
-  const dayName = arrival.toLocaleDateString("en-US", {
-    timeZone: tz,
-    weekday: "long",
-  });
-  const dayMap: Record<string, number> = {
-    Monday: 0,
-    Tuesday: 1,
-    Wednesday: 2,
-    Thursday: 3,
-    Friday: 4,
-    Saturday: 5,
-    Sunday: 6,
-  };
-  const dayIdx = dayMap[dayName] ?? 0;
+  const dayIdx = dayIndexInTimezone(split.end_time, tz);
   const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
-  return checkArrivalVsHours(split.end_time, entry, tz);
+  return checkArrivalVsHoursSimple(split.end_time, entry, tz);
 }
 
 // ── List formatting ───────────────────────────────────────────────────────
@@ -110,45 +57,6 @@ function fmtTime(iso: string, tz: string): string {
     timeZoneName: "short",
   });
   return `${date} at ${time}`;
-}
-
-/** Return the short timezone abbreviation for an ISO timestamp in a given IANA tz. */
-function tzAbbr(iso: string, tz: string): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    timeZoneName: "short",
-  }).formatToParts(new Date(iso));
-  return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
-}
-
-/**
- * Build the ordered, adjacent-deduplicated list of timezone abbreviations
- * encountered across a segment's splits (using actual split end times for
- * DST-accurate abbreviations).  Returns e.g. ["CDT", "MDT", "CDT"] if the
- * segment transitions through multiple zones.  Returns a single-element list
- * when all splits share one zone.  Returns [] when splitEndTimes is empty.
- */
-function getSegmentTzShifts(
-  formSeg: SegmentForm,
-  courseTz: string,
-  splitEndTimes: string[],
-): string[] {
-  const result: string[] = [];
-  let prev: string | null = null;
-
-  formSeg.splits.forEach((split, i) => {
-    const tz =
-      split.differentTimezone && split.timezone ? split.timezone : courseTz;
-    const endIso = splitEndTimes[i];
-    if (!endIso) return;
-    const abbr = tzAbbr(endIso, tz);
-    if (abbr !== prev) {
-      result.push(abbr);
-      prev = abbr;
-    }
-  });
-
-  return result; // single-element when all splits share one zone, multi when transitions exist
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -250,12 +158,12 @@ export default function CourseSummaryNarrative({
     // == 1 entry means the whole segment runs in a single non-course TZ (or the course TZ).
     const splitEndTimes = seg.split_details.map((s) => s.end_time);
     const tzShifts = formSeg
-      ? getSegmentTzShifts(formSeg, courseTz, splitEndTimes)
+      ? getSegmentTimezoneAbbreviationShifts(formSeg, courseTz, splitEndTimes)
       : [];
 
     // Compute the course TZ abbreviation at the segment start time for comparison
     const courseTzAbbr = seg.split_details[0]?.end_time
-      ? tzAbbr(seg.split_details[0].end_time, courseTz)
+      ? timezoneAbbreviationAt(seg.split_details[0].end_time, courseTz)
       : courseTz;
 
     let tzShiftNote: React.ReactNode = null;
