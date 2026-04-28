@@ -313,7 +313,7 @@ const ElevationProfile = memo(function ElevationProfile({
           {segmentColors?.map(({ startKm, endKm }, i) =>
             endKm > viewStart && startKm < viewEnd ? (
               <ReferenceArea
-                key={`sc-${startKm}`}
+                key={`sc-${i}-${startKm}-${endKm}`}
                 x1={Math.max(startKm, viewStart)}
                 x2={Math.min(endKm, viewEnd)}
                 fill={`url(#elevSegGrad${i})`}

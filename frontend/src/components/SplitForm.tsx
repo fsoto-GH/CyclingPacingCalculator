@@ -540,197 +540,202 @@ export default function SplitFormComponent({
             <i className="fas fa-chevron-down" />
           )}
         </span>
-        <div className="split-header-left">
-          <div className="split-header-title-row">
-            {isEditingName ? (
-              <input
-                ref={nameInputRef}
-                className="split-header-name-input"
-                type="text"
-                value={value.name ?? ""}
-                placeholder={`Split ${splitIndex + 1}`}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => update({ name: e.target.value })}
-                onBlur={() => setIsEditingName(false)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === "Escape") {
-                    setIsEditingName(false);
-                    e.preventDefault();
-                  }
-                }}
-              />
-            ) : (
-              <span
-                className="split-header-title split-header-title--editable"
-                title="Click to rename"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsEditingName(true);
-                  setTimeout(() => nameInputRef.current?.focus(), 0);
-                }}
-              >
-                {headerTitle}
-                {gpxDistStatus === "over" && (
-                  <span
-                    className="gpx-dist-asterisk gpx-dist-asterisk--over"
-                    title="Split distance exceeds GPX track total"
-                  >
-                    {" "}
-                    *
-                  </span>
-                )}
-                {gpxDistStatus === "under-last" && (
-                  <span
-                    className="gpx-dist-asterisk gpx-dist-asterisk--under"
-                    title="Total distance has not reached GPX track total"
-                  >
-                    {" "}
-                    *
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
-          {(gpxProfile || splitDistUser != null) && (
-            <div className="split-header-meta">
-              {splitDistUser != null && (
+        <div className="planning-split-header-grid">
+          <div className="split-header-left">
+            <div className="split-header-title-row">
+              {isEditingName ? (
+                <input
+                  ref={nameInputRef}
+                  className="split-header-name-input"
+                  type="text"
+                  value={value.name ?? ""}
+                  placeholder={`Split ${splitIndex + 1}`}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => update({ name: e.target.value })}
+                  onBlur={() => setIsEditingName(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") {
+                      setIsEditingName(false);
+                      e.preventDefault();
+                    }
+                  }}
+                />
+              ) : (
                 <span
-                  className="split-header-meta-item split-header-meta-item--dist"
-                  title="Split distance"
+                  className="split-header-title split-header-title--editable"
+                  title="Click to rename"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditingName(true);
+                    setTimeout(() => nameInputRef.current?.focus(), 0);
+                  }}
                 >
-                  {splitDistUser.toLocaleString(undefined, {
-                    minimumFractionDigits: 1,
-                    maximumFractionDigits: 1,
-                  })}{" "}
-                  {dLabel}
+                  {headerTitle}
+                  {gpxDistStatus === "over" && (
+                    <span
+                      className="gpx-dist-asterisk gpx-dist-asterisk--over"
+                      title="Split distance exceeds GPX track total"
+                    >
+                      {" "}
+                      *
+                    </span>
+                  )}
+                  {gpxDistStatus === "under-last" && (
+                    <span
+                      className="gpx-dist-asterisk gpx-dist-asterisk--under"
+                      title="Total distance has not reached GPX track total"
+                    >
+                      {" "}
+                      *
+                    </span>
+                  )}
                 </span>
               )}
-              {gpxProfile && (
-                <>
+            </div>
+            {(gpxProfile || splitDistUser != null) && (
+              <div className="split-header-meta">
+                {splitDistUser != null && (
                   <span
-                    className="split-header-meta-item split-header-meta-item--gain"
-                    title="Elevation gain"
+                    className="split-header-meta-item split-header-meta-item--dist"
+                    title="Split distance"
                   >
-                    <i className="fas fa-arrow-up" />{" "}
-                    {toElevUnit(gpxProfile.elevGainM)}
-                    {elevUnit}
+                    {splitDistUser.toLocaleString(undefined, {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    {dLabel}
                   </span>
-                  <span
-                    className="split-header-meta-item split-header-meta-item--loss"
-                    title="Elevation loss"
-                  >
-                    <i className="fas fa-arrow-down" />{" "}
-                    {toElevUnit(gpxProfile.elevLossM)}
-                    {elevUnit}
-                  </span>
-                  <span
-                    className="split-header-meta-item split-header-meta-item--grade"
-                    title="Average grade"
-                  >
-                    {gpxProfile.avgGradePct.toFixed(1)}% avg
-                  </span>
-                  {gpxProfile.steepPct > 0 && (
+                )}
+                {gpxProfile && (
+                  <>
                     <span
-                      className="split-header-meta-item split-header-meta-item--steep"
-                      title="% of distance with grade > 5%"
+                      className="split-header-meta-item split-header-meta-item--gain"
+                      title="Elevation gain"
                     >
-                      <i className="fa-solid fa-triangle-exclamation"></i>{" "}
-                      {gpxProfile.steepPct}% steep
+                      <i className="fas fa-arrow-up" />{" "}
+                      {toElevUnit(gpxProfile.elevGainM)}
+                      {elevUnit}
                     </span>
-                  )}
-                  {gpxProfile.surface !== "unknown" && (
                     <span
-                      className="split-header-meta-item split-header-meta-item--surface"
-                      title="Dominant surface"
+                      className="split-header-meta-item split-header-meta-item--loss"
+                      title="Elevation loss"
                     >
-                      {gpxProfile.surface}
+                      <i className="fas fa-arrow-down" />{" "}
+                      {toElevUnit(gpxProfile.elevLossM)}
+                      {elevUnit}
                     </span>
-                  )}
-                </>
-              )}
+                    <span
+                      className="split-header-meta-item split-header-meta-item--grade"
+                      title="Average grade"
+                    >
+                      {gpxProfile.avgGradePct.toFixed(1)}% avg
+                    </span>
+                    {gpxProfile.steepPct > 0 && (
+                      <span
+                        className="split-header-meta-item split-header-meta-item--steep"
+                        title="% of distance with grade > 5%"
+                      >
+                        <i className="fa-solid fa-triangle-exclamation"></i>{" "}
+                        {gpxProfile.steepPct}% steep
+                      </span>
+                    )}
+                    {gpxProfile.surface !== "unknown" && (
+                      <span
+                        className="split-header-meta-item split-header-meta-item--surface"
+                        title="Dominant surface"
+                      >
+                        {gpxProfile.surface}
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          {(tzBadgeAbbr ||
+            (cumulativeDist != null && gpxTotalDist != null)) && (
+            <div
+              className="split-header-right"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {(() => {
+                const hasDist = cumulativeDist != null && gpxTotalDist != null;
+                const diff = hasDist ? cumulativeDist! - gpxTotalDist! : 0;
+                const absDiff = Math.abs(diff);
+                const sign =
+                  diff > 0.05 ? "over" : diff < -0.05 ? "under" : "exact";
+                const distColor = !hasDist
+                  ? undefined
+                  : sign === "exact"
+                    ? "#4ade80"
+                    : sign === "over"
+                      ? "#f87171"
+                      : isLastOverall
+                        ? "#facc15"
+                        : undefined;
+                return (
+                  <>
+                    <div className="split-header-dist-row">
+                      {tzBadgeAbbr && (
+                        <span
+                          className={`split-header-meta-item split-header-meta-item--tz${value.tzManuallySet ? " tz-manual" : ""}`}
+                          title={`Split timezone: ${effectiveTz}${value.tzManuallySet ? " (manually set — auto-detection paused)" : " (auto-detected)"}`}
+                        >
+                          <i className="fa-solid fa-clock-rotate-left"></i>{" "}
+                          {tzBadgeAbbr}
+                          {value.tzManuallySet && " ✏️"}
+                        </span>
+                      )}
+                      {hasDist && (
+                        <span
+                          className="split-header-dist"
+                          style={{ color: distColor }}
+                        >
+                          {cumulativeDist!.toLocaleString(undefined, {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })}{" "}
+                          {dLabel}
+                        </span>
+                      )}
+                    </div>
+                    {hasDist && (
+                      <span className="split-header-city">
+                        {etaInfo && (
+                          <span
+                            className={`eta-badge eta-${etaInfo.status}`}
+                            title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
+                          >
+                            {etaInfo.status === "open" &&
+                              (etaInfo.hoursLabel === "24 hours"
+                                ? "24/7"
+                                : "Open")}
+                            {etaInfo.status === "near-open" && "Near open"}
+                            {etaInfo.status === "near-close" && "Near close"}
+                            {etaInfo.status === "closed" && "Closed"}
+                          </span>
+                        )}
+                        {nearbyCity_fetching && (
+                          <span className="split-nearby-city--loading">
+                            (finding nearest city…) ·{" "}
+                          </span>
+                        )}
+                        {!nearbyCity_fetching &&
+                          nearbyCity &&
+                          `${nearbyCity} · `}
+                        {sign === "exact"
+                          ? "✓ matches GPX"
+                          : sign === "under"
+                            ? `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} left`
+                            : `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} over`}
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>
-        {(tzBadgeAbbr || (cumulativeDist != null && gpxTotalDist != null)) && (
-          <div
-            className="split-header-right"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const hasDist = cumulativeDist != null && gpxTotalDist != null;
-              const diff = hasDist ? cumulativeDist! - gpxTotalDist! : 0;
-              const absDiff = Math.abs(diff);
-              const sign =
-                diff > 0.05 ? "over" : diff < -0.05 ? "under" : "exact";
-              const distColor = !hasDist
-                ? undefined
-                : sign === "exact"
-                  ? "#4ade80"
-                  : sign === "over"
-                    ? "#f87171"
-                    : isLastOverall
-                      ? "#facc15"
-                      : undefined;
-              return (
-                <>
-                  <div className="split-header-dist-row">
-                    {tzBadgeAbbr && (
-                      <span
-                        className={`split-header-meta-item split-header-meta-item--tz${value.tzManuallySet ? " tz-manual" : ""}`}
-                        title={`Split timezone: ${effectiveTz}${value.tzManuallySet ? " (manually set — auto-detection paused)" : " (auto-detected)"}`}
-                      >
-                        <i className="fa-solid fa-clock-rotate-left"></i>{" "}
-                        {tzBadgeAbbr}
-                        {value.tzManuallySet && " ✏️"}
-                      </span>
-                    )}
-                    {hasDist && (
-                      <span
-                        className="split-header-dist"
-                        style={{ color: distColor }}
-                      >
-                        {cumulativeDist!.toLocaleString(undefined, {
-                          minimumFractionDigits: 1,
-                          maximumFractionDigits: 1,
-                        })}{" "}
-                        {dLabel}
-                      </span>
-                    )}
-                  </div>
-                  {hasDist && (
-                    <span className="split-header-city">
-                      {etaInfo && (
-                        <span
-                          className={`eta-badge eta-${etaInfo.status}`}
-                          title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
-                        >
-                          {etaInfo.status === "open" &&
-                            (etaInfo.hoursLabel === "24 hours"
-                              ? "24/7"
-                              : "Open")}
-                          {etaInfo.status === "near-open" && "Near open"}
-                          {etaInfo.status === "near-close" && "Near close"}
-                          {etaInfo.status === "closed" && "Closed"}
-                        </span>
-                      )}
-                      {nearbyCity_fetching && (
-                        <span className="split-nearby-city--loading">
-                          (finding nearest city…) ·{" "}
-                        </span>
-                      )}
-                      {!nearbyCity_fetching && nearbyCity && `${nearbyCity} · `}
-                      {sign === "exact"
-                        ? "✓ matches GPX"
-                        : sign === "under"
-                          ? `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} left`
-                          : `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} over`}
-                    </span>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        )}
       </div>
 
       {!collapsed && (

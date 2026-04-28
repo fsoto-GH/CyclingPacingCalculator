@@ -60,6 +60,7 @@ const LegendModal = lazy(() => import("./LegendModal"));
 const ExampleModal = lazy(() => import("./ExampleModal"));
 const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
 const ConfirmModal = lazy(() => import("./ConfirmModal"));
+const ProjectionsView = lazy(() => import("./ProjectionsView.tsx"));
 import { EXAMPLES } from "../examples";
 import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
 import { FieldErrorContext, FieldError, AllErrorsContext } from "./FieldError";
@@ -217,6 +218,15 @@ export default function CourseForm() {
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [confirmExampleOpen, setConfirmExampleOpen] = useState(false);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [confirmReduceSegmentsOpen, setConfirmReduceSegmentsOpen] =
+    useState(false);
+  const [pendingSegmentCountRaw, setPendingSegmentCountRaw] = useState<
+    string | null
+  >(null);
+  const [
+    pendingDeletedSplitDistanceCount,
+    setPendingDeletedSplitDistanceCount,
+  ] = useState(0);
   const [pendingExampleLoad, setPendingExampleLoad] = useState<{
     form: CourseFormState;
     gpxUrl?: string;
@@ -382,6 +392,13 @@ export default function CourseForm() {
   const totalSegPages = Math.ceil(form.segments.length / segPageSize);
   const clampedSegPage = Math.min(segPage, Math.max(0, totalSegPages - 1));
   if (clampedSegPage !== segPage) setSegPage(clampedSegPage);
+  const pagedSegmentIndexes = useMemo(
+    () =>
+      form.segments
+        .slice(clampedSegPage * segPageSize, (clampedSegPage + 1) * segPageSize)
+        .map((_, localIdx) => clampedSegPage * segPageSize + localIdx),
+    [clampedSegPage, form.segments, segPageSize],
+  );
 
   // Course settings card — inline name editing
   const [mapCollapsed, setMapCollapsed] = useState(false);
@@ -1204,7 +1221,13 @@ export default function CourseForm() {
   }, [gpxTrack, splitBoundariesKm]);
 
   // â”€â”€ Handlers â”€â”€
-  const handleSegmentCountChange = (raw: string) => {
+  const splitHasDistanceValue = (distanceRaw: string): boolean => {
+    const trimmed = distanceRaw.trim();
+    if (!trimmed) return false;
+    return !Number.isNaN(Number(trimmed));
+  };
+
+  const applySegmentCountChange = (raw: string) => {
     update({ segmentCount: raw });
     const n = parseInt(raw, 10);
     if (!isNaN(n) && n > 0) {
@@ -1227,6 +1250,23 @@ export default function CourseForm() {
         }));
       }
     }
+  };
+
+  const handleSegmentCountChange = (raw: string) => {
+    const n = parseInt(raw, 10);
+    if (!isNaN(n) && n > 0 && n < form.segments.length) {
+      const removedSegments = form.segments.slice(n);
+      const removedWithDistance = removedSegments
+        .flatMap((seg) => seg.splits)
+        .filter((split) => splitHasDistanceValue(split.distance)).length;
+      if (removedWithDistance > 0) {
+        setPendingSegmentCountRaw(raw);
+        setPendingDeletedSplitDistanceCount(removedWithDistance);
+        setConfirmReduceSegmentsOpen(true);
+        return;
+      }
+    }
+    applySegmentCountChange(raw);
   };
 
   const updateSegment = (i: number, seg: SegmentFormState) => {
@@ -1571,17 +1611,6 @@ export default function CourseForm() {
                 <i className="fa-solid fa-vial"></i>
                 <span className="nav-btn-label">Examples</span>
               </button>
-              <button
-                type="button"
-                className="nav-btn"
-                onClick={() => fileInputRef.current?.click()}
-                title="Import a previously exported JSON course"
-              >
-                <span className="nav-btn-icon">
-                  <i className="fas fa-download" />
-                </span>
-                <span className="nav-btn-label">Import JSON</span>
-              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1721,6 +1750,88 @@ export default function CourseForm() {
           </div>
         )}
 
+        <div className="course-settings-header course-persist-header">
+          <div className="split-header-left">
+            <div className="split-header-titlerow">
+              {activeTab === "planning" && isEditingCourseName ? (
+                <input
+                  ref={courseNameInputRef}
+                  className="split-header-name-input"
+                  type="text"
+                  value={form.name ?? ""}
+                  placeholder="Course name (e.g. Mishigami 2025)"
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => update({ name: e.target.value })}
+                  onBlur={() => setIsEditingCourseName(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") {
+                      setIsEditingCourseName(false);
+                      e.preventDefault();
+                    }
+                  }}
+                />
+              ) : (
+                <span
+                  className={
+                    activeTab === "planning"
+                      ? "split-header-title split-header-title--editable"
+                      : "split-header-title"
+                  }
+                  title={
+                    activeTab === "planning" ? "Click to rename" : undefined
+                  }
+                  onClick={(e) => {
+                    if (activeTab !== "planning") return;
+                    e.stopPropagation();
+                    setIsEditingCourseName(true);
+                    setTimeout(() => courseNameInputRef.current?.focus(), 0);
+                  }}
+                >
+                  {form.name?.trim() || "Course"}
+                </span>
+              )}
+            </div>
+          </div>
+          <div
+            className="course-header-actions"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {activeTab === "planning" && (
+              <button
+                className="segments-toggle-btn segments-toggle-btn--reset"
+                type="button"
+                onClick={() => setConfirmResetOpen(true)}
+                title="Reset all form fields to defaults"
+              >
+                ↺ Reset
+              </button>
+            )}
+            {activeTab === "planning" && (
+              <button
+                type="button"
+                className="segments-toggle-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Import a previously exported JSON course"
+              >
+                <i className="fas fa-download"></i> Import JSON
+              </button>
+            )}
+            <button
+              type="button"
+              className="segments-toggle-btn segments-toggle-btn--export"
+              onClick={handleExport}
+              disabled={Object.keys(allErrors).length > 0}
+              title={
+                Object.keys(allErrors).length > 0
+                  ? "Fix validation errors before exporting"
+                  : "Export course configuration as JSON"
+              }
+            >
+              <i className="fa-solid fa-file-export"></i> Export
+            </button>
+          </div>
+        </div>
+
         <div className="app-tab-bar" role="tablist">
           <button
             role="tab"
@@ -1775,6 +1886,26 @@ export default function CourseForm() {
               onConfirm={handleConfirmReset}
               onCancel={handleCancelReset}
             />
+            <ConfirmModal
+              open={confirmReduceSegmentsOpen}
+              title="Reduce segment count?"
+              message={`Reducing segment count will delete ${pendingDeletedSplitDistanceCount} split${pendingDeletedSplitDistanceCount === 1 ? "" : "s"} with distance values. Continue?`}
+              confirmLabel="Reduce"
+              cancelLabel="Cancel"
+              onConfirm={() => {
+                if (pendingSegmentCountRaw != null) {
+                  applySegmentCountChange(pendingSegmentCountRaw);
+                }
+                setConfirmReduceSegmentsOpen(false);
+                setPendingSegmentCountRaw(null);
+                setPendingDeletedSplitDistanceCount(0);
+              }}
+              onCancel={() => {
+                setConfirmReduceSegmentsOpen(false);
+                setPendingSegmentCountRaw(null);
+                setPendingDeletedSplitDistanceCount(0);
+              }}
+            />
           </Suspense>
 
           <div
@@ -1784,72 +1915,6 @@ export default function CourseForm() {
           >
             {/* Course Settings Card */}
             <div className="course-settings-card">
-              <div className="course-settings-header">
-                <div className="split-header-left">
-                  <div className="split-header-titlerow">
-                    {isEditingCourseName ? (
-                      <input
-                        ref={courseNameInputRef}
-                        className="split-header-name-input"
-                        type="text"
-                        value={form.name ?? ""}
-                        placeholder="Course name (e.g. Mishigami 2025)"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => update({ name: e.target.value })}
-                        onBlur={() => setIsEditingCourseName(false)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === "Escape") {
-                            setIsEditingCourseName(false);
-                            e.preventDefault();
-                          }
-                        }}
-                      />
-                    ) : (
-                      <span
-                        className="split-header-title split-header-title--editable"
-                        title="Click to rename"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsEditingCourseName(true);
-                          setTimeout(
-                            () => courseNameInputRef.current?.focus(),
-                            0,
-                          );
-                        }}
-                      >
-                        {form.name?.trim() || "Course"}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div
-                  className="course-header-actions"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    type="button"
-                    className="segments-toggle-btn segments-toggle-btn--export"
-                    onClick={handleExport}
-                    disabled={Object.keys(allErrors).length > 0}
-                    title={
-                      Object.keys(allErrors).length > 0
-                        ? "Fix validation errors before exporting"
-                        : "Export course configuration as JSON"
-                    }
-                  >
-                    <i className="fa-solid fa-file-export"></i> Export
-                  </button>
-                  <button
-                    className="segments-toggle-btn segments-toggle-btn--reset"
-                    type="button"
-                    onClick={() => setConfirmResetOpen(true)}
-                    title="Reset all form fields to defaults"
-                  >
-                    ↺ Reset
-                  </button>
-                </div>
-              </div>
-
               <div className="segment-body">
                 {/* Unit & Mode Toggles */}
                 <div className="toggle-row--inline">
@@ -2350,32 +2415,108 @@ export default function CourseForm() {
           </div>
           {activeTab === "projections" && (
             <div className="projections-tab">
-              {/* Keep this ResultView here--considering removing it, but not certain yet. */}
-              {/* {result ? (
-                <Suspense
-                  fallback={<div className="map-loading">Loading results…</div>}
-                >
-                  <ResultsView
-                    result={result}
-                    unitSystem={form.unitSystem}
-                    formSegments={form.segments}
-                    courseTz={form.timezone}
-                    courseName={form.name?.trim() || undefined}
-                    cityLabels={cityLabels}
-                    gpxTrack={gpxTrack}
-                    splitBoundariesKm={splitBoundariesKm}
-                    gpxProfiles={gpxProfiles}
-                  />
-                </Suspense>
-              ) : (
-                <div className="projections-empty">
-                  <i className="fas fa-calculator" />
-                  <p>
-                    No results yet. The calculator runs automatically as you
-                    fill in your course in the Planning tab.
-                  </p>
+              <div className="segments-toolbar">
+                <div className="segments-toolbar-left">
+                  <button
+                    className="segments-toggle-btn"
+                    onClick={() => setCollapseAllSignal((s) => s + 1)}
+                    title="Collapse all segments and their splits"
+                  >
+                    ▶ Collapse
+                  </button>
+                  <button
+                    className="segments-toggle-btn"
+                    onClick={() => setExpandAllSignal((s) => s + 1)}
+                    title="Expand all segments"
+                  >
+                    ▼ Expand
+                  </button>
                 </div>
-              )} */}
+              </div>
+
+              <div className="seg-pagination">
+                <button
+                  type="button"
+                  className="seg-page-btn seg-page-btn--first"
+                  disabled={clampedSegPage === 0}
+                  onClick={() => setSegPage(0)}
+                  title="First page"
+                >
+                  «
+                </button>
+                <button
+                  type="button"
+                  className="seg-page-btn"
+                  disabled={clampedSegPage === 0}
+                  onClick={() => setSegPage((p) => Math.max(0, p - 1))}
+                  title="Previous page"
+                >
+                  ‹ Prev
+                </button>
+                <span className="seg-page-label">
+                  {totalSegPages > 1
+                    ? `Segments ${clampedSegPage * segPageSize + 1}–${Math.min(
+                        (clampedSegPage + 1) * segPageSize,
+                        form.segments.length,
+                      )} of ${form.segments.length}`
+                    : `${form.segments.length} segment${form.segments.length !== 1 ? "s" : ""}`}
+                </span>
+                <button
+                  type="button"
+                  className="seg-page-btn"
+                  disabled={clampedSegPage >= totalSegPages - 1}
+                  onClick={() =>
+                    setSegPage((p) => Math.min(totalSegPages - 1, p + 1))
+                  }
+                  title="Next page"
+                >
+                  Next ›
+                </button>
+                <button
+                  type="button"
+                  className="seg-page-btn seg-page-btn--last"
+                  disabled={clampedSegPage >= totalSegPages - 1}
+                  onClick={() => setSegPage(Math.max(0, totalSegPages - 1))}
+                  title="Last page"
+                >
+                  »
+                </button>
+                <select
+                  className="seg-page-size"
+                  value={segPageSize}
+                  onChange={(e) => {
+                    const newSize = Number(e.target.value);
+                    const firstVisible = clampedSegPage * segPageSize;
+                    setSegPageSize(newSize);
+                    setSegPage(Math.floor(firstVisible / newSize));
+                  }}
+                  title="Segments per page"
+                >
+                  <option value={5}>5 / page</option>
+                  <option value={10}>10 / page</option>
+                  <option value={20}>20 / page</option>
+                </select>
+              </div>
+
+              <Suspense fallback={<div className="map-loading">Loading…</div>}>
+                <ProjectionsView
+                  result={result}
+                  form={form}
+                  unitSystem={form.unitSystem}
+                  courseTz={form.timezone}
+                  courseStartCity={gpxStartCity}
+                  segmentIndexes={pagedSegmentIndexes}
+                  collapseSignal={collapseAllSignal}
+                  expandAllSignal={expandAllSignal}
+                  gpxTrack={gpxTrack}
+                  cityLabels={cityLabels}
+                  gpxProfiles={gpxProfiles}
+                  splitCumulativeDists={splitCumulativeDists}
+                  gpxTotalDist={gpxTotalDistUser}
+                  etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
+                  etaMarginClose={parseInt(etaMargins.close, 10) || 7}
+                />
+              </Suspense>
             </div>
           )}
         </div>

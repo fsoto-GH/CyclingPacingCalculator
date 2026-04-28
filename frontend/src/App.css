@@ -88,6 +88,17 @@ h1 {
   margin-bottom: 1.5rem;
 }
 
+.course-persist-header {
+  border: 1px solid #2e2e2e;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.course-persist-header + .app-tab-bar {
+  border-top: none;
+  border-radius: 0;
+}
+
 /* ── Hidden tab panel (planning content while on Projections tab) ── */
 .tab-panel--hidden {
   display: none;
@@ -95,7 +106,8 @@ h1 {
 
 /* ── Projections tab ── */
 .projections-tab {
-  padding: 0;
+  padding: 0.75rem 1rem;
+  background: #1e1e1e;
 }
 
 .projections-empty {
@@ -116,6 +128,162 @@ h1 {
   max-width: 420px;
   margin: 0 auto;
   line-height: 1.6;
+}
+
+/* ── ProjectionsView ── */
+.projections-view {
+  background: #1e1e1e;
+  padding: 0;
+  margin-top: 1rem;
+}
+
+.proj-course-header {
+  padding: 0.75rem 1rem;
+  background: #252525;
+  border-bottom: 1px solid #2e2e2e;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.25rem;
+}
+
+.proj-course-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.proj-course-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1.25rem;
+  margin: 0;
+  padding: 0;
+}
+
+.proj-course-settings > div {
+  display: flex;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+
+.proj-course-settings dt {
+  font-size: 0.75rem;
+  color: #888;
+  white-space: nowrap;
+}
+
+.proj-course-settings dt::after {
+  content: ":";
+}
+
+.proj-course-settings dd {
+  font-size: 0.8rem;
+  color: #c0c0c0;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.proj-course-totals {
+  border-bottom: 1px solid #2e2e2e;
+  background: #1e1e1e;
+  padding: 0.6rem 1rem;
+}
+
+/* Segment cards */
+.proj-segment {
+  border-top: 1px solid #2e2e2e;
+}
+
+.proj-segment:first-of-type {
+  border-top: none;
+}
+
+.proj-segment-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  background: #212121;
+  cursor: pointer;
+  user-select: none;
+  flex-wrap: wrap;
+}
+
+.proj-segment-header:hover {
+  background: #272727;
+}
+
+.proj-segment-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #d0d0d0;
+}
+
+.proj-segment-meta {
+  font-size: 0.8rem;
+  color: #888;
+  margin-left: auto;
+}
+
+.proj-segment-body {
+  border-top: 1px solid #2a2a2a;
+}
+
+.proj-segment-summary {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid #2a2a2a;
+  background: #1e1e1e;
+}
+
+/* Split cards */
+.proj-split {
+  border-top: 1px solid #252525;
+}
+
+.proj-split-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  padding: 0.4rem 1rem 0.4rem 2rem;
+  background: #1c1c1c;
+  cursor: pointer;
+  user-select: none;
+  flex-wrap: wrap;
+}
+
+.proj-split-header:hover {
+  background: #222;
+}
+
+.collapse-icon-sm {
+  font-size: 0.7rem;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.proj-split-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #c8c8c8;
+}
+
+.proj-split-meta {
+  font-size: 0.78rem;
+  color: #777;
+}
+
+.proj-split-time {
+  font-size: 0.75rem;
+  color: #666;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .proj-split-time {
+    display: none;
+  }
 }
 
 .app-version {
@@ -675,7 +843,7 @@ h4 {
   user-select: none;
   background: #252525;
   border-radius: 6px 6px 0 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .segment-header h3 {
@@ -809,7 +977,22 @@ h4 {
   gap: 0.2rem;
 }
 
-.split-header-titlerow {
+.planning-split-header-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: start;
+}
+
+.planning-split-header-grid .split-header-right {
+  margin-left: 0;
+  justify-self: end;
+}
+
+.split-header-titlerow,
+.split-header-title-row {
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -825,13 +1008,13 @@ h4 {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s, color 0.15s;
 }
 
 /* Click-to-edit variant — shows a pencil cursor and underline hint on hover */
 .split-header-title--editable {
   cursor: text;
-  border-bottom: 1px dashed transparent;
-  transition: border-color 0.15s, color 0.15s;
 }
 
 .split-header-title--editable:hover {
@@ -933,7 +1116,316 @@ h4 {
   font-size: 0.72rem;
   color: #94a3b8;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 0.1rem;
+}
+
+@media (max-width: 599px) {
+  .split-header {
+    flex-wrap: wrap;
+  }
+
+  .split-header-left {
+    flex: 1 1 100%;
+  }
+
+  .split-header-meta {
+    width: 100%;
+  }
+
+  .split-header-dist-row {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.6rem;
+  }
+
+  .segment-header {
+    flex-wrap: wrap;
+  }
+
+  .split-header-right {
+    flex: 0 0 100%;
+    width: 100%;
+    align-items: flex-start !important;
+    text-align: left !important;
+    margin-left: 0;
+    min-width: 0;
+  }
+
+  .split-header-right .split-header-dist-row,
+  .split-header-right .split-header-city {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .split-header-city {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .projections-view .proj-segment-header-grid,
+  .projections-view .proj-split-header-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+  }
+
+  .projections-view .proj-segment-header-title,
+  .projections-view .proj-segment-header-topright,
+  .projections-view .proj-segment-header-metrics,
+  .projections-view .proj-segment-header-timing,
+  .projections-view .proj-segment-header-location,
+  .projections-view .proj-segment-header-startend,
+  .projections-view .proj-split-header-main,
+  .projections-view .proj-split-header-topright,
+  .projections-view .proj-split-header-startend,
+  .projections-view .proj-split-header-status {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    text-align: left;
+    min-width: 0;
+  }
+
+  .projections-view .proj-segment-header-topright,
+  .projections-view .proj-split-header-topright,
+  .projections-view .proj-split-header-status {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .projections-view .proj-segment-header-title .split-header-title,
+  .projections-view .proj-split-header-main .split-header-title {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.projections-view .proj-segment-header-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: start;
+}
+
+.projections-view .proj-segment-header-title {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.projections-view .proj-segment-header-topright {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.projections-view .proj-segment-header-metrics {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.projections-view .proj-segment-header-location {
+  grid-column: 2;
+  grid-row: 3;
+  justify-self: end;
+  text-align: right;
+}
+
+.projections-view .proj-segment-header-timing {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  text-align: right;
+}
+
+.projections-view .proj-segment-header-startend {
+  grid-column: 1;
+  grid-row: 3;
+  justify-self: start;
+  min-width: 0;
+}
+
+.projections-view .split-header-city .proj-city-start,
+.projections-view .split-header-city .proj-city-end,
+.projections-view .split-header-city .proj-city-duration,
+.projections-view .split-header-city .proj-city-pace {
+  color: #cbd5e1;
+}
+
+.projections-view .split-header-city .proj-city-duration,
+.projections-view .split-header-city .proj-city-pace {
+  font-weight: 500;
+}
+
+.projections-view .split-header-city .proj-city-sep {
+  color: #64748b;
+}
+
+.projections-view .split-header-city .proj-segment-city,
+.projections-view .split-header-city .proj-segment-sleep {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.projections-view .split-header-city .proj-segment-ratio {
+  color: #cbd5e1;
+}
+
+.projections-view .split-header-city .proj-segment-sleep i {
+  color: #94a3b8;
+}
+
+/* ── ProjectionsView split header 2-col grid ── */
+.projections-view .proj-split-header-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: start;
+}
+
+.projections-view .proj-split-header-main {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.projections-view .proj-split-header-topright {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+
+.projections-view .proj-split-header-startend {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+  min-width: 0;
+}
+
+.projections-view .proj-split-header-status {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  text-align: right;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+@media (max-width: 599px) {
+  .projections-view .proj-segment-header-grid,
+  .projections-view .proj-split-header-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+  }
+
+  .projections-view .proj-segment-header-title,
+  .projections-view .proj-segment-header-topright,
+  .projections-view .proj-segment-header-metrics,
+  .projections-view .proj-segment-header-timing,
+  .projections-view .proj-segment-header-location,
+  .projections-view .proj-segment-header-startend,
+  .projections-view .proj-split-header-main,
+  .projections-view .proj-split-header-topright,
+  .projections-view .proj-split-header-startend,
+  .projections-view .proj-split-header-status {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    text-align: left;
+    min-width: 0;
+  }
+
+  .projections-view .proj-segment-header-topright,
+  .projections-view .proj-split-header-topright,
+  .projections-view .proj-split-header-status {
+    width: 100%;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .projections-view .proj-segment-header-timing,
+  .projections-view .proj-segment-header-location,
+  .projections-view .proj-segment-header-startend,
+  .projections-view .proj-split-header-startend,
+  .projections-view .proj-split-header-status {
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .projections-view .proj-segment-header-title,
+  .projections-view .proj-split-header-main {
+    overflow: hidden;
+  }
+
+  .projections-view .proj-segment-header-title .split-header-title,
+  .projections-view .proj-split-header-main .split-header-title {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .projections-view .proj-segment-header-timing .split-header-dist,
+  .projections-view .proj-split-header-topright .split-header-dist {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 599px) {
+  /* Keep titles beside the chevron; only the right/detail block should wrap. */
+  .split-header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .segment-header .split-header-left,
+  .split-header .split-header-left {
+    align-self: flex-start;
+  }
+
+  .split-header-right {
+    flex: 0 0 100%;
+  }
+
+  .projections-view .proj-segment-header-grid,
+  .projections-view .proj-split-header-grid {
+    width: calc(100% - 1.5rem);
+    min-width: 0;
+  }
+
+  .planning-split-header-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+    width: calc(100% - 1.5rem);
+    min-width: 0;
+  }
+
+  .planning-split-header-grid .split-header-right {
+    grid-column: 1;
+    justify-self: start;
+    width: 100%;
+  }
 }
 
 .split-header-city-row {
@@ -1005,14 +1497,7 @@ h4 {
 }
 
 @media (max-width: 599px) {
-  .split-header-meta,
-  .split-header-right {
-    display: none;
-  }
-
-  .split-mobile-meta {
-    display: flex;
-  }
+  /* .split-mobile-meta superseded — real header details now stack instead */
 }
 
 .gpx-dist-asterisk {
@@ -3974,6 +4459,14 @@ dialog {
 .split-results-grid dd {
   margin: 0;
   color: #ffffff;
+}
+
+.projections-view .proj-split-results-grid {
+  margin-bottom: 0.75rem;
+}
+
+.projections-view .proj-segment-ratio-value {
+  color: inherit;
 }
 
 @media (max-width: 768px) {

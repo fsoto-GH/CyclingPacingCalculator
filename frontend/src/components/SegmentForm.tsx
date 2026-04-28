@@ -142,9 +142,40 @@ export default function SegmentFormComponent({
   const [confirmDeleteSegmentOpen, setConfirmDeleteSegmentOpen] =
     useState(false);
   const [confirmTransitOpen, setConfirmTransitOpen] = useState(false);
+  const [confirmReduceSplitsOpen, setConfirmReduceSplitsOpen] = useState(false);
+  const [pendingSplitCountRaw, setPendingSplitCountRaw] = useState<
+    string | null
+  >(null);
+  const [
+    pendingDeletedSplitDistanceCount,
+    setPendingDeletedSplitDistanceCount,
+  ] = useState(0);
   const [showExportModal, setShowExportModal] = useState(false);
   const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
   const [targetSplitSignal, setTargetSplitSignal] = useState(0);
+
+  const splitHasDistanceValue = (split: SplitFormType): boolean => {
+    const raw = split.distance?.trim();
+    if (!raw) return false;
+    return !Number.isNaN(Number(raw));
+  };
+
+  const applySplitCountChange = (raw: string) => {
+    update({ splitCount: raw });
+    const n = parseInt(raw, 10);
+    if (!isNaN(n) && n > 0) {
+      const curr = value.splits;
+      if (n > curr.length) {
+        const extra: SplitFormType[] = Array.from(
+          { length: n - curr.length },
+          makeDefaultSplit,
+        );
+        update({ splitCount: raw, splits: [...curr, ...extra] });
+      } else if (n < curr.length) {
+        update({ splitCount: raw, splits: curr.slice(0, n) });
+      }
+    }
+  };
 
   // When segment transitions to collapsed, cascade a collapse to all splits
   useEffect(() => {
@@ -190,20 +221,20 @@ export default function SegmentFormComponent({
   }, [expandAllSignal]);
 
   const handleSplitCountChange = (raw: string) => {
-    update({ splitCount: raw });
     const n = parseInt(raw, 10);
-    if (!isNaN(n) && n > 0) {
-      const curr = value.splits;
-      if (n > curr.length) {
-        const extra: SplitFormType[] = Array.from(
-          { length: n - curr.length },
-          makeDefaultSplit,
-        );
-        update({ splitCount: raw, splits: [...curr, ...extra] });
-      } else if (n < curr.length) {
-        update({ splitCount: raw, splits: curr.slice(0, n) });
+    if (!isNaN(n) && n > 0 && n < value.splits.length) {
+      const removedSplits = value.splits.slice(n);
+      const removedWithDistance = removedSplits.filter(
+        splitHasDistanceValue,
+      ).length;
+      if (removedWithDistance > 0) {
+        setPendingSplitCountRaw(raw);
+        setPendingDeletedSplitDistanceCount(removedWithDistance);
+        setConfirmReduceSplitsOpen(true);
+        return;
       }
     }
+    applySplitCountChange(raw);
   };
 
   const updateSplit = (i: number, split: SplitFormType) => {
@@ -854,6 +885,26 @@ export default function SegmentFormComponent({
         onConfirm={() => {
           setConfirmDeleteSegmentOpen(false);
           onDeleteSegment?.();
+        }}
+      />
+      <ConfirmModal
+        open={confirmReduceSplitsOpen}
+        title="Reduce split count?"
+        message={`Reducing split count will delete ${pendingDeletedSplitDistanceCount} split${pendingDeletedSplitDistanceCount === 1 ? "" : "s"} with distance values in ${headerTitle}. Continue?`}
+        confirmLabel="Reduce"
+        cancelLabel="Cancel"
+        onCancel={() => {
+          setConfirmReduceSplitsOpen(false);
+          setPendingSplitCountRaw(null);
+          setPendingDeletedSplitDistanceCount(0);
+        }}
+        onConfirm={() => {
+          if (pendingSplitCountRaw != null) {
+            applySplitCountChange(pendingSplitCountRaw);
+          }
+          setConfirmReduceSplitsOpen(false);
+          setPendingSplitCountRaw(null);
+          setPendingDeletedSplitDistanceCount(0);
         }}
       />
       {gpxTrack && showExportModal && (
