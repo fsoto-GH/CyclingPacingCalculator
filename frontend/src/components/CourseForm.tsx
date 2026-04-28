@@ -15,6 +15,7 @@ import type {
   GpxTrackPoint,
   SplitGpxProfile,
   SubSplitMode,
+  UnitSystem,
 } from "../types";
 import { makeDefaultDayHours } from "../types";
 import type { RestStopForm as RestStopFormType } from "../types";
@@ -23,6 +24,7 @@ import {
   speedLabel,
   distanceLabel,
   minutesToHms,
+  formatHours,
   formatStartTimeHint,
 } from "../utils";
 import { makeDefaultSplit } from "../defaults";
@@ -205,6 +207,92 @@ function loadSavedForm(): CourseFormState {
   return INITIAL_FORM;
 }
 
+const KM_PER_MI = 1.60934;
+
+function unitConversionFactor(from: UnitSystem, to: UnitSystem): number {
+  if (from === to) return 1;
+  return from === "imperial" ? KM_PER_MI : 1 / KM_PER_MI;
+}
+
+function formatConvertedNumber(value: number): string {
+  const normalized = Number(value.toFixed(4));
+  if (Object.is(normalized, -0)) return "0";
+  return String(normalized);
+}
+
+function convertNumericString(raw: string, factor: number): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  const parsed = Number(trimmed);
+  if (Number.isNaN(parsed)) return raw;
+  return formatConvertedNumber(parsed * factor);
+}
+
+function convertCommaSeparatedNumbers(raw: string, factor: number): string {
+  if (!raw.trim()) return raw;
+  return raw
+    .split(",")
+    .map((token) => {
+      const trimmed = token.trim();
+      if (!trimmed) return token;
+      const parsed = Number(trimmed);
+      if (Number.isNaN(parsed)) return token;
+      return formatConvertedNumber(parsed * factor);
+    })
+    .join(", ");
+}
+
+function convertCourseUnitValues(
+  form: CourseFormState,
+  toUnitSystem: UnitSystem,
+): CourseFormState {
+  const factor = unitConversionFactor(form.unitSystem, toUnitSystem);
+  if (factor === 1) return { ...form, unitSystem: toUnitSystem };
+
+  return {
+    ...form,
+    unitSystem: toUnitSystem,
+    sub_split_distance: convertNumericString(
+      form.sub_split_distance ?? "",
+      factor,
+    ),
+    last_sub_split_threshold: convertNumericString(
+      form.last_sub_split_threshold ?? "",
+      factor,
+    ),
+    sub_split_distances: convertCommaSeparatedNumbers(
+      form.sub_split_distances ?? "",
+      factor,
+    ),
+    init_moving_speed: convertNumericString(form.init_moving_speed, factor),
+    min_moving_speed: convertNumericString(form.min_moving_speed, factor),
+    split_delta: convertNumericString(form.split_delta, factor),
+    segments: form.segments.map((seg) => ({
+      ...seg,
+      split_delta: convertNumericString(seg.split_delta, factor),
+      moving_speed: convertNumericString(seg.moving_speed, factor),
+      min_moving_speed: convertNumericString(seg.min_moving_speed, factor),
+      splits: seg.splits.map((split) => ({
+        ...split,
+        distance: convertNumericString(split.distance, factor),
+        sub_split_distance: convertNumericString(
+          split.sub_split_distance,
+          factor,
+        ),
+        last_sub_split_threshold: convertNumericString(
+          split.last_sub_split_threshold,
+          factor,
+        ),
+        sub_split_distances: convertCommaSeparatedNumbers(
+          split.sub_split_distances,
+          factor,
+        ),
+        moving_speed: convertNumericString(split.moving_speed, factor),
+      })),
+    })),
+  };
+}
+
 export default function CourseForm() {
   const [form, setForm] = useState<CourseFormState>(loadSavedForm);
   const [result, setResult] = useState<CourseDetail | null>(null);
@@ -235,6 +323,10 @@ export default function CourseForm() {
   const [criteriaModalOpen, setCriteriaModalOpen] = useState(false);
   const [etaMargins, setEtaMargins] = useState({ open: "15", close: "7" });
   const [etaMarginsOpen, setEtaMarginsOpen] = useState(false);
+  const [showCourseResultsGrid, setShowCourseResultsGrid] = useState(false);
+  const [pendingUnitSystem, setPendingUnitSystem] = useState<UnitSystem | null>(
+    null,
+  );
   const etaMarginsRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const el = etaMarginsRef.current;
@@ -446,6 +538,31 @@ export default function CourseForm() {
 
   const update = (patch: Partial<CourseFormState>) =>
     setForm((prev) => ({ ...prev, ...patch }));
+
+  const requestUnitSystemChange = useCallback(
+    (next: UnitSystem) => {
+      if (next === form.unitSystem) return;
+      setPendingUnitSystem(next);
+    },
+    [form.unitSystem],
+  );
+
+  const handleConvertUnitSystem = useCallback(() => {
+    if (!pendingUnitSystem) return;
+    const factor = unitConversionFactor(form.unitSystem, pendingUnitSystem);
+    setForm((prev) => convertCourseUnitValues(prev, pendingUnitSystem));
+    setQuickSetup((prev) => ({
+      ...prev,
+      distance: convertNumericString(prev.distance, factor),
+    }));
+    setPendingUnitSystem(null);
+  }, [form.unitSystem, pendingUnitSystem]);
+
+  const handleKeepUnitSystemValues = useCallback(() => {
+    if (!pendingUnitSystem) return;
+    setForm((prev) => ({ ...prev, unitSystem: pendingUnitSystem }));
+    setPendingUnitSystem(null);
+  }, [pendingUnitSystem]);
 
   const handleReset = useCallback(() => {
     setForm(INITIAL_FORM);
@@ -876,6 +993,34 @@ export default function CourseForm() {
   }, []);
 
   const sLabel = speedLabel(form.unitSystem);
+  const dLabel = distanceLabel(form.unitSystem);
+  const fmtInTz = (iso: string, tz: string) =>
+    new Date(iso).toLocaleString(undefined, {
+      weekday: "short",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: tz,
+      timeZoneName: "short",
+    });
+  const fmtRawHours = (hours: number) => `${hours.toFixed(1)}h`;
+  const rawRatio = (numerator: number, denominator: number) =>
+    `${fmtRawHours(numerator)} / ${fmtRawHours(denominator)}`;
+  const rawDualRatio = (
+    numerator: number,
+    activeDenominator: number,
+    elapsedDenominator: number,
+  ) =>
+    `${rawRatio(numerator, activeDenominator)} (${rawRatio(numerator, elapsedDenominator)})`;
+  const ratioPct = (numerator: number, denominator: number) =>
+    denominator > 0 ? `${((numerator / denominator) * 100).toFixed(1)}%` : "-";
+  const courseEndTz = useMemo(() => {
+    if (!result || result.segment_details.length === 0) return null;
+    const lastSeg = result.segment_details[result.segment_details.length - 1];
+    if (!lastSeg || lastSeg.split_details.length === 0) return null;
+    return lastSeg.split_details[lastSeg.split_details.length - 1].end_timezone;
+  }, [result]);
 
   // Stable string key from split distances only — doesn't change when unrelated
   // fields (rest stop, speed, etc.) are edited, so profiles aren't recomputed
@@ -1906,6 +2051,15 @@ export default function CourseForm() {
                 setPendingDeletedSplitDistanceCount(0);
               }}
             />
+            <ConfirmModal
+              open={pendingUnitSystem !== null}
+              title="Switch unit system?"
+              message={`Switching from ${form.unitSystem === "imperial" ? "Imperial" : "Metric"} to ${pendingUnitSystem === "imperial" ? "Imperial" : "Metric"}. Convert existing distance and speed values to the new system, or keep the current numbers as-is?`}
+              confirmLabel="Convert values"
+              cancelLabel="Keep values"
+              onConfirm={handleConvertUnitSystem}
+              onCancel={handleKeepUnitSystemValues}
+            />
           </Suspense>
 
           <div
@@ -1929,14 +2083,14 @@ export default function CourseForm() {
                     <button
                       type="button"
                       className={form.unitSystem === "imperial" ? "active" : ""}
-                      onClick={() => update({ unitSystem: "imperial" })}
+                      onClick={() => requestUnitSystemChange("imperial")}
                     >
                       Imperial
                     </button>
                     <button
                       type="button"
                       className={form.unitSystem === "metric" ? "active" : ""}
-                      onClick={() => update({ unitSystem: "metric" })}
+                      onClick={() => requestUnitSystemChange("metric")}
                     >
                       Metric
                     </button>
@@ -2415,6 +2569,327 @@ export default function CourseForm() {
           </div>
           {activeTab === "projections" && (
             <div className="projections-tab">
+              {result && (
+                <div className="course-proj-summary">
+                  <div className="split-results-panel">
+                    <dl className="split-results-grid">
+                      <div>
+                        <dt title="Course start time">Start</dt>
+                        <dd>{fmtInTz(result.start_time, form.timezone)}</dd>
+                      </div>
+                      <div>
+                        <dt title="Course end time">End</dt>
+                        <dd>
+                          {fmtInTz(
+                            result.end_time,
+                            courseEndTz ?? form.timezone,
+                          )}
+                          {courseEndTz && courseEndTz !== form.timezone && (
+                            <span className="split-end-tz">
+                              {fmtInTz(result.end_time, form.timezone)}
+                            </span>
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Total course distance">Distance</dt>
+                        <dd>
+                          {result.distance.toLocaleString(undefined, {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })}{" "}
+                          {dLabel}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Total elapsed time">Elapsed</dt>
+                        <dd
+                          title={formatHours(result.elapsed_time_hours, "full")}
+                        >
+                          {formatHours(result.elapsed_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time spent actively riding or moving">
+                          Active
+                        </dt>
+                        <dd
+                          title={formatHours(
+                            Math.max(
+                              0,
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                            ),
+                            "full",
+                          )}
+                        >
+                          {formatHours(
+                            Math.max(
+                              0,
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                            ),
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time spent moving (excludes down time)">
+                          Moving
+                        </dt>
+                        <dd
+                          title={formatHours(result.moving_time_hours, "full")}
+                        >
+                          {formatHours(result.moving_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time stopped or inactive">Down</dt>
+                        <dd title={formatHours(result.down_time_hours, "full")}>
+                          {formatHours(result.down_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Sleep time across the course">Sleep</dt>
+                        <dd
+                          title={formatHours(result.sleep_time_hours, "full")}
+                        >
+                          {formatHours(result.sleep_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time spent on adjustments (rest stops, etc.)">
+                          Adj Time
+                        </dt>
+                        <dd
+                          title={formatHours(
+                            result.adjustment_time_hours,
+                            "full",
+                          )}
+                        >
+                          {formatHours(result.adjustment_time_hours)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="optional-toggle"
+                    onClick={() => setShowCourseResultsGrid((v) => !v)}
+                  >
+                    <span
+                      className={`chevron${showCourseResultsGrid ? " open" : ""}`}
+                    >
+                      ▶
+                    </span>
+                    More details
+                  </button>
+
+                  {showCourseResultsGrid && (
+                    <div className="split-results-panel">
+                      <dl className="split-results-grid">
+                        <div>
+                          <dt title="Average moving speed across the course">
+                            Speed
+                          </dt>
+                          <dd>
+                            {result.moving_time_hours > 0
+                              ? (
+                                  result.distance / result.moving_time_hours
+                                ).toFixed(2)
+                              : "0.00"}{" "}
+                            {sLabel}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Average pace for the course">Pace</dt>
+                          <dd>
+                            {(Math.max(
+                              0,
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                            ) > 0
+                              ? result.distance /
+                                Math.max(
+                                  0,
+                                  result.elapsed_time_hours -
+                                    result.sleep_time_hours,
+                                )
+                              : 0
+                            ).toFixed(2)}{" "}
+                            {sLabel}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Moving-time ratio: active first, course elapsed in parentheses">
+                            Moving Ratio
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={rawDualRatio(
+                              result.moving_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {ratioPct(
+                              result.moving_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                            )}{" "}
+                            (
+                            {ratioPct(
+                              result.moving_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                            )
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Down-time ratio: active first, course elapsed in parentheses">
+                            Down Ratio
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={rawDualRatio(
+                              result.down_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {ratioPct(
+                              result.down_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                            )}{" "}
+                            (
+                            {ratioPct(
+                              result.down_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                            )
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Sleep-time ratio: active first, course elapsed in parentheses">
+                            Sleep Ratio
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={rawDualRatio(
+                              result.sleep_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {ratioPct(
+                              result.sleep_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                            )}{" "}
+                            (
+                            {ratioPct(
+                              result.sleep_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                            )
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Adjustment ratio: active first, course elapsed in parentheses">
+                            Adj Ratio
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={rawDualRatio(
+                              result.adjustment_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {ratioPct(
+                              result.adjustment_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                            )}{" "}
+                            (
+                            {ratioPct(
+                              result.adjustment_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                            )
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Down time divided by moving time, with course elapsed time in parentheses">
+                            Down / Moving
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={rawRatio(
+                              result.down_time_hours,
+                              result.moving_time_hours,
+                            )}
+                          >
+                            {ratioPct(
+                              result.down_time_hours,
+                              result.moving_time_hours,
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Active time divided by elapsed time, with course elapsed time in parentheses">
+                            Active / Elapsed
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={rawRatio(
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {ratioPct(
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="segments-toolbar">
                 <div className="segments-toolbar-left">
                   <button

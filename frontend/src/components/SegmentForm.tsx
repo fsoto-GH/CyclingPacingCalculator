@@ -595,16 +595,18 @@ export default function SegmentFormComponent({
                 <i className="fa-regular fa-map"></i>
               </button>
             )}
-            <span className="view-bar-separator" />
             {canDeleteSegment && (
-              <button
-                type="button"
-                className="split-action-btn split-action-btn--delete"
-                title="Delete this segment"
-                onClick={() => setConfirmDeleteSegmentOpen(true)}
-              >
-                <i className="fa-solid fa-trash"></i>
-              </button>
+              <>
+                <span className="view-bar-separator" />
+                <button
+                  type="button"
+                  className="split-action-btn split-action-btn--delete"
+                  title="Delete this segment"
+                  onClick={() => setConfirmDeleteSegmentOpen(true)}
+                >
+                  <i className="fa-solid fa-trash"></i>
+                </button>
+              </>
             )}
           </div>
         </div>

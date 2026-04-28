@@ -774,7 +774,11 @@ export default function SplitFormComponent({
                 <i className="fa-regular fa-map"></i>
               </button>
             )}
-            <span className="view-bar-separator" />
+            {(canMoveToNextSeg ||
+              canShiftUp ||
+              canShiftDown ||
+              canMoveToNextSeg ||
+              canDelete) && <span className="view-bar-separator" />}
             {canMoveToPrevSeg && (
               <button
                 type="button"
@@ -823,7 +827,7 @@ export default function SplitFormComponent({
                 title="Delete this split"
                 onClick={() => setConfirmDeleteSplitOpen(true)}
               >
-                <i className="fas fa-times" />
+                <i className="fa-solid fa-trash"></i>
               </button>
             )}
           </div>

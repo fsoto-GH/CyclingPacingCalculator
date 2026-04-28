@@ -110,6 +110,18 @@ h1 {
   background: #1e1e1e;
 }
 
+.course-proj-summary {
+  margin-bottom: 0.5rem;
+}
+
+.course-proj-summary > .split-results-panel {
+  margin-bottom: 0.4rem;
+}
+
+.course-proj-summary > .optional-toggle {
+  margin-bottom: 0.4rem;
+}
+
 .projections-empty {
   text-align: center;
   padding: 4rem 1rem;
@@ -2174,7 +2186,16 @@ h4 {
 }
 
 .toggle-switch input {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .toggle-track {
@@ -2187,6 +2208,11 @@ h4 {
 
 .toggle-switch input:checked + .toggle-track {
   background: #4361ee;
+}
+
+.toggle-switch input:focus-visible + .toggle-track {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
 }
 
 .toggle-thumb {
