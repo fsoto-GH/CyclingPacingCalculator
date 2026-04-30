@@ -392,7 +392,22 @@ export default function SplitFormComponent({
       className={`split-form${jumpHighlight ? " split-form--jump-highlight" : ""}`}
       ref={splitFormRef}
     >
-      <div className="split-header" onClick={() => setCollapsed((c) => !c)}>
+      <div
+        className="split-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((c) => !c)}
+        onKeyDown={(e) => {
+          if (
+            (e.key === "Enter" || e.key === " ") &&
+            e.target === e.currentTarget
+          ) {
+            e.preventDefault();
+            setCollapsed((c) => !c);
+          }
+        }}
+      >
         <span
           className="collapse-icon-sm"
           style={segColor ? { color: segColor } : undefined}

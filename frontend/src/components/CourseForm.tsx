@@ -313,6 +313,8 @@ export default function CourseForm() {
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [confirmExampleOpen, setConfirmExampleOpen] = useState(false);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [validationDialogOpen, setValidationDialogOpen] = useState(false);
+  const validationDialogRef = useRef<HTMLDialogElement>(null);
   const [confirmReduceSegmentsOpen, setConfirmReduceSegmentsOpen] =
     useState(false);
   const [pendingSegmentCountRaw, setPendingSegmentCountRaw] = useState<
@@ -503,6 +505,14 @@ export default function CourseForm() {
   const [mapCollapsed, setMapCollapsed] = useState(false);
   const [isEditingCourseName, setIsEditingCourseName] = useState(false);
   const courseNameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Validation dialog
+  useEffect(() => {
+    const el = validationDialogRef.current;
+    if (!el) return;
+    if (validationDialogOpen && !el.open) el.showModal();
+    else if (!validationDialogOpen && el.open) el.close();
+  }, [validationDialogOpen]);
 
   // Restore GPX from IndexedDB on mount (large files don't fit in localStorage).
   // Skip when ?example is present — the example loader will supply the track,
@@ -1125,11 +1135,11 @@ export default function CourseForm() {
       return form.segments.map((seg, i) =>
         seg.splits.map((_, j): "over" | "under-last" | null => {
           const cum = cumDists[i]?.[j] ?? 0;
-          if (cum > gpxTotal + 1e-9) return "over";
+          if (cum > gpxTotal + 0.05) return "over";
           if (
             i === lastSegIdx &&
             j === lastSplitIdx &&
-            totalConfigured < gpxTotal - 1e-9
+            totalConfigured < gpxTotal - 0.05
           )
             return "under-last";
           return null;
@@ -1976,6 +1986,34 @@ export default function CourseForm() {
         <div className="course-settings-header course-persist-header">
           <div className="split-header-left">
             <div className="split-header-titlerow">
+              <button
+                type="button"
+                className={`course-validation-btn${Object.keys(allErrors).length > 0 || apiError ? " course-validation-btn--error" : " course-validation-btn--ok"}`}
+                title={
+                  Object.keys(allErrors).length > 0
+                    ? `${Object.keys(allErrors).length} validation error${Object.keys(allErrors).length === 1 ? "" : "s"} — click to view`
+                    : apiError
+                      ? "Calculation error — click to view"
+                      : "No validation errors"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setValidationDialogOpen(true);
+                }}
+                aria-label={
+                  Object.keys(allErrors).length > 0 || apiError
+                    ? "View validation errors"
+                    : "Form is valid"
+                }
+              >
+                <i
+                  className={
+                    Object.keys(allErrors).length > 0 || apiError
+                      ? "fa-solid fa-circle-exclamation"
+                      : "fa-regular fa-circle-check"
+                  }
+                />
+              </button>
               {activeTab === "planning" && isEditingCourseName ? (
                 <input
                   ref={courseNameInputRef}
@@ -2054,6 +2092,61 @@ export default function CourseForm() {
             </button>
           </div>
         </div>
+
+        {/* Validation status dialog */}
+        <dialog
+          ref={validationDialogRef}
+          className="legend-modal"
+          onClose={() => setValidationDialogOpen(false)}
+        >
+          <div className="legend-header">
+            <h2>
+              {Object.keys(allErrors).length > 0 || apiError ? (
+                <>
+                  <i className="fa-solid fa-circle-exclamation validation-dialog__icon--error" />{" "}
+                  Validation Errors
+                </>
+              ) : (
+                <>
+                  <i className="fa-regular fa-circle-check validation-dialog__icon--ok" />{" "}
+                  Form Valid
+                </>
+              )}
+            </h2>
+            <button
+              className="legend-close"
+              onClick={() => setValidationDialogOpen(false)}
+              aria-label="Close"
+            >
+              <i className="fas fa-times" />
+            </button>
+          </div>
+          <div className="legend-body">
+            {Object.keys(allErrors).length === 0 && !apiError ? (
+              <p className="validation-dialog__ok-msg">
+                No validation errors — the form is ready to calculate.
+              </p>
+            ) : (
+              <>
+                {Object.keys(allErrors).length > 0 && (
+                  <ul className="validation-dialog__list">
+                    {Object.values(allErrors).map((msg, idx) => (
+                      <li key={idx}>{msg}</li>
+                    ))}
+                  </ul>
+                )}
+                {apiError && (
+                  <div className="validation-dialog__api-error">
+                    <strong>
+                      {useEngine === "client" ? "Calc Error" : "Server Error"}:
+                    </strong>
+                    <pre>{apiError}</pre>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </dialog>
 
         <div className="app-tab-bar" role="tablist">
           <button

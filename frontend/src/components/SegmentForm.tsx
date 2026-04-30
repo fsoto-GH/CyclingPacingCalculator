@@ -237,6 +237,17 @@ export default function SegmentFormComponent({
     };
   }, []);
 
+  // Clear the split-expand signal after SplitForm children have consumed it.
+  // React fires children's effects before parents', so splits get to read the
+  // signal first; then this effect resets it so stale values don't re-fire
+  // when splits unmount/remount (e.g. segment collapse → expand).
+  useEffect(() => {
+    if (targetSplitSignal > 0) {
+      setTargetSplitSignal(0);
+      setTargetSplitIdx(-1);
+    }
+  }, [targetSplitSignal]);
+
   useEffect(() => {
     if (!collapseSignal) return;
     setCollapsed(true);
@@ -344,7 +355,22 @@ export default function SegmentFormComponent({
       className={`segment-form${transitJumpPulse ? " segment-form--transit-jump-pulse" : ""}`}
       ref={segRootRef}
     >
-      <div className="segment-header" onClick={() => setCollapsed(!collapsed)}>
+      <div
+        className="segment-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed(!collapsed)}
+        onKeyDown={(e) => {
+          if (
+            (e.key === "Enter" || e.key === " ") &&
+            e.target === e.currentTarget
+          ) {
+            e.preventDefault();
+            setCollapsed(!collapsed);
+          }
+        }}
+      >
         <span className="collapse-icon" style={{ color: segColor }}>
           {collapsed ? (
             <i className="fas fa-chevron-right" />
@@ -393,8 +419,7 @@ export default function SegmentFormComponent({
                 {headerTitle}
                 {splitStatuses?.some((s) => s === "over") && (
                   <span className="gpx-dist-asterisk gpx-dist-asterisk--over">
-                    {" "}
-                    *
+                    {splitStatuses.join(", ")}*
                   </span>
                 )}
                 {splitStatuses?.some((s) => s === "under-last") && (

@@ -826,7 +826,6 @@ h4 {
   border: 1px solid #2e2e2e;
   border-radius: 6px;
   margin-bottom: 0;
-  margin-top: 0.5rem;
   background: #1e1e1e;
 }
 
@@ -899,6 +898,63 @@ h4 {
   flex-wrap: wrap;
 }
 
+/* ── Validation status icon button ── */
+.course-validation-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 1rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.course-validation-btn:hover {
+  opacity: 0.75;
+  transform: scale(1.15);
+}
+.course-validation-btn--ok {
+  color: #4ade80;
+}
+.course-validation-btn--error {
+  color: #fb923c;
+}
+
+/* ── Validation dialog content ── */
+.validation-dialog__icon--ok {
+  color: #4ade80;
+}
+.validation-dialog__icon--error {
+  color: #fb923c;
+}
+.validation-dialog__ok-msg {
+  color: #4ade80;
+  font-size: 0.9rem;
+  margin: 0;
+}
+.validation-dialog__list {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: #e2e8f0;
+}
+.validation-dialog__api-error {
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+}
+.validation-dialog__api-error pre {
+  background: #2a2a2a;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #f87171;
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+}
+
 .segment-header {
   font-size: 0.95rem;
   display: flex;
@@ -919,8 +975,14 @@ h4 {
   word-break: break-word;
 }
 
-.segment-header:hover {
+.segment-header:hover,
+.segment-header:focus-visible {
   background: #2a2a2a;
+}
+
+.segment-header:focus-visible {
+  outline: 2px solid #4361ee;
+  outline-offset: -2px;
 }
 
 .collapse-icon {
@@ -996,7 +1058,6 @@ h4 {
   border: 1px solid #2e2e2e;
   border-radius: 4px;
   margin-bottom: 0;
-  margin-top: 0.35rem;
   background: #222222;
   overflow: hidden;
 }
@@ -1061,8 +1122,14 @@ h4 {
   background: #252525;
 }
 
-.split-header:hover {
+.split-header:hover,
+.split-header:focus-visible {
   background: #2a2a2a;
+}
+
+.split-header:focus-visible {
+  outline: 2px solid #4361ee;
+  outline-offset: -2px;
 }
 
 .split-header-left {

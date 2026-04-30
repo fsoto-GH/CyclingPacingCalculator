@@ -395,7 +395,9 @@ function ProjectionSegment({
   }, [courseTz, courseTzAbbr, formSegment, gpxProfiles]);
 
   const title =
-    segment.name ?? formSegment?.name?.trim() ?? `Segment ${segIndex + 1}`;
+    segment.name?.trim() ||
+    formSegment?.name?.trim() ||
+    `Segment ${segIndex + 1}`;
   const sleepHms = formSegment ? minutesToHms(formSegment.sleep_time) : "";
   const lastSplitIdx = segment.split_details.length - 1;
   const segEndCity = cityLabels[lastSplitIdx] ?? null;

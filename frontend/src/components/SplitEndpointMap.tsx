@@ -388,11 +388,11 @@ export default function SplitEndpointMap({
   // the forward-geocode effect below). Reads are passive — writes happen via
   // onSelectStop so state stays in the parent.
   const restStopCoords = useMemo(() => {
-    if (restStop?.lat != null && restStop?.lon != null) {
+    if (restStop?.enabled && restStop?.lat != null && restStop?.lon != null) {
       return { lat: restStop.lat, lon: restStop.lon };
     }
     return null;
-  }, [restStop?.lat, restStop?.lon]);
+  }, [restStop?.enabled, restStop?.lat, restStop?.lon]);
   const restStopIcon = useMemo(() => makeRestStopIcon(), []);
 
   // Geocode the rest stop address when the map mounts or the address changes,
