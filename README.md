@@ -15,7 +15,11 @@ While the race is over, I continue to enhance this project. Since the race, the 
 - An interactive Leaflet course map with full track visualization, color-coded segments, and split endpoint markers
 - A nearby rest stop search powered by the OpenStreetMap Overpass API
 - Automatic timezone detection from GPX coordinates
-- A natural language course summary with open-hours colour coding
+- Planning & Projections tabs — edit in Planning, view calculated results in Projections
+- Transit segments — fixed-duration non-cycling legs (ferry, shuttle, train)
+- Insert Segment zones — hover between segments to reveal a one-click insert zone
+- Imperial / metric unit toggle with in-place conversion
+- Validation status icon with a click-to-open error dialog
 - Real-time auto-calculation as you type (no Calculate button)
 - Named courses, segments, and splits with auto-naming from city labels
 - Segment pagination and Quick Setup for large courses
@@ -45,13 +49,17 @@ The frontend is a single-page React app located in [`frontend/`](./frontend). It
 - GPX route loading with per-split elevation analysis (gain, loss, grade, surface)
 - Full-course elevation profile chart with segment color overlays and interactive split zoom
 - Interactive Leaflet course map with color-coded segments, split endpoint markers, and rest stop pins
-- GPX split export — download a trimmed GPX for any individual split from the Results section
+- GPX split export — download a trimmed GPX for any individual split from the Projections tab
 - OSM-powered nearby stop search at each split endpoint via the Overpass API
 - Nearby city labels on split distance inputs via the Nominatim reverse geocoding API
 - Auto-Name feature — populate segment and split names from resolved city labels using templates
 - Automatic timezone detection from GPX coordinates (no API call)
 - Start time interpreted in course timezone with a hint shown when it differs from the browser timezone
-- Natural language course summary with open-hours status
+- Transit segments — fixed elapsed time + distance for non-cycling travel, shown with a fast-forward icon
+- Planning tab for editing; Projections tab for calculated results per segment and split
+- Insert Segment zones — hover-revealed zones between segments for one-click insertion
+- Imperial / metric unit toggle — converts all distance and speed inputs in place
+- Validation status icon (green ✓ / orange !) left of the course name; click to view all errors
 - Real-time auto-calculation (no Calculate button needed)
 - Form state persisted to **localStorage**; GPX file persisted to **IndexedDB**
 
@@ -325,9 +333,9 @@ The results table checks each rest stop's open hours against the predicted arriv
 | 🟡 Near   | Arriving within 30 minutes of opening or closing |
 | 🔴 Closed | Arriving outside open hours                      |
 
-### Narrative timezone shifts
+### Timezone shifts in results
 
-The natural language summary detects when a segment crosses a timezone boundary (e.g. CDT → ET) and appends a note inline: _(crosses time zones: CDT → ET)_. This uses `Intl.DateTimeFormat` to resolve the short abbreviation of each split's end time in the appropriate IANA zone.
+The Projections tab detects when a segment crosses a timezone boundary (e.g. CDT → ET) and displays a timezone badge on the segment and split headers. This uses `Intl.DateTimeFormat` to resolve the short abbreviation of each split's end time in the appropriate IANA zone.
 
 ---
 
@@ -343,18 +351,24 @@ The ETA badge in results reflects which day of the week the calculator predicts 
 
 ---
 
-## 📖 Natural Language Course Summary
+## �️ Planning & Projections Tabs
 
-After calculation, a prose summary is rendered above the detailed results table. It aims to give an at-a-glance read of the whole plan — useful for sharing or sanity-checking — rather than requiring the reader to interpret a table.
+The form is divided into two tabs:
 
-The summary is built from three layers of information:
+- **Planning** — edit segments, splits, speeds, rest stops, and course settings. The course name header, toolbar buttons (Export, Import, Quick Setup, Examples), and all form controls are here.
+- **Projections** — view calculated results. Each segment shows elapsed time, pace, start/end times, and a breakdown of moving, down, and sleep time. Each split shows its pacing detail, ETA badge, and GPX split export. The Projections tab updates automatically as you edit in Planning.
 
-1. **Course shape** — total distance, number of segments, start time and timezone.
-2. **Per-segment narrative** — distance covered, rest stop names coloured by open/near/closed status, and a timezone-shift note when the segment crosses a boundary.
-3. **Sleep bridges** — when segments are separated by sleep time, a sentence describes the rest duration and the time the next segment begins.
-4. **Closing line** — predicted finish time and total elapsed time (coloured blue).
+---
 
-If a course name, segment name, or split name is provided in the form, the narrative uses those names rather than generic labels like "Segment 1".
+## 🚌 Transit Segments
+
+A transit segment represents a non-cycling leg of the course — a ferry crossing, shuttle transfer, train ride, or any fixed-duration movement. Toggle the **Transit Segment** switch inside any segment's settings to enable it.
+
+- Enter a **Transit Time** (hours and minutes) and the **Distance** covered.
+- The segment contributes fixed elapsed time and advances the course position by the set distance.
+- Speed decay, down-time ratio, and moving-speed overrides are all ignored.
+- Displayed with a fast-forward icon (⏩) in the segment header.
+- Can include a rest stop (e.g. a ferry terminal) with open hours.
 
 ---
 

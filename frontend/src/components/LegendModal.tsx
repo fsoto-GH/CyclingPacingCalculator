@@ -52,7 +52,7 @@ const SEARCH_INDEX: SearchEntry[] = [
   {
     catKey: "tips",
     secTitle: "Share a Course via URL",
-    keywords: "share url example link param shareable load auto",
+    keywords: "share url export import json file send",
   },
   // Features
   {
@@ -65,6 +65,35 @@ const SEARCH_INDEX: SearchEntry[] = [
     secTitle: "Load GPX — where the magic comes together",
     keywords:
       "gpx elevation gain loss grade steep surface timezone detection nominatim overpass rest stop export distance validation ramer smoothing",
+  },
+  {
+    catKey: "features",
+    secTitle: "Planning & Projections Tabs",
+    keywords:
+      "tab planning projections results view switch layout pacing output",
+  },
+  {
+    catKey: "features",
+    secTitle: "Transit Segments",
+    keywords:
+      "transit segment fixed elapsed time ferry train bus nullified travel non-cycling",
+  },
+  {
+    catKey: "features",
+    secTitle: "Insert Segment",
+    keywords: "insert segment add between hover plus button zone",
+  },
+  {
+    catKey: "features",
+    secTitle: "Unit Conversion",
+    keywords:
+      "unit imperial metric miles kilometres mph kph feet meters convert toggle",
+  },
+  {
+    catKey: "features",
+    secTitle: "Validation Status Icon",
+    keywords:
+      "validation error icon check exclamation circle dialog form valid invalid",
   },
   {
     catKey: "features",
@@ -186,6 +215,12 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "terms",
     secTitle: "Segment",
     keywords: "segment day sleeping distance totals moving active elapsed",
+  },
+  {
+    catKey: "terms",
+    secTitle: "Transit Segment",
+    keywords:
+      "transit segment nullified fixed elapsed time non-cycling travel ferry train",
   },
   {
     catKey: "terms",
@@ -378,12 +413,12 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                 <Section title="Share a Course via URL">
                   <p>
-                    To share a course, use the <strong>Export JSON</strong>
+                    To share a course, use the <strong>Export JSON</strong>{" "}
                     button in the toolbar and send the downloaded file. The
-                    recipient can import it with the <strong>Import JSON</strong>
-                    button. If the course has a GPX file and the recipient
-                    uploads the same GPX, all elevation and map data will be
-                    restored as well.
+                    recipient can import it with the{" "}
+                    <strong>Import JSON</strong> button. If the course has a GPX
+                    file and the recipient uploads the same GPX, all elevation
+                    and map data will be restored as well.
                   </p>
                 </Section>
               </Category>
@@ -418,45 +453,149 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       <span style={{ color: "#c4b5fd" }}>
                         purple timezone badge
                       </span>{" "}
-                      (🕐) is added automatically. If you change the split's
-                      distance so its endpoint moves to a new timezone, the
-                      badge updates to reflect the new location.
+                      (<i className="fa-solid fa-clock-rotate-left" />) is added
+                      automatically.
                     </li>
                     <li>
-                      <strong>Manual timezone override</strong> — you can choose
-                      a different timezone for any split via the{" "}
+                      <strong>Manual timezone override</strong> — choose a
+                      different timezone for any split via the{" "}
                       <em>Split Timezone</em> selector in the Overrides panel.
                       Once set manually, the badge turns{" "}
                       <span style={{ color: "#fbbf24" }}>amber</span> and shows
-                      a ✏️ icon to signal that auto-detection is paused for that
-                      split. Selecting the course timezone from the picker
-                      clears the manual override and re-enables auto-detection.
+                      a ✏️ icon. Selecting the course timezone clears the
+                      override and re-enables auto-detection.
                     </li>
                     <li>
                       <strong>Nearby rest stop search</strong> — find fuel
                       stations, convenience stores, pharmacies, cafés, and
                       restaurants within 1 km of each split endpoint via the
-                      OpenStreetMap Overpass API. Results can be imported
-                      directly into the rest stop form including parsed open
-                      hours.
+                      OpenStreetMap Overpass API.
                     </li>
                     <li>
-                      <strong>Nearest city labels</strong> — each split distance
-                      field shows the nearest city, resolved in the background
-                      via Nominatim.
+                      <strong>Nearest city labels</strong> — each split header
+                      shows the nearest city, resolved in the background via
+                      Nominatim.
                     </li>
                     <li>
                       <strong>GPX split export</strong> — download a trimmed GPX
-                      for any individual split directly from the Results
-                      section. Exported files contain course points only; extra
-                      data from the original is not preserved.
+                      for any individual split from the Projections tab.
                     </li>
                     <li>
                       <strong>Distance validation</strong> — splits are checked
-                      against the GPX total and flagged with asterisks (see
-                      Information below).
+                      against the GPX total and flagged (see Information below).
                     </li>
                   </ul>
+                </Section>
+
+                <Section title="Planning & Projections Tabs">
+                  <p>The course is split into two tabs for clarity:</p>
+                  <ul>
+                    <li>
+                      <strong>
+                        <i className="fas fa-pencil-alt" /> Planning
+                      </strong>{" "}
+                      — edit segments and splits, configure speeds, rest stops,
+                      and course settings. The course name and all toolbar
+                      actions (Export, Import, Quick Setup, etc.) are available
+                      here.
+                    </li>
+                    <li>
+                      <strong>
+                        <i className="fas fa-chart-line" /> Projections
+                      </strong>{" "}
+                      — view calculated results for every segment and split.
+                      Each segment shows elapsed time, pace, start/end times,
+                      and a breakdown of moving, down, and sleep time. Each
+                      split shows its pacing detail, ETA badge, and GPX split
+                      export.
+                    </li>
+                  </ul>
+                  <p>
+                    Calculation runs automatically as you edit in the Planning
+                    tab and results are immediately visible when you switch to
+                    Projections.
+                  </p>
+                </Section>
+
+                <Section title="Transit Segments">
+                  <p>
+                    A <strong>transit segment</strong> represents non-cycling
+                    travel — a ferry, shuttle, train, or any fixed-duration
+                    movement between two points. Enable it by checking the{" "}
+                    <strong>Transit Segment</strong> toggle inside any segment's
+                    settings.
+                  </p>
+                  <ul>
+                    <li>
+                      Set a <strong>Transit Time</strong> (hours:minutes) and a{" "}
+                      <strong>Distance</strong> covered. The segment contributes
+                      fixed elapsed time and advances the course position by
+                      that distance.
+                    </li>
+                    <li>
+                      Speed delta, down-time ratio, and moving-speed overrides
+                      are ignored for transit segments.
+                    </li>
+                    <li>
+                      A transit segment is shown with a{" "}
+                      <i className="fa-solid fa-forward-fast" /> icon in the
+                      segment header.
+                    </li>
+                    <li>
+                      Transit segments can have a rest stop (e.g. a ferry
+                      terminal) with open hours.
+                    </li>
+                  </ul>
+                </Section>
+
+                <Section title="Insert Segment">
+                  <p>
+                    Hover between any two segments in the Planning tab to reveal
+                    a thin insertion zone with a <i className="fas fa-plus" />{" "}
+                    button. Clicking it inserts a new blank segment at that
+                    position without disrupting the rest of the course.
+                  </p>
+                </Section>
+
+                <Section title="Unit Conversion">
+                  <p>
+                    Switch between <strong>Imperial</strong> (miles, mph, ft)
+                    and <strong>Metric</strong> (km, kph, m) using the unit
+                    toggle in the course settings. All distance and speed
+                    inputs, GPX elevation stats, and result labels convert
+                    automatically. Existing distance values in the form are
+                    converted in-place when you switch units.
+                  </p>
+                </Section>
+
+                <Section title="Validation Status Icon">
+                  <p>
+                    A status icon appears to the left of the course name at all
+                    times:
+                  </p>
+                  <ul>
+                    <li>
+                      <i
+                        className="fa-regular fa-circle-check"
+                        style={{ color: "#4ade80" }}
+                      />{" "}
+                      <span style={{ color: "#4ade80" }}>Green</span> — no
+                      validation errors; the form is ready to calculate and
+                      export.
+                    </li>
+                    <li>
+                      <i
+                        className="fa-solid fa-circle-exclamation"
+                        style={{ color: "#fb923c" }}
+                      />{" "}
+                      <span style={{ color: "#fb923c" }}>Orange</span> — one or
+                      more validation errors or a calculation error is present.
+                    </li>
+                  </ul>
+                  <p>
+                    Click the icon to open a dialog listing all current errors.
+                    Errors must be resolved before the course can be exported.
+                  </p>
                 </Section>
 
                 <Section title="Rest Stop Open Hours">
@@ -465,11 +604,19 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     a single schedule for every day). The calculator predicts
                     your arrival time in the stop's local timezone and badges
                     the result as{" "}
-                    <span style={{ color: "#4ade80" }}>🟢 Open</span>,{" "}
-                    <span style={{ color: "#facc15" }}>🟡 Near</span> (within 30
-                    min of opening or closing), or{" "}
-                    <span style={{ color: "#f87171" }}>🔴 Closed</span>. Hours
-                    can be imported directly from a nearby stop search result.
+                    <span style={{ color: "#4ade80" }}>
+                      <i className="fas fa-circle" /> Open
+                    </span>
+                    ,{" "}
+                    <span style={{ color: "#facc15" }}>
+                      <i className="fas fa-circle" /> Near
+                    </span>{" "}
+                    (within 30 min of opening or closing), or{" "}
+                    <span style={{ color: "#f87171" }}>
+                      <i className="fas fa-circle" /> Closed
+                    </span>
+                    . Hours can be imported directly from a nearby stop search
+                    result.
                   </p>
                 </Section>
 
@@ -484,16 +631,15 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                 <Section title="Color-Coded Segments & Course Map">
                   <p>
                     Each segment is assigned a color that appears on the
-                    collapse toggle icon, the course map track, the elevation
-                    profile overlay, and the distance/elevation badges in the
-                    segment header. Portions of the course not yet covered by
-                    any split are shown in a light gray on the map.
+                    collapse toggle icon, the course map track, and the
+                    elevation profile overlay. Portions of the course not yet
+                    covered by any split are shown in light gray on the map.
                   </p>
                   <ul>
                     <li>
                       The <strong>course map legend</strong> is clickable — each
-                      legend entry zooms the map to that segment's portion of
-                      the track, and also zooms the elevation profile to that
+                      legend entry zooms the map to that segment's track
+                      portion, and also zooms the elevation profile to that
                       segment's range. Clicking the same segment again resets
                       the elevation zoom.
                     </li>
@@ -501,13 +647,13 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       Rest stop markers appear in{" "}
                       <span style={{ color: "#a855f7" }}>purple</span>. They are
                       hidden by default; use the <strong>Rest Stops</strong>{" "}
-                      toggle button on the map to show them.
+                      toggle on the map to show them.
                     </li>
                     <li>
-                      Clicking a split endpoint marker on the map opens a popup
-                      with the split name and distance. Click{" "}
-                      <strong>↓ Go to split</strong> in the popup to jump
-                      directly to that split's form.
+                      Clicking a split endpoint marker on the map opens a popup.
+                      Click <strong>Go to split</strong> (
+                      <i className="fas fa-arrow-down" />) in the popup to jump
+                      to that split's form.
                     </li>
                   </ul>
                 </Section>
@@ -522,30 +668,24 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                   <ul>
                     <li>
                       <strong>Zooming</strong> — click any area of the chart to
-                      zoom into that split's distance range. The chart title
-                      updates to show what is currently in view (e.g.{" "}
-                      <em>Elevation: Segment 1 › Split 2</em>). Click a segment
-                      in the map legend to zoom the elevation profile to that
-                      segment; click the same segment again to reset.
+                      zoom into that split's distance range. The title updates
+                      (e.g. <em>Elevation: Segment 1 › Split 2</em>). Click a
+                      segment in the map legend to zoom; click again to reset.
                     </li>
                     <li>
-                      <strong>Reset</strong> — the <em>↺ Reset</em> button in
-                      the elevation header returns the chart to the full-course
-                      view.
-                    </li>
-                    <li>
-                      Zooming in reveals finer GPS detail — the chart samples up
-                      to 300 points from whatever range is in view, so a smaller
-                      range means higher resolution.
+                      <strong>Reset</strong> — <i className="fas fa-undo" />{" "}
+                      Reset in the elevation header returns the chart to
+                      full-course view.
                     </li>
                   </ul>
                 </Section>
 
                 <Section title="Examples">
                   <p>
-                    The <strong>Examples</strong> button in the top toolbar
-                    loads pre-built courses including their GPX routes. If you
-                    have unsaved data, the app will ask before overwriting it.
+                    The <strong>Examples</strong> button (
+                    <i className="fas fa-book-open" />) in the top toolbar loads
+                    pre-built courses including their GPX routes. If you have
+                    unsaved data, the app will ask before overwriting it.
                   </p>
                 </Section>
 
@@ -565,7 +705,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     Large courses with many segments are paginated. Use the
                     pagination bar above the segments list to navigate pages and
                     set how many segments are shown per page (5, 10, or 20).
-                    Clicking <strong>↓ Go to split</strong> on the map
+                    Clicking <strong>Go to split</strong> on the map
                     automatically jumps to the correct page.
                   </p>
                 </Section>
@@ -573,10 +713,12 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                 <Section title="Auto-Name from City Labels">
                   <p>
                     Once city labels have loaded for all splits, the{" "}
-                    <strong>🏷️ Auto-Name</strong> button appears in the segments
-                    toolbar. It sets segment and split names to describe their
-                    start and end cities. Optional prefix templates support the
-                    following tokens:
+                    <strong>
+                      <i className="fas fa-tag" /> Auto-Name
+                    </strong>{" "}
+                    button appears in the segments toolbar. It sets segment and
+                    split names to describe their start and end cities. Optional
+                    prefix templates support the following tokens:
                   </p>
                   <ul>
                     <li>
@@ -650,8 +792,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                   <p>
                     Overpass API queries automatically cascade through several
                     public mirrors if the primary endpoint is slow or
-                    unresponsive, improving reliability without any manual
-                    action.
+                    unresponsive.
                   </p>
                 </Section>
               </Category>
@@ -676,9 +817,8 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                 <Section title="GPX Distance Indicators">
                   <p>
-                    When a GPX file is loaded, the calculator knows the total
-                    course distance and checks your split configuration against
-                    it:
+                    When a GPX file is loaded, the calculator checks your split
+                    configuration against the GPX total distance:
                   </p>
                   <ul>
                     <li>
@@ -696,6 +836,15 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       <em>short</em> of the GPX course distance.
                     </li>
                   </ul>
+                  <p>
+                    The cumulative distance badge on each split header also
+                    shows{" "}
+                    <span style={{ color: "#4ade80" }}>✓ matches GPX</span>,{" "}
+                    <span style={{ color: "#facc15" }}>X mi left</span>, or{" "}
+                    <span style={{ color: "#f87171" }}>X mi over</span> relative
+                    to the GPX total. A tolerance of ±0.05 mi/km is used to
+                    account for rounding in distance inputs.
+                  </p>
                 </Section>
 
                 <Section title="Nearest Cities">
@@ -716,11 +865,9 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     >
                       usage policy
                     </a>
-                    , requests are limited to <strong>1 per second</strong> — so
-                    labels load sequentially with a short delay between each
-                    one. Results are cached; cached coordinates resolve
-                    instantly. Changing a split distance by more than 5 miles
-                    re-fetches the label for that split.
+                    , requests are limited to <strong>1 per second</strong> —
+                    labels load sequentially with a short delay between each.
+                    Results are cached; cached coordinates resolve instantly.
                   </p>
                   <p>
                     The <strong>segment header</strong> shows{" "}
@@ -741,31 +888,32 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       covered by the segment or split.
                     </li>
                     <li>
-                      <span style={{ color: "#4ade80" }}>Green</span> —
-                      elevation gain.
+                      <span style={{ color: "#4ade80" }}>Green</span> (
+                      <i className="fas fa-arrow-up" />) — elevation gain.
                     </li>
                     <li>
-                      <span style={{ color: "#f87171" }}>Red</span> — elevation
-                      loss.
+                      <span style={{ color: "#f87171" }}>Red</span> (
+                      <i className="fas fa-arrow-down" />) — elevation loss.
                     </li>
                     <li>
                       <span style={{ color: "#94a3b8" }}>Gray</span> — average
-                      grade.
+                      grade %.
                     </li>
                     <li>
-                      <span style={{ color: "#fbbf24" }}>Yellow</span> —
-                      steepness: the percentage of the distance where grade
-                      exceeds 5%.
+                      <span style={{ color: "#fbbf24" }}>Yellow</span> (
+                      <i className="fa-solid fa-triangle-exclamation" />) —
+                      steepness: % of distance where grade exceeds 5%.
                     </li>
                     <li>
                       A{" "}
                       <span style={{ color: "#c4b5fd" }}>
                         purple timezone badge
                       </span>{" "}
-                      (🕐) shows all timezone abbreviations encountered across
-                      the segment's splits, in the order they first appear.
-                      Adjacent identical abbreviations are collapsed. When you
-                      manually override the timezone, the badge turns{" "}
+                      (<i className="fa-solid fa-clock-rotate-left" />) shows
+                      all timezone abbreviations encountered across the
+                      segment's splits, in the order they first appear. Adjacent
+                      identical abbreviations are collapsed. When you manually
+                      override the timezone, the badge turns{" "}
                       <span style={{ color: "#fbbf24" }}>amber</span> with a ✏️
                       icon.
                     </li>
@@ -790,7 +938,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     </li>
                     <li>
                       <strong>Target Distance</strong> — each value is a
-                      cumulative course marker from the start (mile/km); split
+                      cumulative course marker from the start (mi/km); split
                       lengths are derived from the difference between
                       consecutive markers.
                     </li>
@@ -836,9 +984,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     Accounts for traffic lights, crossings, brief stops, etc.
                   </p>
                   <ul>
-                    <li>
-                      Example: 1 h moving time × 0.1 DTR = 6 min of down time.
-                    </li>
+                    <li>Example: 1 h moving × 0.1 DTR = 6 min of down time.</li>
                     <li>
                       Overridable at the <strong>segment level</strong>. At the{" "}
                       <strong>split level</strong>, you can set a concrete
@@ -870,6 +1016,18 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                   </p>
                 </Section>
 
+                <Section title="Transit Segment">
+                  <p>
+                    A special segment type for non-cycling travel (ferry,
+                    shuttle, train, etc.). It contributes a{" "}
+                    <strong>fixed elapsed time</strong> and advances the course
+                    distance by a set amount — no pace calculation is performed.
+                    Identified by the <i className="fa-solid fa-forward-fast" />{" "}
+                    icon. Speed decay, down-time ratio, and moving-speed
+                    overrides are all ignored.
+                  </p>
+                </Section>
+
                 <Section title="Split">
                   <p>
                     Think of a split as{" "}
@@ -896,8 +1054,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     </li>
                     <li>
                       <strong>Custom</strong> — provide a comma-separated list
-                      of distances (no validation on totals, but it doesn't
-                      affect other calculations).
+                      of distances.
                     </li>
                   </ul>
                 </Section>

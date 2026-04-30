@@ -559,11 +559,25 @@ function ProjectionSegment({
           )}
 
           <div className="proj-segment-header-timing split-header-city">
-            <span className="proj-city-duration">
-              {formatHours(segment.elapsed_time_hours)}
+            <span
+              className="proj-city-duration"
+              title={formatHours(segment.elapsed_time_hours, "full")}
+            >
+              {segment.elapsed_time_hours.toLocaleString(undefined, {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              })}{" "}
+              hrs
             </span>
             {!isTransitSegment && (
               <>
+                <span className="proj-city-sep"> · </span>
+                <span className="proj-city-pace">
+                  {segment.moving_time_hours > 0
+                    ? (segment.distance / segment.moving_time_hours).toFixed(2)
+                    : "0.00"}{" "}
+                  {sLabel}
+                </span>
                 <span className="proj-city-sep"> · </span>
                 <span className="proj-city-pace">
                   {segment.pace.toFixed(2)} {sLabel}
@@ -596,6 +610,8 @@ function ProjectionSegment({
             <span className="proj-city-end">
               {fmtInTz(segment.end_time, segmentEndTz ?? courseTz)}
             </span>
+            <span className="proj-city-sep"> · </span>
+            <span>{formatHours(segment.elapsed_time_hours)}</span>
           </div>
         </div>
       </div>
@@ -1235,10 +1251,21 @@ function ProjectionSplit({
               )}
             </div>
             <div className="split-header-city">
-              <span className="proj-city-duration">
-                {formatHours(splitTimeHours)}
+              <span
+                className="proj-city-duration"
+                title={formatHours(splitTimeHours, "full")}
+              >
+                {splitTimeHours.toLocaleString(undefined, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}
+                hrs
               </span>
               <>
+                <span className="proj-city-sep"> · </span>
+                <span className="proj-city-pace">
+                  {split.moving_speed.toFixed(2)} {sLabel}
+                </span>
                 <span className="proj-city-sep"> · </span>
                 <span className="proj-city-pace">
                   {split.pace.toFixed(2)} {sLabel}
@@ -1256,6 +1283,8 @@ function ProjectionSplit({
             <span className="proj-city-end">
               {fmtInTz(split.end_time, splitEndTz ?? courseTz)}
             </span>
+            <span className="proj-city-sep"> · </span>
+            <span>{formatHours(split.active_time_hours)}</span>
           </div>
 
           {/* (1,1) eta-badge · city · GPX state */}
