@@ -663,6 +663,22 @@ export default function SegmentFormComponent({
                     }
                   />
 
+                  <div className="field split-notes-field">
+                    <label htmlFor={`${prefix}-transit-notes`}>Notes</label>
+                    <textarea
+                      id={`${prefix}-transit-notes`}
+                      className="split-notes-textarea"
+                      rows={2}
+                      placeholder="Optional rider notes for this transit leg…"
+                      value={transitSplit.notes ?? ""}
+                      onChange={(e) =>
+                        update({
+                          splits: [{ ...transitSplit, notes: e.target.value }],
+                        })
+                      }
+                    />
+                  </div>
+
                   {gpxTrack &&
                     validProfiles.length > 0 &&
                     (() => {
@@ -675,15 +691,27 @@ export default function SegmentFormComponent({
                             <div className="map-loading">Loading map…</div>
                           }
                         >
-                          <div className="transit-segment-map">
-                            <TransitSegmentMap
-                              gpxTrack={gpxTrack}
-                              startKm={firstProfile.startKm}
-                              endKm={lastProfile.endKm}
-                              unitSystem={unitSystem}
-                              segmentColor={segColor}
-                            />
-                          </div>
+                          <TransitSegmentMap
+                            gpxTrack={gpxTrack}
+                            startKm={firstProfile.startKm}
+                            endKm={lastProfile.endKm}
+                            unitSystem={unitSystem}
+                            segmentColor={segColor}
+                            restStop={transitSplit.rest_stop}
+                            onSelectStop={(patch) =>
+                              update({
+                                splits: [
+                                  {
+                                    ...transitSplit,
+                                    rest_stop: {
+                                      ...transitSplit.rest_stop,
+                                      ...patch,
+                                    },
+                                  },
+                                ],
+                              })
+                            }
+                          />
                         </Suspense>
                       );
                     })()}

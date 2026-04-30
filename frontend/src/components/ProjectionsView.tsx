@@ -969,6 +969,8 @@ function ProjectionSegment({
                         endKm={transitProfile.endKm}
                         unitSystem={unitSystem}
                         segmentColor={segColor}
+                        restStop={transitFormSplit?.rest_stop ?? null}
+                        onSelectStop={() => {}}
                       />
                     </Suspense>
                   </div>

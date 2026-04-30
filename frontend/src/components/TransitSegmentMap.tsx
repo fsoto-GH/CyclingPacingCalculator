@@ -1,41 +1,43 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   MapContainer,
   TileLayer,
   Polyline,
   CircleMarker,
+  Marker,
   Popup,
   useMap,
   AttributionControl,
 } from "react-leaflet";
 import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
 import type { Map as LeafletMap } from "leaflet";
-import type { GpxTrackPoint, UnitSystem } from "../types";
+import type { GpxTrackPoint, RestStopForm, UnitSystem } from "../types";
 import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
+import {
+  decimateTrack,
+  fmtDist,
+  makeRestStopIcon,
+  ScrollWheelActivator,
+} from "../calculator/mapUtils";
+import {
+  AMENITY_ICONS,
+  AMENITY_LABELS,
+  AMENITY_COLORS,
+  queryNearbyAmenities,
+} from "../calculator/overpass";
+import { reverseGeocode, forwardGeocode } from "../calculator/geocode";
+import type { NearbyAmenity } from "../calculator/overpass";
+import { AmenityContext } from "../amenityContext";
+import FindNearbyModal from "./FindNearbyModal";
 
-interface TransitSegmentMapProps {
-  gpxTrack: GpxTrackPoint[];
-  startKm: number;
-  endKm: number;
-  unitSystem: UnitSystem;
-  segmentColor: string;
-}
-
-function decimateTrack(track: GpxTrackPoint[]): [number, number][] {
-  if (track.length === 0) return [];
-  const result: [number, number][] = [[track[0].lat, track[0].lon]];
-  const MIN_KM = 0.05;
-  let prevKm = track[0].cumDist;
-  for (let i = 1; i < track.length; i++) {
-    if (track[i].cumDist - prevKm >= MIN_KM) {
-      result.push([track[i].lat, track[i].lon]);
-      prevKm = track[i].cumDist;
-    }
-  }
-  const last = track[track.length - 1];
-  result.push([last.lat, last.lon]);
-  return result;
-}
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDistFromKm(km: number, unitSystem: UnitSystem): string {
   if (unitSystem === "imperial") {
@@ -73,22 +75,19 @@ function MapInvalidator({ bounds }: { bounds: LatLngBoundsExpression }) {
   return null;
 }
 
-function ScrollWheelActivator() {
-  const map = useMap();
-  useEffect(() => {
-    map.scrollWheelZoom.disable();
-    const el = map.getContainer();
-    const enable = () => map.scrollWheelZoom.enable();
-    const disable = () => map.scrollWheelZoom.disable();
-    el.addEventListener("click", enable);
-    el.addEventListener("mouseleave", disable);
-    return () => {
-      el.removeEventListener("click", enable);
-      el.removeEventListener("mouseleave", disable);
-    };
-  }, [map]);
-  return null;
+// ── Props ─────────────────────────────────────────────────────────────────────
+
+interface TransitSegmentMapProps {
+  gpxTrack: GpxTrackPoint[];
+  startKm: number;
+  endKm: number;
+  unitSystem: UnitSystem;
+  segmentColor: string;
+  restStop?: RestStopForm | null;
+  onSelectStop?: (patch: Partial<RestStopForm>) => void;
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TransitSegmentMap({
   gpxTrack,
@@ -96,11 +95,37 @@ export default function TransitSegmentMap({
   endKm,
   unitSystem,
   segmentColor,
+  restStop,
+  onSelectStop,
 }: TransitSegmentMapProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // ── Nearby search state ────────────────────────────────────────────────────
+  const { radiusM, selectedTypes, customTypes } = useContext(AmenityContext);
+  const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
+  const [showNearby, setShowNearby] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const [confirmStop, setConfirmStop] = useState<NearbyAmenity | null>(null);
+  const confirmDialogRef = useRef<HTMLDialogElement>(null);
+  const [usedStopId, setUsedStopId] = useState<number | null>(null);
+  const usedStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Abort in-flight requests on unmount
+  useEffect(
+    () => () => {
+      searchAbortRef.current?.abort();
+      if (usedStopTimerRef.current !== null)
+        clearTimeout(usedStopTimerRef.current);
+    },
+    [],
+  );
+
+  // ── Route geometry ─────────────────────────────────────────────────────────
   const minKm = Math.min(startKm, endKm);
   const maxKm = Math.max(startKm, endKm);
 
@@ -129,11 +154,80 @@ export default function TransitSegmentMap({
     [gpxTrack, endKm, polyline],
   );
 
+  const endLat = endPoint?.lat ?? 0;
+  const endLon = endPoint?.lon ?? 0;
+
+  // Clear cached search results when the endpoint moves
+  const isFirstEndpointRender = useRef(true);
+  useEffect(() => {
+    if (isFirstEndpointRender.current) {
+      isFirstEndpointRender.current = false;
+      return;
+    }
+    setAmenities(null);
+    setShowNearby(false);
+    setSearchError(null);
+    searchAbortRef.current?.abort();
+  }, [endKm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Rest stop ──────────────────────────────────────────────────────────────
+  const restStopIcon = useMemo(() => makeRestStopIcon(), []);
+
+  const restStopCoords = useMemo(() => {
+    if (restStop?.enabled && restStop?.lat != null && restStop?.lon != null) {
+      return { lat: restStop.lat, lon: restStop.lon };
+    }
+    return null;
+  }, [restStop?.enabled, restStop?.lat, restStop?.lon]);
+
+  // Forward-geocode the rest stop address when coords are not yet set
+  const geocodeAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const rs = restStop;
+    if (!rs?.enabled || !rs.address?.trim()) return;
+    if (rs.lat != null && rs.lon != null) return;
+
+    geocodeAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    geocodeAbortRef.current = ctrl;
+
+    const name = rs.name?.trim() ?? "";
+    const address = rs.address.trim();
+    const RESERVED = new Set([
+      "home",
+      "house",
+      "my house",
+      "our house",
+      "residence",
+    ]);
+    const normName = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const query =
+      name && !RESERVED.has(normName) ? `${name} by ${address}` : address;
+
+    forwardGeocode(query, ctrl.signal).then((result) => {
+      if (ctrl.signal.aborted || !result) return;
+      onSelectStop?.({ lat: result.lat, lon: result.lon });
+    });
+
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restStop?.enabled, restStop?.address, restStop?.name]);
+
+  // ── Map bounds ─────────────────────────────────────────────────────────────
   const bounds = useMemo<LatLngBoundsExpression | null>(() => {
     if (!startPoint || !endPoint) return null;
 
     const lats = [startPoint.lat, endPoint.lat, ...polyline.map((p) => p[0])];
     const lons = [startPoint.lon, endPoint.lon, ...polyline.map((p) => p[1])];
+
+    if (restStopCoords) {
+      lats.push(restStopCoords.lat);
+      lons.push(restStopCoords.lon);
+    }
 
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
@@ -147,8 +241,9 @@ export default function TransitSegmentMap({
       [minLat - latPad, minLon - lonPad],
       [maxLat + latPad, maxLon + lonPad],
     ];
-  }, [startPoint, endPoint, polyline]);
+  }, [startPoint, endPoint, polyline, restStopCoords]);
 
+  // ── Fullscreen ─────────────────────────────────────────────────────────────
   async function toggleFullscreen() {
     const host = canvasRef.current;
     if (!host || !document.fullscreenEnabled) return;
@@ -174,9 +269,118 @@ export default function TransitSegmentMap({
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
 
+  // ── Nearby search handlers ─────────────────────────────────────────────────
+  const handleSearch = useCallback(
+    async (
+      overrideRadius?: number,
+      overrideTypes?: Set<string>,
+      overrideCustom?: string,
+    ) => {
+      const searchRadius = overrideRadius ?? radiusM;
+      const searchTypes = overrideTypes ?? selectedTypes;
+      const searchCustom = overrideCustom ?? customTypes;
+
+      const custom = searchCustom
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const all = [...searchTypes, ...custom];
+      if (all.length === 0) {
+        setSearchError("NO_TYPES");
+        return;
+      }
+
+      searchAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      searchAbortRef.current = ctrl;
+      setSearchLoading(true);
+      setSearchError(null);
+
+      try {
+        let results = await queryNearbyAmenities(
+          endLat,
+          endLon,
+          searchRadius,
+          ctrl.signal,
+          all,
+        );
+        if (ctrl.signal.aborted) return;
+        const byDistThenName = (a: NearbyAmenity, b: NearbyAmenity) =>
+          a.distanceM - b.distanceM || a.name.localeCompare(b.name);
+        const withHours = results
+          .filter((r) => r.hours != null)
+          .sort(byDistThenName);
+        const noHours = results
+          .filter((r) => r.hours == null)
+          .sort(byDistThenName);
+        results = [...withHours, ...noHours];
+        setAmenities(results);
+        setShowNearby(true);
+      } catch (err: unknown) {
+        if ((err as { name?: string }).name === "AbortError") return;
+        const msg = (err as { message?: string }).message ?? "";
+        if (msg.startsWith("OVERPASS_OOM:")) {
+          setSearchError(
+            "Search exceeded available memory — try a smaller radius or fewer stop types.",
+          );
+        } else {
+          setSearchError("Search failed. Check your connection and try again.");
+        }
+      } finally {
+        setSearchLoading(false);
+      }
+    },
+    [endLat, endLon, radiusM, selectedTypes, customTypes],
+  );
+
+  function handleSelect(a: NearbyAmenity) {
+    if (a.hours == null) {
+      setConfirmStop(a);
+      setTimeout(() => confirmDialogRef.current?.showModal(), 0);
+      return;
+    }
+    doSelect(a);
+  }
+
+  function doSelect(a: NearbyAmenity) {
+    const patch: Partial<RestStopForm> = {
+      enabled: true,
+      name: a.name,
+      lat: a.lat,
+      lon: a.lon,
+    };
+    if (a.hours) {
+      patch.sameHoursEveryDay = false;
+      patch.perDay = a.hours;
+    } else {
+      patch.sameHoursEveryDay = true;
+      patch.allDays = { mode: "closed", opens: "06:00", closes: "22:00" };
+    }
+    if (a.streetLine && a.hasLocality) {
+      onSelectStop?.({ ...patch, address: a.address });
+      return;
+    }
+    if (a.streetLine) {
+      reverseGeocode(a.lat, a.lon).then((cityState) => {
+        const address = cityState
+          ? `${a.streetLine}, ${cityState}`
+          : a.streetLine;
+        onSelectStop?.({ ...patch, address });
+      });
+      return;
+    }
+    onSelectStop?.({
+      ...patch,
+      address: `${a.lat.toFixed(6)}, ${a.lon.toFixed(6)}`,
+    });
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   if (!startPoint || !endPoint || !bounds) {
     return <div className="map-loading">Transit map unavailable</div>;
   }
+
+  const interactive = !!onSelectStop;
 
   return (
     <div className="transit-segment-map">
@@ -197,6 +401,7 @@ export default function TransitSegmentMap({
             maxZoom={19}
           />
 
+          {/* Dashed transit route */}
           {polyline.length >= 2 && (
             <Polyline
               positions={polyline as LatLngExpression[]}
@@ -209,6 +414,7 @@ export default function TransitSegmentMap({
             />
           )}
 
+          {/* Transit start marker */}
           <CircleMarker
             center={[startPoint.lat, startPoint.lon]}
             radius={8}
@@ -226,6 +432,7 @@ export default function TransitSegmentMap({
             </Popup>
           </CircleMarker>
 
+          {/* Transit end marker */}
           <CircleMarker
             center={[endPoint.lat, endPoint.lon]}
             radius={8}
@@ -242,8 +449,67 @@ export default function TransitSegmentMap({
               {formatDistFromKm(endKm, unitSystem)}
             </Popup>
           </CircleMarker>
+
+          {/* Rest stop marker */}
+          {restStop?.enabled && restStopCoords && (
+            <Marker
+              position={[restStopCoords.lat, restStopCoords.lon]}
+              icon={restStopIcon}
+            >
+              <Popup>
+                <strong>Rest Stop</strong>
+                <br />
+                {restStop?.name || restStop?.address}
+              </Popup>
+            </Marker>
+          )}
+
+          {/* Nearby amenity pins */}
+          {showNearby &&
+            amenities?.map((a) => (
+              <CircleMarker
+                key={a.id}
+                center={[a.lat, a.lon]}
+                radius={7}
+                pathOptions={{
+                  color: "#1a1a2e",
+                  weight: 1.5,
+                  fillColor: AMENITY_COLORS[a.amenity] ?? "#94a3b8",
+                  fillOpacity: 0.95,
+                  ...(a.hours == null
+                    ? { dashArray: "4 4", color: "#64748b" }
+                    : {}),
+                }}
+              >
+                <Popup>
+                  <div className="split-map-popup">
+                    <div className="split-map-popup-title">
+                      <span>{AMENITY_ICONS[a.amenity] ?? "📍"}</span>
+                      <strong>{a.name}</strong>
+                    </div>
+                    <div className="split-map-popup-meta">
+                      {fmtDist(a.distanceM, unitSystem)} away
+                      {a.address && <> · {a.address}</>}
+                    </div>
+                    {a.rawHours && (
+                      <div className="split-map-popup-hours">{a.rawHours}</div>
+                    )}
+                    {interactive && (
+                      <button
+                        type="button"
+                        className="split-map-popup-btn"
+                        onClick={() => handleSelect(a)}
+                      >
+                        Use as rest stop
+                      </button>
+                    )}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            ))}
         </MapContainer>
 
+        {/* Fullscreen button */}
         {document.fullscreenEnabled && (
           <button
             type="button"
@@ -276,6 +542,7 @@ export default function TransitSegmentMap({
           </button>
         )}
 
+        {/* Reset view button */}
         <button
           type="button"
           className="split-map-reset-btn"
@@ -289,7 +556,246 @@ export default function TransitSegmentMap({
             <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
           </svg>
         </button>
+
+        {/* Right-side overlay: nearby stops + external map links */}
+        <div className="split-map-right-stack">
+          <button
+            type="button"
+            className="split-map-nearby-fab"
+            onClick={
+              amenities !== null && !showNearby
+                ? () => setShowNearby(true)
+                : showNearby
+                  ? () => setShowNearby(false)
+                  : () => handleSearch()
+            }
+            disabled={searchLoading}
+            title={
+              searchLoading
+                ? "Searching…"
+                : amenities !== null && !showNearby
+                  ? "Show nearby results"
+                  : showNearby
+                    ? "Hide nearby results"
+                    : "Search for nearby stops"
+            }
+          >
+            {searchLoading
+              ? "Searching…"
+              : amenities !== null && !showNearby
+                ? "Show Stops 📍"
+                : showNearby
+                  ? "Hide ✕"
+                  : "Nearby Stops 📍"}
+          </button>
+          <a
+            href={`https://www.google.com/maps?q=${endLat},${endLon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="split-map-link"
+          >
+            Open Google Maps ↗
+          </a>
+          <a
+            href={`https://www.openstreetmap.org/?mlat=${endLat}&mlon=${endLon}#map=15/${endLat}/${endLon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="split-map-link"
+          >
+            Open OSM ↗
+          </a>
+        </div>
       </div>
+      {/* end canvas */}
+
+      {/* Search error */}
+      {searchError && (
+        <div className="split-map-search-error">
+          {searchError === "NO_TYPES" ? (
+            <>
+              No stop types selected.{" "}
+              <button
+                type="button"
+                className="split-map-configure-link"
+                onClick={() => {
+                  setSearchError(null);
+                  setModalOpen(true);
+                }}
+              >
+                Configure criteria first.
+              </button>
+            </>
+          ) : (
+            searchError
+          )}
+          <button
+            type="button"
+            className="split-map-search-error-close"
+            onClick={() => setSearchError(null)}
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Amenity list */}
+      {showNearby && amenities !== null && (
+        <div className="split-map-amenity-list">
+          <div className="split-map-amenity-header">
+            <span className="split-map-amenity-count">
+              {amenities.length} stop{amenities.length !== 1 ? "s" : ""} found
+            </span>
+            <div className="split-map-amenity-header-actions">
+              <a
+                href={(() => {
+                  const custom = customTypes
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                  const all = [...Array.from(selectedTypes), ...custom];
+                  const query =
+                    all.length > 0
+                      ? all.map((t) => t.replace(/_/g, "+")).join("+")
+                      : "restaurants+gas+stations+supermarkets";
+                  return `https://www.google.com/maps/search/${query}/@${endLat},${endLon},14z`;
+                })()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="split-map-amenity-action-btn split-map-amenity-scout-link"
+                title="Scout stops in Google Maps"
+              >
+                🗺️ Scout
+              </a>
+              <button
+                type="button"
+                className="split-map-amenity-action-btn"
+                onClick={() => setModalOpen(true)}
+                title="Update search criteria"
+              >
+                ⚙️ Update
+              </button>
+              <button
+                type="button"
+                className="split-map-amenity-action-btn split-map-amenity-action-btn--close"
+                onClick={() => setShowNearby(false)}
+                title="Hide results"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          {amenities.length === 0 ? (
+            <div className="split-map-amenity-empty">
+              No stops found within {fmtDist(radiusM, unitSystem)}. Try
+              adjusting your search radius or stop types.
+            </div>
+          ) : (
+            amenities.map((a) => (
+              <div key={a.id} className="split-map-amenity-row">
+                <span className="split-map-amenity-icon">
+                  {AMENITY_ICONS[a.amenity] ?? "📍"}
+                </span>
+                <div className="split-map-amenity-info">
+                  <span className="split-map-amenity-name">{a.name}</span>
+                  <span className="split-map-amenity-meta">
+                    {AMENITY_LABELS[a.amenity] ?? a.amenity} ·{" "}
+                    {fmtDist(a.distanceM, unitSystem)}
+                    {a.rawHours && <> · {a.rawHours}</>}
+                  </span>
+                  {!a.hours && (
+                    <span className="split-map-amenity-no-hours">
+                      ⏰ Hours unknown
+                    </span>
+                  )}
+                  {a.address && (
+                    <span className="split-map-amenity-addr">{a.address}</span>
+                  )}
+                </div>
+                {interactive && (
+                  <button
+                    type="button"
+                    className={`split-map-amenity-use-btn${usedStopId === a.id ? " split-map-amenity-use-btn--used" : ""}`}
+                    onClick={() => {
+                      handleSelect(a);
+                      if (usedStopTimerRef.current !== null)
+                        clearTimeout(usedStopTimerRef.current);
+                      setUsedStopId(a.id);
+                      usedStopTimerRef.current = setTimeout(
+                        () => setUsedStopId(null),
+                        1500,
+                      );
+                    }}
+                  >
+                    {usedStopId === a.id ? "✓" : "Use"}
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Find nearby criteria modal */}
+      {modalOpen && (
+        <FindNearbyModal
+          unitSystem={unitSystem}
+          onClose={() => setModalOpen(false)}
+          onSave={(r, types, custom) => handleSearch(r, types, custom)}
+        />
+      )}
+
+      {/* Confirm no-hours stop */}
+      {confirmStop && (
+        <dialog
+          ref={confirmDialogRef}
+          className="legend-modal no-hours-confirm"
+          onClose={() => setConfirmStop(null)}
+        >
+          <div className="legend-header">
+            <h2>Hours Unknown</h2>
+            <button
+              className="legend-close"
+              onClick={() => {
+                confirmDialogRef.current?.close();
+                setConfirmStop(null);
+              }}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="legend-body no-hours-confirm__body">
+            <p>
+              <strong>{confirmStop.name}</strong> has no listed hours in
+              OpenStreetMap. Visit its Google Maps page to look up hours, then
+              enter them manually after adding the stop.
+            </p>
+            <a
+              href={`https://www.google.com/maps/search/${encodeURIComponent(confirmStop.name)}/@${confirmStop.lat},${confirmStop.lon},17z`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="no-hours-confirm__maps-link"
+            >
+              🗺️ Open Google Maps to look up hours
+            </a>
+          </div>
+          <div className="legend-footer">
+            <button
+              type="button"
+              className="action-btn action-btn-export"
+              onClick={() => {
+                const stop = confirmStop;
+                confirmDialogRef.current?.close();
+                setConfirmStop(null);
+                doSelect(stop);
+              }}
+            >
+              Use Anyway
+            </button>
+          </div>
+        </dialog>
+      )}
     </div>
   );
 }
