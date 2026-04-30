@@ -48,6 +48,7 @@ import tzlookup from "tz-lookup";
 import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
+import InsertZone from "./InsertZone";
 const CourseMap = lazy(() => import("./CourseMap"));
 
 /** Thin wrapper that defers the two props that change on every keystroke so
@@ -1477,10 +1478,46 @@ export default function CourseForm() {
     });
   };
 
+  const insertSegment = (afterIndex: number) => {
+    setForm((prev) => {
+      const next = [...prev.segments];
+      next.splice(afterIndex + 1, 0, makeDefaultSegment());
+      return { ...prev, segments: next, segmentCount: String(next.length) };
+    });
+  };
+
+  const insertSplitAfter = (segIdx: number, splitIdx: number) => {
+    setForm((prev) => {
+      const segs = prev.segments.map((s) => ({ ...s, splits: [...s.splits] }));
+      segs[segIdx].splits.splice(splitIdx + 1, 0, makeDefaultSplit());
+      segs[segIdx].splitCount = String(segs[segIdx].splits.length);
+      return { ...prev, segments: segs };
+    });
+  };
+
   // â”€â”€ Field-level validation keyed by input element IDs â”€â”€
   const computeFieldErrors = useCallback(
     (f: CourseFormState): Record<string, string> => {
       const e: Record<string, string> = {};
+      const isValidHttpUrl = (value: string): boolean => {
+        try {
+          const parsed = new URL(value);
+          return parsed.protocol === "http:" || parsed.protocol === "https:";
+        } catch {
+          return false;
+        }
+      };
+      const isValidDayHoursEntry = (
+        entry:
+          | { mode: "hours" | "24h" | "closed"; opens: string; closes: string }
+          | undefined,
+      ): boolean => {
+        if (!entry) return false;
+        if (entry.mode === "24h" || entry.mode === "closed") return true;
+        if (entry.mode !== "hours") return false;
+        const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+        return timeRe.test(entry.opens) && timeRe.test(entry.closes);
+      };
       const initSpeed = parseFloat(f.init_moving_speed);
       const minSpeed = parseFloat(f.min_moving_speed);
       const dtr = parseFloat(f.down_time_ratio);
@@ -1536,6 +1573,49 @@ export default function CourseForm() {
               e[`${sp}-split0-distance`] =
                 `Must be > ${prevLastDist} (previous segment's last split)`;
           }
+        }
+
+        if (seg.nullified) {
+          const transitSplit = seg.splits[0];
+          const transitTime = parseFloat(seg.fixed_elapsed_time ?? "");
+          if (
+            (seg.fixed_elapsed_time ?? "").trim() === "" ||
+            isNaN(transitTime) ||
+            transitTime <= 0
+          ) {
+            e[`${sp}-transit-time`] = "Must be > 0";
+          }
+
+          const transitDist = parseFloat(transitSplit?.distance ?? "");
+          if (isNaN(transitDist) || transitDist <= 0) {
+            e[`${sp}-transit-dist`] = "Must be > 0";
+          }
+
+          if (seg.splits.length !== 1) {
+            e[`${sp}-transit-dist`] =
+              "Transit segment must contain exactly one split";
+          }
+
+          const rs = transitSplit?.rest_stop;
+          if (rs?.enabled) {
+            const rp = `${sp}-transit-rs`;
+            if (!rs.name.trim()) e[`${rp}-name`] = "Required";
+            if (!rs.address.trim()) e[`${rp}-address`] = "Required";
+            if (rs.alt.trim() && !isValidHttpUrl(rs.alt.trim())) {
+              e[`${rp}-alt`] = "Must be a valid http/https URL";
+            }
+            if (typeof rs.backup !== "boolean") {
+              e[`${rp}-backup`] = "Must be true or false";
+            }
+            const hoursValid = rs.sameHoursEveryDay
+              ? isValidDayHoursEntry(rs.allDays)
+              : rs.perDay.every((day) => isValidDayHoursEntry(day));
+            if (!hoursValid) {
+              e[`${rp}-hours`] = "Provide valid open hours";
+            }
+          }
+
+          return;
         }
 
         if (seg.down_time_ratio.trim() !== "") {
@@ -2465,9 +2545,14 @@ export default function CourseForm() {
                       clampedSegPage * segPageSize,
                       (clampedSegPage + 1) * segPageSize,
                     )
-                    .map((seg, localIdx) => {
+                    .flatMap((seg, localIdx) => {
                       const i = clampedSegPage * segPageSize + localIdx;
-                      return (
+                      const totalOnPage = Math.min(
+                        segPageSize,
+                        form.segments.length - clampedSegPage * segPageSize,
+                      );
+                      const isLastOnPage = localIdx === totalOnPage - 1;
+                      const segEl = (
                         <SegmentFormComponent
                           key={i}
                           segIndex={i}
@@ -2484,6 +2569,9 @@ export default function CourseForm() {
                             moveSplitToNextSeg(i, splitIdx)
                           }
                           onDeleteSplit={(splitIdx) => deleteSplit(i, splitIdx)}
+                          onInsertSplitAfter={(splitIdx) =>
+                            insertSplitAfter(i, splitIdx)
+                          }
                           canDeleteSegment={form.segments.length > 1}
                           onDeleteSegment={() => deleteSegment(i)}
                           prevSegNullified={
@@ -2550,6 +2638,15 @@ export default function CourseForm() {
                           splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
                         />
                       );
+                      if (isLastOnPage) return [segEl];
+                      return [
+                        segEl,
+                        <InsertZone
+                          key={`insert-seg-${i}`}
+                          onInsert={() => insertSegment(i)}
+                          label={`Insert segment after segment ${i + 1}`}
+                        />,
+                      ];
                     })}
                 </div>
               </div>

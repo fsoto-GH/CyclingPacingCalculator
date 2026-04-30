@@ -56,6 +56,15 @@ export class CalcError extends Error {
 function validatePayload(payload: CoursePayload): string[] {
   const errors: string[] = [];
 
+  const isValidHttpUrl = (value: string): boolean => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+
   if (payload.down_time_ratio < 0 || payload.down_time_ratio > 1) {
     errors.push(
       `Invalid down_time_ratio '${payload.down_time_ratio}'. Must be between 0 and 1.`,
@@ -77,9 +86,112 @@ function validatePayload(payload: CoursePayload): string[] {
     );
   }
 
-  for (const seg of payload.segments) {
+  for (let i = 0; i < payload.segments.length; i++) {
+    const seg = payload.segments[i];
     if (seg.splits.length === 0) {
       errors.push("Each segment must have at least one split.");
+    }
+
+    if (seg.nullified) {
+      if (seg.down_time_ratio != null) {
+        errors.push(
+          `Segment ${i} is nullified (transit): down_time_ratio is not used.`,
+        );
+      }
+      if (seg.split_delta != null) {
+        errors.push(
+          `Segment ${i} is nullified (transit): split_delta is not used.`,
+        );
+      }
+      if (seg.moving_speed != null) {
+        errors.push(
+          `Segment ${i} is nullified (transit): moving_speed override is not used.`,
+        );
+      }
+      if (seg.min_moving_speed != null) {
+        errors.push(
+          `Segment ${i} is nullified (transit): min_moving_speed override is not used.`,
+        );
+      }
+
+      if (
+        seg.fixed_elapsed_time_seconds == null ||
+        seg.fixed_elapsed_time_seconds <= 0
+      ) {
+        errors.push(
+          `Segment ${i} is marked as nullified (transit) but has no valid fixed_elapsed_time_seconds set.`,
+        );
+      }
+
+      if (seg.splits.length !== 1) {
+        errors.push(
+          `Segment ${i} is marked as nullified (transit) and must contain exactly one split.`,
+        );
+        continue;
+      }
+
+      const split = seg.splits[0];
+      if (split.distance <= 0) {
+        errors.push(
+          `Segment ${i} transit split distance must be greater than 0.`,
+        );
+      }
+      if (split.down_time != null) {
+        errors.push(`Segment ${i} transit split cannot set down_time.`);
+      }
+      if (split.moving_speed != null) {
+        errors.push(`Segment ${i} transit split cannot set moving_speed.`);
+      }
+      if (split.adjustment_time != null && split.adjustment_time !== 0) {
+        errors.push(
+          `Segment ${i} transit split cannot set non-zero adjustment_time.`,
+        );
+      }
+      if (
+        split.sub_split_count != null ||
+        split.sub_split_distance != null ||
+        split.last_sub_split_threshold != null ||
+        split.sub_split_distances != null
+      ) {
+        errors.push(
+          `Segment ${i} transit split cannot set sub-split overrides.`,
+        );
+      }
+
+      if (split.rest_stop != null) {
+        if (!split.rest_stop.name?.trim()) {
+          errors.push(`Rest stop (segment ${i}, split 0) must include a name.`);
+        }
+        if (!split.rest_stop.address?.trim()) {
+          errors.push(
+            `Rest stop (segment ${i}, split 0) must include an address.`,
+          );
+        }
+        if (
+          split.rest_stop.alt != null &&
+          split.rest_stop.alt.trim() !== "" &&
+          !isValidHttpUrl(split.rest_stop.alt)
+        ) {
+          errors.push(
+            `Rest stop (segment ${i}, split 0) alt must be a valid http/https URL when provided.`,
+          );
+        }
+
+        const openHours = split.rest_stop.open_hours ?? {};
+        const hasFixed = Object.prototype.hasOwnProperty.call(
+          openHours,
+          "fixed",
+        );
+        if (hasFixed && Object.keys(openHours).length > 1) {
+          errors.push(
+            `Rest stop (segment ${i}, split 0) has 'fixed' open hours plus other keys, which is invalid.`,
+          );
+        } else if (!hasFixed && Object.keys(openHours).length !== 7) {
+          errors.push(
+            `Rest stop (segment ${i}, split 0) open hours must have keys 0-6 or only 'fixed'.`,
+          );
+        }
+      }
     }
   }
 

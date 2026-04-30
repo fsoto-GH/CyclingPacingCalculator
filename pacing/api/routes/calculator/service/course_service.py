@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import urlparse
 
 from pacing.api.routes.calculator.dto.course import Course
 from pacing.api.routes.calculator.dto.split import Split
@@ -30,8 +31,9 @@ def validate_course(course: Course) -> list[str]:
                    f"min_moving_speed '{course.min_moving_speed}'.")
 
     for i, segment in enumerate(course.segments):
-        if segment.nullified and not segment.fixed_elapsed_time_seconds:
-            res.append(f"Segment {i} is marked as nullified (transit) but has no fixed_elapsed_time_seconds set.")
+        if segment.nullified:
+            __validate_nullified_segment(i, segment, res)
+            continue
 
         if segment.sleep_time < timedelta(hours=0):
             res.append(f"Segment {i} has invalid sleep_time '{segment.sleep_time}'. Sleep time cannot be negative.")
@@ -43,14 +45,7 @@ def validate_course(course: Course) -> list[str]:
 
             # validate rest stop
             if split.rest_stop is not None:
-                is_fixed = 'fixed' in split.rest_stop.open_hours
-                # if 'fixed' is a key, we ignore 0-6
-                if is_fixed and len(split.rest_stop.open_hours) > 1:
-                    res.append(f"Rest stop (Segment {i}, Split {j}) '{split.rest_stop.name}' "
-                               f"has 'fixed' as a key in open hours but also has other keys, which is invalid.")
-                elif not is_fixed and len(split.rest_stop.open_hours) != 7:
-                    res.append(f"Rest stop (Segment {i}, Split {j}) '{split.rest_stop.name}' "
-                               f"should have either keys 0-6 (where 0 is Monday) or only the 'Fixed' key.")
+                __validate_rest_stop(i, j, split.rest_stop, res)
 
     return res
 
@@ -160,3 +155,94 @@ def __valid_sub_split_mode(seg_i, split_j, split: Split) -> str | None:
         return f"(Segment {seg_i}, Split {split_j}) has 'fixed' sub_split_mode but no sub_split_distance provided."
 
     return None
+
+
+def __validate_nullified_segment(seg_i: int, segment, errors: list[str]) -> None:
+    if segment.down_time_ratio is not None:
+        errors.append(
+            f"Segment {seg_i} is nullified (transit): down_time_ratio is not used."
+        )
+    if segment.split_delta is not None:
+        errors.append(
+            f"Segment {seg_i} is nullified (transit): split_delta is not used."
+        )
+    if segment.moving_speed is not None:
+        errors.append(
+            f"Segment {seg_i} is nullified (transit): moving_speed override is not used."
+        )
+    if segment.min_moving_speed is not None:
+        errors.append(
+            f"Segment {seg_i} is nullified (transit): min_moving_speed override is not used."
+        )
+
+    if not segment.fixed_elapsed_time_seconds or segment.fixed_elapsed_time_seconds <= 0:
+        errors.append(
+            f"Segment {seg_i} is marked as nullified (transit) but has no valid fixed_elapsed_time_seconds set."
+        )
+
+    if len(segment.splits) != 1:
+        errors.append(
+            f"Segment {seg_i} is marked as nullified (transit) and must contain exactly one split."
+        )
+        return
+
+    split = segment.splits[0]
+    if split.distance <= 0:
+        errors.append(
+            f"Segment {seg_i} transit split distance must be greater than 0."
+        )
+
+    if split.down_time is not None:
+        errors.append(
+            f"Segment {seg_i} transit split cannot set down_time."
+        )
+    if split.moving_speed is not None:
+        errors.append(
+            f"Segment {seg_i} transit split cannot set moving_speed."
+        )
+    if split.adjustment_time is not None and split.adjustment_time > timedelta(seconds=0):
+        errors.append(
+            f"Segment {seg_i} transit split cannot set non-zero adjustment_time."
+        )
+    if (split.sub_split_count is not None or
+            split.sub_split_distance is not None or
+            split.last_sub_split_threshold is not None or
+            split.sub_split_distances is not None):
+        errors.append(
+            f"Segment {seg_i} transit split cannot set sub-split overrides."
+        )
+
+    if split.rest_stop is not None:
+        __validate_rest_stop(seg_i, 0, split.rest_stop, errors)
+
+
+def __validate_rest_stop(seg_i: int, split_j: int, rest_stop, errors: list[str]) -> None:
+    if rest_stop.name is None or rest_stop.name.strip() == "":
+        errors.append(
+            f"Rest stop (Segment {seg_i}, Split {split_j}) must include a name."
+        )
+
+    if rest_stop.address is None or rest_stop.address.strip() == "":
+        errors.append(
+            f"Rest stop (Segment {seg_i}, Split {split_j}) must include an address."
+        )
+
+    if rest_stop.alt is not None and rest_stop.alt.strip() != "":
+        parsed = urlparse(rest_stop.alt)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            errors.append(
+                f"Rest stop (Segment {seg_i}, Split {split_j}) alt must be a valid http/https URL when provided."
+            )
+
+    is_fixed = 'fixed' in rest_stop.open_hours
+    # if 'fixed' is a key, we ignore 0-6
+    if is_fixed and len(rest_stop.open_hours) > 1:
+        errors.append(
+            f"Rest stop (Segment {seg_i}, Split {split_j}) '{rest_stop.name}' "
+            f"has 'fixed' as a key in open hours but also has other keys, which is invalid."
+        )
+    elif not is_fixed and len(rest_stop.open_hours) != 7:
+        errors.append(
+            f"Rest stop (Segment {seg_i}, Split {split_j}) '{rest_stop.name}' "
+            f"should have either keys 0-6 (where 0 is Monday) or only the 'Fixed' key."
+        )

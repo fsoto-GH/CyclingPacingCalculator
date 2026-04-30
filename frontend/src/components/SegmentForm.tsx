@@ -27,6 +27,7 @@ import RestStopFormComponent from "./RestStopForm";
 import { FieldError } from "./FieldError";
 import NumberInput from "./NumberInput";
 import ConfirmModal from "./ConfirmModal";
+import InsertZone from "./InsertZone";
 
 interface SegmentFormProps {
   segIndex: number;
@@ -74,6 +75,7 @@ interface SegmentFormProps {
   onDeleteSplit?: (splitIdx: number) => void;
   canDeleteSegment?: boolean;
   onDeleteSegment?: () => void;
+  onInsertSplitAfter?: (splitIdx: number) => void;
   /** Whether the immediately preceding segment is in transit (nullified) mode */
   prevSegNullified?: boolean;
   /** Whether the immediately following segment is in transit (nullified) mode */
@@ -114,6 +116,7 @@ export default function SegmentFormComponent({
   onDeleteSplit,
   canDeleteSegment,
   onDeleteSegment,
+  onInsertSplitAfter,
   prevSegNullified = false,
   nextSegNullified = false,
   etaMarginOpen = 15,
@@ -788,74 +791,86 @@ export default function SegmentFormComponent({
                 className="splits-container"
                 style={{ borderLeftColor: `${segColor}33` }}
               >
-                {value.splits.map((split, j) => (
-                  <SplitFormComponent
-                    key={j}
-                    segIndex={segIndex}
-                    splitIndex={j}
-                    value={split}
-                    onChange={(s) => updateSplit(j, s)}
-                    unitSystem={unitSystem}
-                    isLast={j === value.splits.length - 1}
-                    isLastOverall={isLastSeg && j === value.splits.length - 1}
-                    segColor={segColor}
-                    splitDistUser={(() => {
-                      const cum = cumulativeDists?.[j] ?? null;
-                      const prev =
-                        j === 0
-                          ? (segmentStartDist ?? 0)
-                          : (cumulativeDists?.[j - 1] ?? 0);
-                      return cum != null
-                        ? Math.round((cum - prev) * 10) / 10
-                        : null;
-                    })()}
-                    includeEndDownTime={value.include_end_down_time}
-                    gpxProfile={gpxProfiles?.[j] ?? null}
-                    gpxTrack={gpxTrack ?? null}
-                    courseTz={courseTz}
-                    gpxDistStatus={splitStatuses?.[j] ?? null}
-                    nearbyCity={cityLabels?.[j] ?? null}
-                    nearbyCity_fetching={cityFetching?.[j] ?? false}
-                    cumulativeDist={cumulativeDists?.[j] ?? null}
-                    gpxTotalDist={gpxTotalDist ?? null}
-                    expandSignal={
-                      targetSplitIdx === j ? targetSplitSignal : undefined
-                    }
-                    collapseSignal={splitCollapseSignal || undefined}
-                    expandAllSignal={undefined}
-                    splitResult={splitResults?.[j] ?? null}
-                    courseSplitMode={courseSplitMode}
-                    canShiftUp={j > 0}
-                    canShiftDown={j < value.splits.length - 1}
-                    canMoveToPrevSeg={
-                      j === 0 && segIndex > 0 && !prevSegNullified
-                    }
-                    canMoveToNextSeg={
-                      j === value.splits.length - 1 &&
-                      segIndex < totalSegments - 1 &&
-                      !nextSegNullified
-                    }
-                    canDelete={value.splits.length > 1 || totalSegments > 1}
-                    onShiftUp={() => {
-                      const next = [...value.splits];
-                      [next[j - 1], next[j]] = [next[j], next[j - 1]];
-                      update({ splits: next });
-                    }}
-                    onShiftDown={() => {
-                      const next = [...value.splits];
-                      [next[j], next[j + 1]] = [next[j + 1], next[j]];
-                      update({ splits: next });
-                    }}
-                    onMoveToPrevSeg={() => onMoveSplitToPrevSeg?.(j)}
-                    onMoveToNextSeg={() => onMoveSplitToNextSeg?.(j)}
-                    onDelete={() => onDeleteSplit?.(j)}
-                    etaMarginOpen={etaMarginOpen}
-                    etaMarginClose={etaMarginClose}
-                    onZoomToSplit={
-                      onZoomToSplit ? () => onZoomToSplit(j) : undefined
-                    }
-                  />
-                ))}
+                {value.splits.flatMap((split, j) => {
+                  const isLastSplit = j === value.splits.length - 1;
+                  const splitEl = (
+                    <SplitFormComponent
+                      key={j}
+                      segIndex={segIndex}
+                      splitIndex={j}
+                      value={split}
+                      onChange={(s) => updateSplit(j, s)}
+                      unitSystem={unitSystem}
+                      isLast={j === value.splits.length - 1}
+                      isLastOverall={isLastSeg && j === value.splits.length - 1}
+                      segColor={segColor}
+                      splitDistUser={(() => {
+                        const cum = cumulativeDists?.[j] ?? null;
+                        const prev =
+                          j === 0
+                            ? (segmentStartDist ?? 0)
+                            : (cumulativeDists?.[j - 1] ?? 0);
+                        return cum != null
+                          ? Math.round((cum - prev) * 10) / 10
+                          : null;
+                      })()}
+                      includeEndDownTime={value.include_end_down_time}
+                      gpxProfile={gpxProfiles?.[j] ?? null}
+                      gpxTrack={gpxTrack ?? null}
+                      courseTz={courseTz}
+                      gpxDistStatus={splitStatuses?.[j] ?? null}
+                      nearbyCity={cityLabels?.[j] ?? null}
+                      nearbyCity_fetching={cityFetching?.[j] ?? false}
+                      cumulativeDist={cumulativeDists?.[j] ?? null}
+                      gpxTotalDist={gpxTotalDist ?? null}
+                      expandSignal={
+                        targetSplitIdx === j ? targetSplitSignal : undefined
+                      }
+                      collapseSignal={splitCollapseSignal || undefined}
+                      expandAllSignal={undefined}
+                      splitResult={splitResults?.[j] ?? null}
+                      courseSplitMode={courseSplitMode}
+                      canShiftUp={j > 0}
+                      canShiftDown={j < value.splits.length - 1}
+                      canMoveToPrevSeg={
+                        j === 0 && segIndex > 0 && !prevSegNullified
+                      }
+                      canMoveToNextSeg={
+                        j === value.splits.length - 1 &&
+                        segIndex < totalSegments - 1 &&
+                        !nextSegNullified
+                      }
+                      canDelete={value.splits.length > 1 || totalSegments > 1}
+                      onShiftUp={() => {
+                        const next = [...value.splits];
+                        [next[j - 1], next[j]] = [next[j], next[j - 1]];
+                        update({ splits: next });
+                      }}
+                      onShiftDown={() => {
+                        const next = [...value.splits];
+                        [next[j], next[j + 1]] = [next[j + 1], next[j]];
+                        update({ splits: next });
+                      }}
+                      onMoveToPrevSeg={() => onMoveSplitToPrevSeg?.(j)}
+                      onMoveToNextSeg={() => onMoveSplitToNextSeg?.(j)}
+                      onDelete={() => onDeleteSplit?.(j)}
+                      etaMarginOpen={etaMarginOpen}
+                      etaMarginClose={etaMarginClose}
+                      onZoomToSplit={
+                        onZoomToSplit ? () => onZoomToSplit(j) : undefined
+                      }
+                    />
+                  );
+                  if (isLastSplit) return [splitEl];
+                  return [
+                    splitEl,
+                    <InsertZone
+                      key={`insert-split-${j}`}
+                      onInsert={() => onInsertSplitAfter?.(j)}
+                      label={`Insert split after split ${j + 1}`}
+                    />,
+                  ];
+                })}
               </div>
             </>
           )}

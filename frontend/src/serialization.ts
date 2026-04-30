@@ -116,11 +116,40 @@ function serializeSegment(
   seg: SegmentForm,
   courseDefaults: CourseSubSplitDefaults,
 ): SegmentPayload {
+  if (seg.nullified) {
+    const transitFormSplit = seg.splits[0];
+    const transitSplit: SplitPayload = {
+      name: transitFormSplit?.name?.trim() || null,
+      distance: parseFloat(transitFormSplit?.distance ?? ""),
+      sub_split_mode: "hour",
+      adjustment_time: 0,
+    };
+
+    if (transitFormSplit?.differentTimezone && transitFormSplit.timezone) {
+      transitSplit.end_timezone = transitFormSplit.timezone;
+    }
+
+    const restStop = transitFormSplit
+      ? serializeRestStop(transitFormSplit)
+      : null;
+    if (restStop) transitSplit.rest_stop = restStop;
+
+    const payload: SegmentPayload = {
+      name: seg.name?.trim() || null,
+      splits: [transitSplit],
+      sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
+      no_end_down_time: true,
+      nullified: true,
+    };
+
+    const fixedSecs = minutesToSeconds(seg.fixed_elapsed_time ?? "");
+    if (fixedSecs !== undefined) payload.fixed_elapsed_time_seconds = fixedSecs;
+    return payload;
+  }
+
   const payload: SegmentPayload = {
     name: seg.name?.trim() || null,
-    splits: seg.nullified
-      ? seg.splits.slice(0, 1).map((s) => serializeSplit(s, courseDefaults))
-      : seg.splits.map((s) => serializeSplit(s, courseDefaults)),
+    splits: seg.splits.map((s) => serializeSplit(s, courseDefaults)),
     sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
     no_end_down_time: !seg.include_end_down_time,
   };
@@ -136,12 +165,6 @@ function serializeSegment(
 
   const mms = parseOptionalFloat(seg.min_moving_speed);
   if (mms !== null) payload.min_moving_speed = mms;
-
-  if (seg.nullified) {
-    payload.nullified = true;
-    const fixedSecs = minutesToSeconds(seg.fixed_elapsed_time ?? "");
-    if (fixedSecs !== undefined) payload.fixed_elapsed_time_seconds = fixedSecs;
-  }
 
   return payload;
 }

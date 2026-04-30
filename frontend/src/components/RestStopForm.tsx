@@ -145,12 +145,14 @@ export default function RestStopFormComponent({
           {/* Backup toggle */}
           <label className="rs-backup-label">
             <input
+              id={`${prefix}-backup`}
               type="checkbox"
               checked={value.backup}
               onChange={(e) => update({ backup: e.target.checked })}
             />
             Backup stop
           </label>
+          <FieldError fieldId={`${prefix}-backup`} />
 
           {/* Name + Alt URL on same row */}
           <div className="fields-grid fields-grid--2col">
@@ -173,6 +175,7 @@ export default function RestStopFormComponent({
                 onChange={(e) => update({ alt: e.target.value })}
                 placeholder="https://..."
               />
+              <FieldError fieldId={`${prefix}-alt`} />
             </div>
           </div>
 
@@ -237,6 +240,7 @@ export default function RestStopFormComponent({
               ✎
             </button>
           </div>
+          <FieldError fieldId={`${prefix}-hours`} />
 
           {/* ETA status */}
           {etaInfo && (
