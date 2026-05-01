@@ -78,7 +78,7 @@ const COMPLEX_EXAMPLE_FORM: CourseFormState = {
   timezone: browserTimezone,
   mode: "target_distance",
   sub_split_mode: "hour",
-  init_moving_speed: "17",
+  init_moving_speed: "16.5",
   min_moving_speed: "16",
   down_time_ratio: "0.1",
   split_delta: "-0.1",
@@ -201,7 +201,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
   sub_split_mode: "hour",
   init_moving_speed: "16.5",
   min_moving_speed: "15",
-  down_time_ratio: "0.12",
+  down_time_ratio: "0.15",
   split_delta: "-0.25",
   start_time: "2025-07-12T06:00",
   segmentCount: "2",
@@ -209,7 +209,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
     {
       // Chicago → St Ignace
       name: "Chicago to St Ignace",
-      sleep_time: "240",
+      sleep_time: "600",
       include_end_down_time: true,
       down_time_ratio: "",
       split_delta: "",
@@ -348,7 +348,7 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
         },
         {
           name: "Blaney Park to St Ignace",
-          distance: "571.5",
+          distance: "576.75",
           sub_split_mode: "fixed",
           sub_split_count: "1",
           sub_split_distance: "50",
@@ -379,6 +379,87 @@ const MISHIGAMI_EXAMPLE_FORM: CourseFormState = {
           timezone: "America/Detroit",
         },
       ],
+    },
+    {
+      // Ferry from St. Ignace to Mackinac Island, not actually ridden
+      name: "St Ignace to Mackinac Island (ferry)",
+      sleep_time: "",
+      include_end_down_time: false,
+      down_time_ratio: "",
+      split_delta: "",
+      moving_speed: "",
+      min_moving_speed: "",
+      splitCount: "1",
+      splits: [
+        {
+          distance: "581.4",
+          sub_split_mode: "hour",
+          sub_split_override: false,
+          sub_split_count: "1",
+          sub_split_distance: "",
+          last_sub_split_threshold: "20",
+          sub_split_distances: "",
+          rest_stop: {
+            enabled: false,
+            backup: false,
+            name: "",
+            address: "",
+            alt: "",
+            sameHoursEveryDay: true,
+            allDays: {
+              mode: "hours",
+              opens: "06:00",
+              closes: "22:00",
+            },
+            perDay: [
+              {
+                mode: "hours",
+                opens: "06:00",
+                closes: "22:00",
+              },
+              {
+                mode: "hours",
+                opens: "06:00",
+                closes: "22:00",
+              },
+              {
+                mode: "hours",
+                opens: "06:00",
+                closes: "22:00",
+              },
+              {
+                mode: "hours",
+                opens: "06:00",
+                closes: "22:00",
+              },
+              {
+                mode: "hours",
+                opens: "06:00",
+                closes: "22:00",
+              },
+              {
+                mode: "hours",
+                opens: "06:00",
+                closes: "22:00",
+              },
+              {
+                mode: "hours",
+                opens: "06:00",
+                closes: "22:00",
+              },
+            ],
+          },
+          down_time: "",
+          moving_speed: "",
+          adjustment_time: "",
+          differentTimezone: true,
+          timezone: "America/Detroit",
+          tzManuallySet: false,
+          notes: "",
+        },
+      ],
+      nullified: true,
+      fixed_elapsed_time: "35",
     },
     {
       // St Ignace → Chicago

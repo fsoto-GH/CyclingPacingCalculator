@@ -240,4 +240,5 @@ export interface CourseDetail {
   down_time_hours: number;
   moving_time_hours: number;
   sleep_time_hours: number;
+  transit_time_hours: number;
 }

@@ -2975,6 +2975,14 @@ export default function CourseForm() {
                           {formatHours(result.adjustment_time_hours)}
                         </dd>
                       </div>
+                      <div>
+                        <dt title="Time spent on transit segments">Transit</dt>
+                        <dd
+                          title={formatHours(result.transit_time_hours, "full")}
+                        >
+                          {formatHours(result.transit_time_hours)}
+                        </dd>
+                      </div>
                     </dl>
                   </div>
 

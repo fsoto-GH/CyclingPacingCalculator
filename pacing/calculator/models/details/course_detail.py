@@ -21,6 +21,7 @@ class CourseDetail:
     down_time: serialized_timedelta
     sleep_time: serialized_timedelta
     adjustment_time: serialized_timedelta
+    transit_time: serialized_timedelta
     start_distance: float = 0
 
     @computed_field
@@ -52,5 +53,10 @@ class CourseDetail:
     @property
     def sleep_time_hours(self) -> float:
         return self.sleep_time.total_seconds() / 3600
+
+    @computed_field
+    @property
+    def transit_time_hours(self) -> float:
+        return self.transit_time.total_seconds() / 3600
 
 

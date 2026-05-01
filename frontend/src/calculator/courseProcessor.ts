@@ -589,6 +589,7 @@ export function processCourse(payload: CoursePayload): CourseDetail {
   let totalDownMs = 0;
   let totalAdjustMs = 0;
   let totalSleepMs = 0;
+  let totalTransitMs = 0;
   let currTz: string | null = normalized.course_timezone ?? null;
 
   for (const seg of normalized.segments) {
@@ -608,6 +609,9 @@ export function processCourse(payload: CoursePayload): CourseDetail {
     totalMovingMs += segDetail.moving_time_hours * 3_600_000;
     totalDownMs += segDetail.down_time_hours * 3_600_000;
     totalAdjustMs += (segDetail.adjustment_time_hours ?? 0) * 3_600_000;
+    if (seg.nullified && seg.fixed_elapsed_time_seconds != null) {
+      totalTransitMs += seg.fixed_elapsed_time_seconds * 1000;
+    }
 
     const sleepMs = (seg.sleep_time ?? 0) * 1000;
     totalSleepMs += sleepMs;
@@ -638,5 +642,6 @@ export function processCourse(payload: CoursePayload): CourseDetail {
     down_time_hours: msToHours(totalDownMs),
     moving_time_hours: msToHours(totalMovingMs),
     sleep_time_hours: msToHours(totalSleepMs),
+    transit_time_hours: msToHours(totalTransitMs),
   };
 }
