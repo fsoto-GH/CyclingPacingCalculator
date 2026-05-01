@@ -26,6 +26,12 @@ import {
   formatRawDualRatio,
   hoursLabelForEntry,
 } from "../timeMath";
+import type { SplitWeather, SplitWeatherPair } from "../calculator/weather";
+import {
+  weatherCodeIcon,
+  weatherCodeLabel,
+  windDirectionLabel,
+} from "../calculator/weather";
 
 const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
 const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
@@ -102,6 +108,7 @@ interface ProjectionsViewProps {
   gpxTotalDist?: number | null;
   etaMarginOpen?: number;
   etaMarginClose?: number;
+  splitWeather?: (SplitWeatherPair | null)[][] | null;
 }
 
 export default function ProjectionsView({
@@ -121,6 +128,7 @@ export default function ProjectionsView({
   gpxTotalDist,
   etaMarginOpen = 15,
   etaMarginClose = 7,
+  splitWeather,
 }: ProjectionsViewProps) {
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
@@ -183,10 +191,147 @@ export default function ProjectionsView({
             gpxTotalDist={gpxTotalDist ?? null}
             etaMarginOpen={etaMarginOpen}
             etaMarginClose={etaMarginClose}
+            segmentWeather={splitWeather?.[segIndex] ?? null}
           />
         );
       })}
     </div>
+  );
+}
+
+// ── Weather display helpers ──
+
+function fmtTemp(tempC: number, unitSystem: UnitSystem): string {
+  return unitSystem === "imperial"
+    ? `${Math.round((tempC * 9) / 5 + 32)}°F`
+    : `${Math.round(tempC)}°C`;
+}
+
+function fmtTempPrecise(tempC: number, unitSystem: UnitSystem): string {
+  return unitSystem === "imperial"
+    ? `${((tempC * 9) / 5 + 32).toFixed(1)}°F`
+    : `${tempC.toFixed(1)}°C`;
+}
+
+function fmtWind(kmh: number, unitSystem: UnitSystem): string {
+  return unitSystem === "imperial"
+    ? `${Math.round(kmh * 0.621371)} mph`
+    : `${Math.round(kmh)} km/h`;
+}
+
+function fmtWindPrecise(kmh: number, unitSystem: UnitSystem): string {
+  return unitSystem === "imperial"
+    ? `${(kmh * 0.621371).toFixed(1)} mph`
+    : `${kmh.toFixed(1)} km/h`;
+}
+
+/** Bearing from point 1 → point 2, degrees 0–360 clockwise from north. */
+function computeBearing(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const toR = Math.PI / 180;
+  const φ1 = lat1 * toR,
+    φ2 = lat2 * toR;
+  const Δλ = (lon2 - lon1) * toR;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function WeatherCard({
+  weather,
+  label,
+  unitSystem,
+}: {
+  weather: SplitWeather;
+  label: string;
+  unitSystem: UnitSystem;
+}) {
+  return (
+    <div className="weather-card">
+      <div className="weather-card-label">
+        {weatherCodeIcon(weather.weatherCode, weather.isDay)} {label}
+      </div>
+      <dl className="summary-grid weather-compact-grid">
+        <div>
+          <dt>Temp / Feels Like</dt>
+          <dd
+            title={`${fmtTempPrecise(weather.temperature, unitSystem)} / ${fmtTempPrecise(weather.apparentTemperature, unitSystem)}`}
+          >
+            {fmtTemp(weather.temperature, unitSystem)} (
+            {fmtTemp(weather.apparentTemperature, unitSystem)})
+          </dd>
+        </div>
+        <div>
+          <dt>Wind / Gusts</dt>
+          <dd
+            title={`${fmtWindPrecise(weather.windSpeed, unitSystem)} ${windDirectionLabel(weather.windDirection)} (${weather.windDirection}°) — gusts ${fmtWindPrecise(weather.windGusts, unitSystem)}`}
+          >
+            {fmtWind(weather.windSpeed, unitSystem)} (
+            {fmtWind(weather.windGusts, unitSystem)}){" "}
+            <span
+              title={`${windDirectionLabel(weather.windDirection)} (${weather.windDirection}°)`}
+              style={{
+                display: "inline-block",
+                transform: `rotate(${(weather.windDirection + 180) % 360}deg)`,
+                lineHeight: 1,
+              }}
+            >
+              ↑
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>Conditions</dt>
+          <dd>
+            {weatherCodeLabel(weather.weatherCode)}, {weather.cloudCover}% ☁
+          </dd>
+        </div>
+        <div>
+          <dt>
+            {weather.precipitationProbabilityAvailable
+              ? "Rain % / Humidity"
+              : "Rain / Humidity"}
+          </dt>
+          <dd
+            title={
+              weather.precipitationProbabilityAvailable
+                ? `Precip. probability: ${weather.precipitationProbability}% — Precip.: ${weather.precipitation.toFixed(1)} mm — Humidity: ${weather.humidity}%`
+                : `Precip.: ${weather.precipitation.toFixed(1)} mm — Humidity: ${weather.humidity}%`
+            }
+          >
+            {weather.precipitationProbabilityAvailable
+              ? `${weather.precipitationProbability}%`
+              : `${weather.precipitation.toFixed(1)} mm`}{" "}
+            / {weather.humidity}%
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function WeatherRangeRow({
+  tempMin,
+  tempMax,
+  unitSystem,
+}: {
+  tempMin: number;
+  tempMax: number;
+  unitSystem: UnitSystem;
+}) {
+  return (
+    <span
+      className="weather-range-value"
+      title={`High: ${fmtTempPrecise(tempMax, unitSystem)} — Low: ${fmtTempPrecise(tempMin, unitSystem)}`}
+    >
+      <span style={{ color: "#d5202a" }}>{fmtTemp(tempMax, unitSystem)}</span> /{" "}
+      <span style={{ color: "#15aadc" }}>{fmtTemp(tempMin, unitSystem)}</span>
+    </span>
   );
 }
 
@@ -211,6 +356,7 @@ function ProjectionSegment({
   gpxTotalDist,
   etaMarginOpen,
   etaMarginClose,
+  segmentWeather,
 }: {
   segment: SegmentDetail;
   segIndex: number;
@@ -232,6 +378,7 @@ function ProjectionSegment({
   gpxTotalDist: number | null;
   etaMarginOpen: number;
   etaMarginClose: number;
+  segmentWeather?: (SplitWeatherPair | null)[] | null;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
@@ -423,6 +570,122 @@ function ProjectionSegment({
       ? `${segmentStartCity} — ${segEndCity}`
       : (segEndCity ?? segmentStartCity ?? null);
   const adjustmentHours = segment.adjustment_time_hours ?? 0;
+  const segWeatherStart = segmentWeather?.[0]?.start ?? null;
+  const segWeatherEnd = segmentWeather?.[lastSplitIdx]?.end ?? null;
+  const _segMins =
+    segmentWeather?.flatMap((p) =>
+      p?.tempMin !== undefined ? [p.tempMin] : [],
+    ) ?? [];
+  const _segMaxs =
+    segmentWeather?.flatMap((p) =>
+      p?.tempMax !== undefined ? [p.tempMax] : [],
+    ) ?? [];
+  const segTempMin = _segMins.length > 0 ? Math.min(..._segMins) : undefined;
+  const segTempMax = _segMaxs.length > 0 ? Math.max(..._segMaxs) : undefined;
+
+  // Segment-level weather summary stats
+  const segWeatherStats = useMemo(() => {
+    if (!segmentWeather || segmentWeather.length === 0) return null;
+    const hasSamples = segmentWeather.some((p) => p?.start || p?.end);
+    if (!hasSamples) return null;
+
+    let totalSplits = 0;
+    let rainySplits = 0;
+    let humiditySum = 0;
+    let humidityCount = 0;
+    const dirCounts = { N: 0, E: 0, S: 0, W: 0 };
+    let headCount = 0,
+      tailCount = 0,
+      crossCount = 0,
+      windBearingCount = 0;
+
+    segmentWeather.forEach((pair, i) => {
+      if (!pair) return;
+      const primary = pair.end ?? pair.start;
+      if (!primary) return;
+      totalSplits++;
+
+      // Rainy: use precip probability when available, else actual precipitation
+      const isRainy = primary.precipitationProbabilityAvailable
+        ? primary.precipitationProbability >= 30
+        : primary.precipitation > 0;
+      if (isRainy) rainySplits++;
+
+      // Humidity: average all available endpoint samples
+      if (pair.start) {
+        humiditySum += pair.start.humidity;
+        humidityCount++;
+      }
+      if (pair.end) {
+        humiditySum += pair.end.humidity;
+        humidityCount++;
+      }
+
+      // Wind direction breakdown from all endpoint samples
+      const windSamples = [pair.start, pair.end].filter(
+        (w): w is SplitWeather => w !== null,
+      );
+      for (const w of windSamples) {
+        const dir = w.windDirection;
+        if (dir >= 315 || dir < 45) dirCounts.N++;
+        else if (dir < 135) dirCounts.E++;
+        else if (dir < 225) dirCounts.S++;
+        else dirCounts.W++;
+      }
+
+      // Wind impact: compare wind direction to route bearing
+      const profile = gpxProfiles?.[i];
+      const windW = pair.end ?? pair.start;
+      if (
+        profile &&
+        windW &&
+        !(
+          profile.startLat === profile.endLat &&
+          profile.startLon === profile.endLon
+        )
+      ) {
+        const bearing = computeBearing(
+          profile.startLat,
+          profile.startLon,
+          profile.endLat,
+          profile.endLon,
+        );
+        // angle: 0° = pure headwind (wind from ahead), 180° = pure tailwind
+        const diff = (windW.windDirection - bearing + 360) % 360;
+        const angle = diff > 180 ? 360 - diff : diff;
+        if (angle <= 45) headCount++;
+        else if (angle >= 135) tailCount++;
+        else crossCount++;
+        windBearingCount++;
+      }
+    });
+
+    const windTotal = dirCounts.N + dirCounts.E + dirCounts.S + dirCounts.W;
+    return {
+      totalSplits,
+      rainySplits,
+      avgHumidity:
+        humidityCount > 0 ? Math.round(humiditySum / humidityCount) : undefined,
+      windDir:
+        windTotal > 0
+          ? {
+              N: Math.round((dirCounts.N / windTotal) * 100),
+              E: Math.round((dirCounts.E / windTotal) * 100),
+              S: Math.round((dirCounts.S / windTotal) * 100),
+              W: Math.round((dirCounts.W / windTotal) * 100),
+            }
+          : undefined,
+      windImpact:
+        windBearingCount > 0
+          ? {
+              head: Math.round((headCount / windBearingCount) * 100),
+              tail: Math.round((tailCount / windBearingCount) * 100),
+              cross: Math.round((crossCount / windBearingCount) * 100),
+            }
+          : undefined,
+    };
+  }, [segmentWeather, gpxProfiles]);
+
   const transitSplit = segment.split_details[0] ?? null;
   const transitFormSplit = formSegment?.splits[0];
   const transitProfile = gpxProfiles?.[0] ?? null;
@@ -572,14 +835,20 @@ function ProjectionSegment({
             {!isTransitSegment && (
               <>
                 <span className="proj-city-sep"> · </span>
-                <span className="proj-city-pace">
+                <span
+                  className="proj-city-pace"
+                  title="Average moving speed of the entire segment."
+                >
                   {segment.moving_time_hours > 0
                     ? (segment.distance / segment.moving_time_hours).toFixed(2)
                     : "0.00"}{" "}
                   {sLabel}
                 </span>
                 <span className="proj-city-sep"> · </span>
-                <span className="proj-city-pace">
+                <span
+                  className="proj-city-pace"
+                  title="Average elapsed pace of the entire segment."
+                >
                   {segment.pace.toFixed(2)} {sLabel}
                 </span>
               </>
@@ -613,6 +882,78 @@ function ProjectionSegment({
             <span className="proj-city-sep"> · </span>
             <span>{formatHours(segment.elapsed_time_hours)}</span>
           </div>
+
+          {(segWeatherStart || segWeatherEnd) && (
+            <div className="proj-segment-header-weather split-header-city">
+              {segWeatherStart && (
+                <span
+                  className="split-weather-inline"
+                  title={`Departure: ${weatherCodeLabel(segWeatherStart.weatherCode)}, ${fmtTemp(segWeatherStart.temperature, unitSystem)}, Wind ${fmtWind(segWeatherStart.windSpeed, unitSystem)} ${windDirectionLabel(segWeatherStart.windDirection)}`}
+                >
+                  {weatherCodeIcon(
+                    segWeatherStart.weatherCode,
+                    segWeatherStart.isDay,
+                  )}{" "}
+                  {fmtTemp(segWeatherStart.temperature, unitSystem)}{" "}
+                  {segWeatherStart.windSpeed > 0 ? (
+                    <i className="fa-solid fa-wind" style={{ opacity: 0.75 }} />
+                  ) : (
+                    <i className="fa-solid fa-wind" style={{ opacity: 0.2 }} />
+                  )}{" "}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      transform: `rotate(${(segWeatherStart.windDirection + 180) % 360}deg)`,
+                      lineHeight: 1,
+                    }}
+                    title={windDirectionLabel(segWeatherStart.windDirection)}
+                  >
+                    ↑
+                  </span>{" "}
+                  {fmtWind(segWeatherStart.windSpeed, unitSystem)}
+                </span>
+              )}
+              {segWeatherStart && segWeatherEnd && (
+                <span className="proj-city-sep"> → </span>
+              )}
+              {segWeatherEnd && (
+                <span
+                  className="split-weather-inline"
+                  title={`Arrival: ${weatherCodeLabel(segWeatherEnd.weatherCode)}, ${fmtTemp(segWeatherEnd.temperature, unitSystem)}, Wind ${fmtWind(segWeatherEnd.windSpeed, unitSystem)} ${windDirectionLabel(segWeatherEnd.windDirection)}`}
+                >
+                  {weatherCodeIcon(
+                    segWeatherEnd.weatherCode,
+                    segWeatherEnd.isDay,
+                  )}{" "}
+                  {fmtTemp(segWeatherEnd.temperature, unitSystem)}{" "}
+                  {segWeatherEnd.windSpeed > 0 ? (
+                    <i className="fa-solid fa-wind" style={{ opacity: 0.75 }} />
+                  ) : (
+                    <i className="fa-solid fa-wind" style={{ opacity: 0.2 }} />
+                  )}{" "}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      transform: `rotate(${(segWeatherEnd.windDirection + 180) % 360}deg)`,
+                      lineHeight: 1,
+                    }}
+                    title={windDirectionLabel(segWeatherEnd.windDirection)}
+                  >
+                    ↑
+                  </span>{" "}
+                  {fmtWind(segWeatherEnd.windSpeed, unitSystem)}
+                  {" · "}
+                  {segTempMin !== undefined && segTempMax !== undefined && (
+                    <WeatherRangeRow
+                      tempMin={segTempMin}
+                      tempMax={segTempMax}
+                      unitSystem={unitSystem}
+                    />
+                  )}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -852,6 +1193,52 @@ function ProjectionSegment({
                     )
                   </dd>
                 </div>
+                {segWeatherStats && (
+                  <>
+                    <div>
+                      <dt title="Splits with precipitation probability ≥30% (or active precipitation when probability is unavailable)">
+                        Rainy Splits
+                      </dt>
+                      <dd>
+                        {segWeatherStats.rainySplits} /{" "}
+                        {segWeatherStats.totalSplits}
+                      </dd>
+                    </div>
+                    {segWeatherStats.avgHumidity !== undefined && (
+                      <div>
+                        <dt title="Average relative humidity across all split endpoints">
+                          Avg Humidity
+                        </dt>
+                        <dd>{segWeatherStats.avgHumidity}%</dd>
+                      </div>
+                    )}
+                    {segWeatherStats.windDir && (
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <dt title="Proportion of split endpoints with wind from each cardinal direction">
+                          Wind Direction
+                        </dt>
+                        <dd>
+                          N: {segWeatherStats.windDir.N}% · E:{" "}
+                          {segWeatherStats.windDir.E}% · S:{" "}
+                          {segWeatherStats.windDir.S}% · W:{" "}
+                          {segWeatherStats.windDir.W}%
+                        </dd>
+                      </div>
+                    )}
+                    {segWeatherStats.windImpact && (
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <dt title="Proportion of splits by wind angle relative to route bearing: headwind (wind ≤45° ahead), crosswind (45–135°), tailwind (≥135° behind)">
+                          Wind Impact
+                        </dt>
+                        <dd>
+                          ▲ {segWeatherStats.windImpact.head}% head · ↔{" "}
+                          {segWeatherStats.windImpact.cross}% cross · ▼{" "}
+                          {segWeatherStats.windImpact.tail}% tail
+                        </dd>
+                      </div>
+                    )}
+                  </>
+                )}
               </dl>
             </div>
           )}
@@ -978,41 +1365,44 @@ function ProjectionSegment({
               )}
             </div>
           ) : (
-            <div
-              className="splits-container"
-              style={{ borderLeftColor: `${segColor}33` }}
-            >
-              {segment.split_details.map((split, splitIndex) => (
-                <ProjectionSplit
-                  key={splitIndex}
-                  split={split}
-                  splitIndex={splitIndex}
-                  formSplit={formSegment?.splits[splitIndex]}
-                  profile={gpxProfiles?.[splitIndex] ?? null}
-                  courseTz={courseTz}
-                  dLabel={dLabel}
-                  sLabel={sLabel}
-                  unitSystem={unitSystem}
-                  gpxTrack={gpxTrack}
-                  cumulativeDist={splitCumulativeDists?.[splitIndex] ?? null}
-                  prevCumulativeDist={
-                    splitIndex === 0
-                      ? (segmentStartDist ?? 0)
-                      : (splitCumulativeDists?.[splitIndex - 1] ?? 0)
-                  }
-                  gpxTotalDist={gpxTotalDist}
-                  nearbyCity={cityLabels[splitIndex] ?? null}
-                  etaMarginOpen={etaMarginOpen}
-                  etaMarginClose={etaMarginClose}
-                  segColor={segColor}
-                  expandSignal={
-                    targetSplitIdx === splitIndex
-                      ? targetSplitSignal
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
+            <>
+              <div
+                className="splits-container"
+                style={{ borderLeftColor: `${segColor}33` }}
+              >
+                {segment.split_details.map((split, splitIndex) => (
+                  <ProjectionSplit
+                    key={splitIndex}
+                    split={split}
+                    splitIndex={splitIndex}
+                    formSplit={formSegment?.splits[splitIndex]}
+                    profile={gpxProfiles?.[splitIndex] ?? null}
+                    courseTz={courseTz}
+                    dLabel={dLabel}
+                    sLabel={sLabel}
+                    unitSystem={unitSystem}
+                    gpxTrack={gpxTrack}
+                    cumulativeDist={splitCumulativeDists?.[splitIndex] ?? null}
+                    prevCumulativeDist={
+                      splitIndex === 0
+                        ? (segmentStartDist ?? 0)
+                        : (splitCumulativeDists?.[splitIndex - 1] ?? 0)
+                    }
+                    gpxTotalDist={gpxTotalDist}
+                    nearbyCity={cityLabels[splitIndex] ?? null}
+                    etaMarginOpen={etaMarginOpen}
+                    etaMarginClose={etaMarginClose}
+                    segColor={segColor}
+                    expandSignal={
+                      targetSplitIdx === splitIndex
+                        ? targetSplitSignal
+                        : undefined
+                    }
+                    splitWeather={segmentWeather?.[splitIndex] ?? null}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -1038,6 +1428,7 @@ function ProjectionSplit({
   etaMarginClose,
   segColor,
   expandSignal,
+  splitWeather,
 }: {
   split: SplitDetail;
   splitIndex: number;
@@ -1056,6 +1447,7 @@ function ProjectionSplit({
   etaMarginClose: number;
   segColor: string;
   expandSignal?: number;
+  splitWeather?: SplitWeatherPair | null;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
@@ -1265,11 +1657,17 @@ function ProjectionSplit({
               </span>
               <>
                 <span className="proj-city-sep"> · </span>
-                <span className="proj-city-pace">
+                <span
+                  className="proj-city-pace"
+                  title="Average moving speed for this split."
+                >
                   {split.moving_speed.toFixed(2)} {sLabel}
                 </span>
                 <span className="proj-city-sep"> · </span>
-                <span className="proj-city-pace">
+                <span
+                  className="proj-city-pace"
+                  title="Average elapsed pace for this split."
+                >
                   {split.pace.toFixed(2)} {sLabel}
                 </span>
               </>
@@ -1317,6 +1715,82 @@ function ProjectionSplit({
               <span style={{ color: "#4ade80" }}>✓ matches GPX</span>
             )}
           </div>
+
+          {/* (2,1) start → end temp + hi/lo */}
+          {(splitWeather?.start || splitWeather?.end) && (
+            <div className="proj-split-header-hilow split-header-city">
+              {splitWeather?.start && (
+                <span
+                  className="split-weather-inline"
+                  title={`Departure: ${weatherCodeLabel(splitWeather.start.weatherCode)}, ${fmtTemp(splitWeather.start.temperature, unitSystem)}, Wind ${fmtWind(splitWeather.start.windSpeed, unitSystem)} ${windDirectionLabel(splitWeather.start.windDirection)}`}
+                >
+                  {weatherCodeIcon(
+                    splitWeather.start.weatherCode,
+                    splitWeather.start.isDay,
+                  )}{" "}
+                  {fmtTemp(splitWeather.start.temperature, unitSystem)}{" "}
+                  {splitWeather.start.windSpeed > 0 ? (
+                    <i className="fa-solid fa-wind" style={{ opacity: 0.75 }} />
+                  ) : (
+                    <i className="fa-solid fa-wind" style={{ opacity: 0.2 }} />
+                  )}{" "}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      transform: `rotate(${(splitWeather.start.windDirection + 180) % 360}deg)`,
+                      lineHeight: 1,
+                    }}
+                    title={windDirectionLabel(splitWeather.start.windDirection)}
+                  >
+                    ↑
+                  </span>{" "}
+                  {fmtWind(splitWeather.start.windSpeed, unitSystem)}
+                </span>
+              )}
+              {splitWeather?.start && splitWeather?.end && (
+                <span className="proj-city-sep"> → </span>
+              )}
+              {splitWeather?.end && (
+                <span
+                  className="split-weather-inline"
+                  title={`Arrival: ${weatherCodeLabel(splitWeather.end.weatherCode)}, ${fmtTemp(splitWeather.end.temperature, unitSystem)}, Wind ${fmtWind(splitWeather.end.windSpeed, unitSystem)} ${windDirectionLabel(splitWeather.end.windDirection)}`}
+                >
+                  {weatherCodeIcon(
+                    splitWeather.end.weatherCode,
+                    splitWeather.end.isDay,
+                  )}{" "}
+                  {fmtTemp(splitWeather.end.temperature, unitSystem)}{" "}
+                  {splitWeather.end.windSpeed > 0 ? (
+                    <i className="fa-solid fa-wind" style={{ opacity: 0.75 }} />
+                  ) : (
+                    <i className="fa-solid fa-wind" style={{ opacity: 0.2 }} />
+                  )}{" "}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      transform: `rotate(${(splitWeather.end.windDirection + 180) % 360}deg)`,
+                      lineHeight: 1,
+                    }}
+                    title={windDirectionLabel(splitWeather.end.windDirection)}
+                  >
+                    ↑
+                  </span>{" "}
+                  {fmtWind(splitWeather.end.windSpeed, unitSystem)}
+                </span>
+              )}
+              {splitWeather?.tempMin !== undefined &&
+                splitWeather?.tempMax !== undefined && (
+                  <>
+                    <span className="proj-city-sep"> · </span>
+                    <WeatherRangeRow
+                      tempMin={splitWeather.tempMin}
+                      tempMax={splitWeather.tempMax}
+                      unitSystem={unitSystem}
+                    />
+                  </>
+                )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1423,6 +1897,87 @@ function ProjectionSplit({
                       </span>
                     )}
                   </dd>
+                </div>
+              )}
+              {(() => {
+                const windW = splitWeather?.end ?? splitWeather?.start ?? null;
+                if (
+                  !windW ||
+                  !profile ||
+                  (profile.startLat === profile.endLat &&
+                    profile.startLon === profile.endLon)
+                )
+                  return null;
+                const bearing = computeBearing(
+                  profile.startLat,
+                  profile.startLon,
+                  profile.endLat,
+                  profile.endLon,
+                );
+                const diff = (windW.windDirection - bearing + 360) % 360;
+                const angle = diff > 180 ? 360 - diff : diff;
+                const impact =
+                  angle <= 45
+                    ? "▲ Headwind"
+                    : angle >= 135
+                      ? "▼ Tailwind"
+                      : "↔ Crosswind";
+                const impactTitle = `Wind from ${windDirectionLabel(windW.windDirection)} (${windW.windDirection}°) vs route bearing ${Math.round(bearing)}° — angle ${Math.round(angle)}°`;
+                return (
+                  <>
+                    <div>
+                      <dt title="Cardinal direction the wind is blowing from across both endpoints">
+                        Wind Direction
+                      </dt>
+                      <dd>
+                        {[splitWeather?.start, splitWeather?.end]
+                          .filter((w): w is SplitWeather => w !== null)
+                          .map((w, i, arr) => (
+                            <span key={i}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  transform: `rotate(${(w.windDirection + 180) % 360}deg)`,
+                                  lineHeight: 1,
+                                }}
+                                title={windDirectionLabel(w.windDirection)}
+                              >
+                                ↑
+                              </span>{" "}
+                              {windDirectionLabel(w.windDirection)} (
+                              {w.windDirection}°)
+                              {i < arr.length - 1 && (
+                                <span className="proj-city-sep"> → </span>
+                              )}
+                            </span>
+                          ))}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title={impactTitle}>Wind Impact</dt>
+                      <dd title={impactTitle}>
+                        {impact} ({Math.round(angle)}° off route)
+                      </dd>
+                    </div>
+                  </>
+                );
+              })()}
+              {splitWeather?.start && (
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <WeatherCard
+                    weather={splitWeather.start}
+                    label="Departure"
+                    unitSystem={unitSystem}
+                  />
+                </div>
+              )}
+              {splitWeather?.end && (
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <WeatherCard
+                    weather={splitWeather.end}
+                    label="Arrival"
+                    unitSystem={unitSystem}
+                  />
                 </div>
               )}
             </dl>

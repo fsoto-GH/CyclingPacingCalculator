@@ -1,22 +1,12 @@
-/**
- * Fetch hourly weather forecasts from the Open-Meteo API for split endpoints.
- *
- * Open-Meteo is free, requires no API key, and supports batched lat/lon.
- * We request hourly data for each split endpoint and match the forecast hour
- * closest to the split's computed end time.
- *
- * Limitations:
- *   - Forecast data is only available up to ~16 days out.
- *   - Splits whose end_time falls outside the forecast window get `null`.
- */
-
 export interface SplitWeather {
   /** Temperature in °C */
   temperature: number;
   /** Feels-like temperature in °C */
   apparentTemperature: number;
-  /** Precipitation probability (0-100 %) */
+  /** Precipitation probability (0-100 %). Only available from the forecast API. */
   precipitationProbability: number;
+  /** Whether precipitationProbability came from the API (true) or was synthesized (false). */
+  precipitationProbabilityAvailable: boolean;
   /** Precipitation in mm */
   precipitation: number;
   /** WMO weather code */
@@ -109,6 +99,23 @@ export function windDirectionLabel(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
+/**
+ * Fetch hourly weather from the Open-Meteo API for split endpoints.
+ *
+ * Routes each point to the correct API based on time:
+ *   - Past dates    → archive-api.open-meteo.com/v1/archive (ERA5 / ECMWF IFS, back to 1940)
+ *   - Future dates  → api.open-meteo.com/v1/forecast (16-day window)
+ *   - Beyond 16 days in the future → null (no data available)
+ *
+ * Both APIs support batched lat/lon (comma-separated, up to 50 per request).
+ * Locations are deduplicated by rounding to 0.01° (~1 km).
+ *
+ * Archive API differences vs. forecast:
+ *   - Uses start_date / end_date instead of forecast_days.
+ *   - No precipitation_probability field → synthesized as 0.
+ *   - No is_day field → approximated from UTC hour (06:00–20:00 = day).
+ */
+
 // ── Open-Meteo response shape (subset) ──
 
 interface HourlyData {
@@ -130,114 +137,334 @@ interface OpenMeteoResponse {
   hourly: HourlyData;
 }
 
+// ── Shared helpers ──
+
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+}
+
 /**
- * Fetch weather for a list of (lat, lon, endTimeIso) tuples.
- *
- * Open-Meteo supports batched coordinates (comma-separated).  We group by
- * unique lat/lon (rounded to 2 decimal places for dedup) and batch up to 50
- * locations per request, then match each split to the nearest forecast hour.
- *
- * Returns a flat array parallel to the input, with `null` for splits that
- * have no coordinates or whose time is outside the 16-day forecast window.
+ * The archive API omits precipitation_probability and is_day.
+ * Synthesize them so the HourlyData shape is uniform across both APIs.
+ * is_day approximation: use the location's longitude to estimate local solar
+ * time (1 h per 15° of longitude), then treat 06:00–20:00 solar time as day.
+ * This avoids the UTC-offset error that would otherwise flag 3 AM EDT as daytime.
  */
+function patchArchiveHourly(
+  h: Omit<HourlyData, "precipitation_probability" | "is_day">,
+  lonDeg: number,
+): HourlyData {
+  const len = h.time.length;
+  return {
+    ...h,
+    precipitation_probability: new Array<number>(len).fill(0),
+    is_day: h.time.map((t) => {
+      const utcHour = new Date(t + "Z").getUTCHours();
+      // Shift UTC hour by longitude-based solar offset, then wrap to [0, 24).
+      const solarHour = (((utcHour + lonDeg / 15) % 24) + 24) % 24;
+      return solarHour >= 6 && solarHour <= 20 ? 1 : 0;
+    }),
+  } as HourlyData;
+}
+
+/** Map one hourly slot to a SplitWeather value. */
+function mapHourlySlot(
+  h: HourlyData,
+  idx: number,
+  precipProbAvailable = true,
+): SplitWeather {
+  return {
+    temperature: h.temperature_2m[idx],
+    apparentTemperature: h.apparent_temperature[idx],
+    precipitationProbability: h.precipitation_probability[idx],
+    precipitationProbabilityAvailable: precipProbAvailable,
+    precipitation: h.precipitation[idx],
+    weatherCode: h.weather_code[idx],
+    windSpeed: h.wind_speed_10m[idx],
+    windDirection: h.wind_direction_10m[idx],
+    windGusts: h.wind_gusts_10m[idx],
+    humidity: h.relative_humidity_2m[idx],
+    cloudCover: h.cloud_cover[idx],
+    isDay: h.is_day[idx] === 1,
+    // Append "Z" so the string is unambiguously UTC when parsed by the UI.
+    forecastHour: h.time[idx].endsWith("Z") ? h.time[idx] : h.time[idx] + "Z",
+  };
+}
+
+/**
+ * Parse an Open-Meteo time string as UTC milliseconds.
+ * The API returns ISO 8601 strings without a timezone offset (e.g. "2025-07-15T07:00").
+ * Without an explicit offset, JavaScript treats them as LOCAL time — appending "Z"
+ * forces UTC interpretation, which is what the API actually returns.
+ */
+function parseApiTimeMs(t: string): number {
+  return new Date(t.endsWith("Z") ? t : t + "Z").getTime();
+}
+
+/** Nearest-hour search: return the index of the hourly slot closest to targetMs (UTC). */
+function findBestHour(h: HourlyData, targetMs: number): number {
+  let bestIdx = -1;
+  let bestDiff = Infinity;
+  for (let i = 0; i < h.time.length; i++) {
+    const diff = Math.abs(targetMs - parseApiTimeMs(h.time[i]));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+// ── Main entry point ──
+
+const locKey = (lat: number, lon: number) =>
+  `${lat.toFixed(2)},${lon.toFixed(2)}`;
+
 export async function fetchSplitWeather(
   splits: { lat: number; lon: number; endTimeIso: string }[],
-): Promise<(SplitWeather | null)[]> {
-  if (splits.length === 0) return [];
+): Promise<{
+  results: (SplitWeather | null)[];
+  cache: Map<string, HourlyData>;
+}> {
+  if (splits.length === 0) return { results: [], cache: new Map() };
 
-  // Deduplicate locations (round to 0.01° ≈ 1 km)
-  const locKey = (lat: number, lon: number) =>
-    `${lat.toFixed(2)},${lon.toFixed(2)}`;
-
-  // Determine overall date range needed (clamp to 16 days from today)
   const now = new Date();
   const maxForecastDate = new Date(now);
   maxForecastDate.setDate(maxForecastDate.getDate() + 16);
+  const BATCH = 50;
 
-  const uniqueLocs = new Map<string, { lat: number; lon: number }>();
-  for (const s of splits) {
-    const key = locKey(s.lat, s.lon);
-    if (!uniqueLocs.has(key)) {
-      uniqueLocs.set(key, {
-        lat: parseFloat(s.lat.toFixed(2)),
-        lon: parseFloat(s.lon.toFixed(2)),
-      });
+  // Partition into historical (past), forecast (within window), or beyond window.
+  // Zero-coordinate entries are skipped (no location data — remain null).
+  const historicalIdx: number[] = [];
+  const forecastIdx: number[] = [];
+  for (let i = 0; i < splits.length; i++) {
+    const s = splits[i];
+    if (s.lat === 0 && s.lon === 0) continue;
+    const d = new Date(s.endTimeIso);
+    if (d < now) historicalIdx.push(i);
+    else if (d <= maxForecastDate) forecastIdx.push(i);
+    // beyond maxForecastDate → stays null
+  }
+
+  const results: (SplitWeather | null)[] = new Array(splits.length).fill(null);
+  const allHourly = new Map<string, HourlyData>();
+
+  // ── Forecast path ──
+  if (forecastIdx.length > 0) {
+    const uniqueLocs = new Map<string, { lat: number; lon: number }>();
+    for (const i of forecastIdx) {
+      const s = splits[i];
+      const key = locKey(s.lat, s.lon);
+      if (!uniqueLocs.has(key))
+        uniqueLocs.set(key, {
+          lat: parseFloat(s.lat.toFixed(2)),
+          lon: parseFloat(s.lon.toFixed(2)),
+        });
+    }
+    const locEntries = [...uniqueLocs.entries()];
+    const cache = allHourly;
+
+    for (let i = 0; i < locEntries.length; i += BATCH) {
+      const batch = locEntries.slice(i, i + BATCH);
+      const lats = batch.map(([, v]) => v.lat).join(",");
+      const lons = batch.map(([, v]) => v.lon).join(",");
+      const url =
+        `https://api.open-meteo.com/v1/forecast` +
+        `?latitude=${lats}&longitude=${lons}` +
+        `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,cloud_cover,is_day` +
+        `&forecast_days=16` +
+        `&timeformat=iso8601`;
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        if (batch.length === 1) {
+          cache.set(batch[0][0], (data as OpenMeteoResponse).hourly);
+        } else {
+          const arr = data as OpenMeteoResponse[];
+          for (let j = 0; j < batch.length; j++) {
+            if (arr[j]?.hourly) cache.set(batch[j][0], arr[j].hourly);
+          }
+        }
+      } catch {
+        // Network error — skip batch
+      }
+    }
+
+    for (const i of forecastIdx) {
+      const s = splits[i];
+      const hourly = cache.get(locKey(s.lat, s.lon));
+      if (!hourly) continue;
+      const idx = findBestHour(hourly, new Date(s.endTimeIso).getTime());
+      if (idx !== -1) results[i] = mapHourlySlot(hourly, idx);
     }
   }
 
-  // Batch into groups of up to 50 locations (Open-Meteo limit)
-  const locEntries = [...uniqueLocs.entries()];
-  const BATCH = 50;
-  const cache = new Map<string, HourlyData>();
-
-  for (let i = 0; i < locEntries.length; i += BATCH) {
-    const batch = locEntries.slice(i, i + BATCH);
-    const lats = batch.map(([, v]) => v.lat).join(",");
-    const lons = batch.map(([, v]) => v.lon).join(",");
-
-    const url =
-      `https://api.open-meteo.com/v1/forecast` +
-      `?latitude=${lats}&longitude=${lons}` +
-      `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,cloud_cover,is_day` +
-      `&forecast_days=16` +
-      `&timeformat=iso8601`;
-
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-
-      if (batch.length === 1) {
-        // Single location — response is a single object
-        cache.set(batch[0][0], (data as OpenMeteoResponse).hourly);
+  // ── Historical path (archive API) ──
+  if (historicalIdx.length > 0) {
+    // Track min/max date per unique location so we request the narrowest range.
+    const uniqueLocs = new Map<
+      string,
+      { lat: number; lon: number; minDate: Date; maxDate: Date }
+    >();
+    for (const i of historicalIdx) {
+      const s = splits[i];
+      const key = locKey(s.lat, s.lon);
+      const d = new Date(s.endTimeIso);
+      const existing = uniqueLocs.get(key);
+      if (!existing) {
+        uniqueLocs.set(key, {
+          lat: parseFloat(s.lat.toFixed(2)),
+          lon: parseFloat(s.lon.toFixed(2)),
+          minDate: d,
+          maxDate: d,
+        });
       } else {
-        // Multiple locations — response is an array
-        const arr = data as OpenMeteoResponse[];
-        for (let j = 0; j < batch.length; j++) {
-          if (arr[j]?.hourly) cache.set(batch[j][0], arr[j].hourly);
+        if (d < existing.minDate) existing.minDate = d;
+        if (d > existing.maxDate) existing.maxDate = d;
+      }
+    }
+    const locEntries = [...uniqueLocs.entries()];
+    const cache = allHourly;
+
+    for (let i = 0; i < locEntries.length; i += BATCH) {
+      const batch = locEntries.slice(i, i + BATCH);
+      const lats = batch.map(([, v]) => v.lat).join(",");
+      const lons = batch.map(([, v]) => v.lon).join(",");
+      // Date range spanning all needed dates for this batch of locations.
+      let bMin = batch[0][1].minDate;
+      let bMax = batch[0][1].maxDate;
+      for (const [, v] of batch) {
+        if (v.minDate < bMin) bMin = v.minDate;
+        if (v.maxDate > bMax) bMax = v.maxDate;
+      }
+      const url =
+        `https://archive-api.open-meteo.com/v1/archive` +
+        `?latitude=${lats}&longitude=${lons}` +
+        `&start_date=${toDateStr(bMin)}&end_date=${toDateStr(bMax)}` +
+        `&hourly=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,cloud_cover` +
+        `&timeformat=iso8601`;
+      type ArchiveResponse = {
+        hourly: Omit<HourlyData, "precipitation_probability" | "is_day">;
+      };
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        if (batch.length === 1) {
+          cache.set(
+            batch[0][0],
+            patchArchiveHourly(
+              (data as ArchiveResponse).hourly,
+              batch[0][1].lon,
+            ),
+          );
+        } else {
+          const arr = data as ArchiveResponse[];
+          for (let j = 0; j < batch.length; j++) {
+            if (arr[j]?.hourly)
+              cache.set(
+                batch[j][0],
+                patchArchiveHourly(arr[j].hourly, batch[j][1].lon),
+              );
+          }
+        }
+      } catch {
+        // Network error — skip batch
+      }
+    }
+
+    for (const i of historicalIdx) {
+      const s = splits[i];
+      const hourly = cache.get(locKey(s.lat, s.lon));
+      if (!hourly) continue;
+      const idx = findBestHour(hourly, new Date(s.endTimeIso).getTime());
+      if (idx !== -1) results[i] = mapHourlySlot(hourly, idx, false);
+    }
+  }
+
+  return { results, cache: allHourly };
+}
+
+// ── Pair (start + end) weather per split ──
+
+/**
+ * Weather at both the start and end point of a split.
+ * Either entry is `null` when coordinates are missing or outside the 16-day
+ * forecast window.
+ */
+export interface SplitWeatherPair {
+  start: SplitWeather | null;
+  end: SplitWeather | null;
+  /** Min temperature (°C) across all hourly slots within the split span. */
+  tempMin?: number;
+  /** Max temperature (°C) across all hourly slots within the split span. */
+  tempMax?: number;
+}
+
+/**
+ * Fetch start-point and end-point weather for a list of splits in one pass.
+ *
+ * Interleaves start and end entries into a single flat array, delegates to
+ * `fetchSplitWeather` (which handles deduplication and batching), then pairs
+ * the results back. Also computes the temperature range across all hourly
+ * slots between each split's start and end time.
+ */
+export async function fetchSplitWeatherPairs(
+  splits: {
+    startLat: number;
+    startLon: number;
+    startTimeIso: string;
+    endLat: number;
+    endLon: number;
+    endTimeIso: string;
+  }[],
+): Promise<SplitWeatherPair[]> {
+  if (splits.length === 0) return [];
+
+  // Interleave: [start0, end0, start1, end1, …]
+  const flat = splits.flatMap((s) => [
+    { lat: s.startLat, lon: s.startLon, endTimeIso: s.startTimeIso },
+    { lat: s.endLat, lon: s.endLon, endTimeIso: s.endTimeIso },
+  ]);
+
+  const { results, cache } = await fetchSplitWeather(flat);
+
+  return splits.map((s, i) => {
+    const start = results[i * 2] ?? null;
+    const end = results[i * 2 + 1] ?? null;
+
+    let tempMin: number | undefined;
+    let tempMax: number | undefined;
+    if (start || end) {
+      const startMs = parseApiTimeMs(s.startTimeIso);
+      const endMs = parseApiTimeMs(s.endTimeIso);
+      const temps: number[] = [];
+      if (start) temps.push(start.temperature);
+      if (end) temps.push(end.temperature);
+      // Scan hourly slots for both endpoint locations to capture intermediate hours.
+      const seen = new Set<string>();
+      for (const k of [
+        locKey(s.startLat, s.startLon),
+        locKey(s.endLat, s.endLon),
+      ]) {
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const hourly = cache.get(k);
+        if (!hourly) continue;
+        for (let j = 0; j < hourly.time.length; j++) {
+          const tMs = parseApiTimeMs(hourly.time[j]);
+          if (tMs >= startMs && tMs <= endMs) {
+            temps.push(hourly.temperature_2m[j]);
+          }
         }
       }
-    } catch {
-      // Network error — skip this batch
-    }
-  }
-
-  // Match each split to the nearest forecast hour
-  return splits.map((s) => {
-    const key = locKey(s.lat, s.lon);
-    const hourly = cache.get(key);
-    if (!hourly) return null;
-
-    const endDate = new Date(s.endTimeIso);
-    if (endDate > maxForecastDate) return null;
-
-    // Find the closest hour index
-    let bestIdx = -1;
-    let bestDiff = Infinity;
-    for (let i = 0; i < hourly.time.length; i++) {
-      const diff = Math.abs(
-        endDate.getTime() - new Date(hourly.time[i]).getTime(),
-      );
-      if (diff < bestDiff) {
-        bestDiff = diff;
-        bestIdx = i;
+      if (temps.length > 0) {
+        tempMin = Math.min(...temps);
+        tempMax = Math.max(...temps);
       }
     }
-    if (bestIdx === -1) return null;
 
-    return {
-      temperature: hourly.temperature_2m[bestIdx],
-      apparentTemperature: hourly.apparent_temperature[bestIdx],
-      precipitationProbability: hourly.precipitation_probability[bestIdx],
-      precipitation: hourly.precipitation[bestIdx],
-      weatherCode: hourly.weather_code[bestIdx],
-      windSpeed: hourly.wind_speed_10m[bestIdx],
-      windDirection: hourly.wind_direction_10m[bestIdx],
-      windGusts: hourly.wind_gusts_10m[bestIdx],
-      humidity: hourly.relative_humidity_2m[bestIdx],
-      cloudCover: hourly.cloud_cover[bestIdx],
-      isDay: hourly.is_day[bestIdx] === 1,
-      forecastHour: hourly.time[bestIdx],
-    };
+    return { start, end, tempMin, tempMax };
   });
 }

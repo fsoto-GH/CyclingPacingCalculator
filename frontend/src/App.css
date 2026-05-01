@@ -1423,6 +1423,14 @@ h4 {
   min-width: 0;
 }
 
+.projections-view .proj-segment-header-weather {
+  grid-column: 2;
+  grid-row: 4;
+  min-width: 0;
+    justify-self: end;
+  text-align: right;
+}
+
 .projections-view .split-header-city .proj-city-start,
 .projections-view .split-header-city .proj-city-end,
 .projections-view .split-header-city .proj-city-duration,
@@ -1499,6 +1507,13 @@ h4 {
   gap: 0.3rem;
 }
 
+.projections-view .proj-split-header-hilow {
+  grid-column: 2;
+  grid-row: 3;
+  justify-self: end;
+  text-align: right;
+}
+
 @media (max-width: 599px) {
   .projections-view .proj-segment-header-grid,
   .projections-view .proj-split-header-grid {
@@ -1515,7 +1530,9 @@ h4 {
   .projections-view .proj-split-header-main,
   .projections-view .proj-split-header-topright,
   .projections-view .proj-split-header-startend,
-  .projections-view .proj-split-header-status {
+  .projections-view .proj-split-header-status, 
+  .projections-view .proj-segment-header-weather.split-header-city
+   {
     grid-column: 1;
     grid-row: auto;
     justify-self: start;
@@ -2014,26 +2031,63 @@ h4 {
 }
 
 /* Notes in result detail */
-/* ── Weather section in split detail ── */
-.split-weather-section {
-  padding: 0.55rem 1rem 0.75rem;
-  background: #1a1a2e;
+/* ── Compact weather cards ── */
+.split-weather-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2rem;
+  padding: 0.5rem 0 0.25rem;
   border-top: 1px solid #2e2e3e;
 }
 
-.split-weather-section h4 {
-  margin: 0 0 0.5rem;
-  font-size: 0.85rem;
-  color: #6b8aff;
+.split-weather-pair > .weather-card {
+  flex: 1 1 40%;
+  min-width: 220px;
 }
 
-.weather-grid {
+.segment-weather-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2rem;
+  padding: 0.35rem 1rem 0.5rem;
+  border-bottom: 1px solid #2e2e3e;
+}
+
+.segment-weather-summary > .weather-card {
+  flex: 1 1 40%;
+  min-width: 220px;
+}
+
+.weather-card {
+  padding: 0.35rem 0 0.25rem;
+}
+
+.weather-card-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b8aff;
+  margin-bottom: 0.2rem;
+}
+
+.weather-compact-grid {
   grid-template-columns: repeat(4, 1fr) !important;
-  gap: 0.5rem 1rem !important;
+  gap: 0.3rem 1rem !important;
+  margin: 0 !important;
+}
+
+
+
+.weather-range-label {
+  font-weight: 600;
+  color: #a0aec0;
+}
+
+.weather-range-value {
+  color: #e2e8f0;
 }
 
 @media (max-width: 860px) {
-  .weather-grid {
+  .weather-compact-grid {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 }

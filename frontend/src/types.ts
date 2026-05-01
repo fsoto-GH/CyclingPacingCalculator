@@ -16,6 +16,8 @@ export interface SplitGpxProfile {
   avgGradePct: number;
   steepPct: number; // % of distance with grade > 5%
   surface: string; // e.g. "paved" | "gravel" | "unknown"
+  startLat: number;
+  startLon: number;
   endLat: number;
   endLon: number;
   endTimezone: string; // IANA tz at endpoint

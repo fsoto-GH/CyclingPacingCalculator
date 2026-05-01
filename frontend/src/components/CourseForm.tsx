@@ -44,6 +44,10 @@ import {
   extractSurfaceFromXml,
   interpolateLatLon,
 } from "../calculator/gpxParser";
+import {
+  fetchSplitWeatherPairs,
+  type SplitWeatherPair,
+} from "../calculator/weather";
 import tzlookup from "tz-lookup";
 import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
@@ -1033,6 +1037,101 @@ export default function CourseForm() {
   const [gpxProfiles, setGpxProfiles] = useState<SplitGpxProfile[][] | null>(
     null,
   );
+
+  // ── Weather forecast state (lives here so it survives tab changes) ──
+  const [splitWeather, setSplitWeather] = useState<
+    (SplitWeatherPair | null)[][] | null
+  >(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+
+  // Clear stale weather whenever the result or GPX profiles change.
+  useEffect(() => {
+    setSplitWeather(null);
+  }, [result, gpxProfiles]);
+
+  const weatherAvailable = useMemo(() => {
+    if (!gpxProfiles || !result) return false;
+    const maxForecast = new Date();
+    maxForecast.setDate(maxForecast.getDate() + 16);
+    // Show for past courses (historical API) and near-future courses (forecast API).
+    // Only hide when the entire course starts beyond the 16-day forecast window.
+    return new Date(result.start_time) <= maxForecast;
+  }, [gpxProfiles, result]);
+
+  const handleFetchWeather = useCallback(() => {
+    if (!gpxProfiles || !result) return;
+
+    const flatSplits: {
+      startLat: number;
+      startLon: number;
+      startTimeIso: string;
+      endLat: number;
+      endLon: number;
+      endTimeIso: string;
+    }[] = [];
+    const segLengths: number[] = [];
+
+    for (let si = 0; si < result.segment_details.length; si++) {
+      const seg = result.segment_details[si];
+      segLengths.push(seg.split_details.length);
+      for (let sj = 0; sj < seg.split_details.length; sj++) {
+        const profile = gpxProfiles[si]?.[sj];
+        if (profile) {
+          flatSplits.push({
+            startLat: profile.startLat,
+            startLon: profile.startLon,
+            startTimeIso: seg.split_details[sj].start_time,
+            endLat: profile.endLat,
+            endLon: profile.endLon,
+            endTimeIso: seg.split_details[sj].end_time,
+          });
+        } else {
+          flatSplits.push({
+            startLat: 0,
+            startLon: 0,
+            startTimeIso: "",
+            endLat: 0,
+            endLon: 0,
+            endTimeIso: "",
+          });
+        }
+      }
+    }
+
+    const hasCoords = flatSplits.some(
+      (s) => s.startLat !== 0 || s.endLat !== 0,
+    );
+    if (!hasCoords) return;
+
+    setWeatherLoading(true);
+    fetchSplitWeatherPairs(
+      flatSplits.filter((s) => s.startLat !== 0 || s.endLat !== 0),
+    )
+      .then((flat) => {
+        let fi = 0;
+        const nested: (SplitWeatherPair | null)[][] = [];
+        let idx = 0;
+        for (const len of segLengths) {
+          const row: (SplitWeatherPair | null)[] = [];
+          for (let j = 0; j < len; j++) {
+            const s = flatSplits[idx];
+            if (s.startLat !== 0 || s.endLat !== 0) {
+              row.push(flat[fi] ?? null);
+              fi++;
+            } else {
+              row.push(null);
+            }
+            idx++;
+          }
+          nested.push(row);
+        }
+        setSplitWeather(nested);
+        setWeatherLoading(false);
+      })
+      .catch(() => {
+        setWeatherLoading(false);
+      });
+  }, [result, gpxProfiles]);
 
   // Memoized — avoids re-running the 30k-point RDP on every render.
   const bannerGainM = useMemo(
@@ -2077,6 +2176,25 @@ export default function CourseForm() {
                 <i className="fas fa-download"></i> Import JSON
               </button>
             )}
+            {activeTab === "projections" &&
+              weatherAvailable &&
+              !splitWeather && (
+                <button
+                  type="button"
+                  className="segments-toggle-btn"
+                  onClick={handleFetchWeather}
+                  disabled={weatherLoading}
+                  title="Load weather forecast for each split (Open-Meteo, 16-day window)"
+                >
+                  {weatherLoading ? (
+                    "Loading forecast…"
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-cloud-sun" /> Forecast
+                    </>
+                  )}
+                </button>
+              )}
             <button
               type="button"
               className="segments-toggle-btn segments-toggle-btn--export"
@@ -3179,6 +3297,7 @@ export default function CourseForm() {
                   gpxTotalDist={gpxTotalDistUser}
                   etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
                   etaMarginClose={parseInt(etaMargins.close, 10) || 7}
+                  splitWeather={splitWeather}
                 />
               </Suspense>
             </div>

@@ -140,7 +140,19 @@ const SEARCH_INDEX: SearchEntry[] = [
     secTitle: "Segment Pagination",
     keywords: "pagination page segments per page navigate large course",
   },
+  {
+    catKey: "features",
+    secTitle: "Weather on the Projections Tab",
+    keywords:
+      "weather projections forecast archive open-meteo temperature wind humidity rain precipitation headwind tailwind crosswind segment split stats rainy splits avg humidity wind direction wind impact cardinal bearing hi lo high low range icon cloud conditions",
+  },
   // Disclaimers
+  {
+    catKey: "disclaimers",
+    secTitle: "Weather Data Accuracy",
+    keywords:
+      "weather accuracy sampling granularity splits segments forecast archive open-meteo temperature wind hourly sample resolution detail",
+  },
   {
     catKey: "disclaimers",
     secTitle: "Data Accuracy",
@@ -710,6 +722,65 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                   </p>
                 </Section>
 
+                <Section title="Weather on the Projections Tab">
+                  <p>
+                    When a <strong>start time</strong> and{" "}
+                    <strong>GPS coordinates</strong> (from a loaded GPX) are
+                    available, the Projections tab fetches weather data for each
+                    split's departure and arrival points from{" "}
+                    <strong>Open-Meteo</strong>. Dates within the 16-day
+                    forecast window use the live forecast; earlier dates fall
+                    back to the Open-Meteo historical archive.
+                  </p>
+                  <p>Weather is surfaced in two places:</p>
+                  <ul>
+                    <li>
+                      <strong>Compact header row</strong> — each split and
+                      segment header shows a weather icon, temperature, wind
+                      icon, a direction arrow, and wind speed for the start{" "}
+                      <span className="proj-city-sep">→</span> end of the split,
+                      plus a hi/lo temperature range.
+                    </li>
+                    <li>
+                      <strong>Stats grid</strong> (inside the <em>Results</em>{" "}
+                      accordion on each segment or split) — aggregate fields
+                      computed from all sampled endpoints:
+                      <ul>
+                        <li>
+                          <strong>Rainy Splits</strong> — count of splits in the
+                          segment with precipitation probability above 30%.
+                        </li>
+                        <li>
+                          <strong>Avg Humidity</strong> — mean relative humidity
+                          across all sampled split endpoints in the segment.
+                        </li>
+                        <li>
+                          <strong>Wind Direction</strong> — proportion of
+                          samples where wind blows from each cardinal direction
+                          (N / E / S / W).
+                        </li>
+                        <li>
+                          <strong>Wind Impact</strong> — proportion of samples
+                          classified as headwind (≤45° off route bearing),
+                          crosswind, or tailwind (≥135° behind), derived from
+                          the GPX route bearing.
+                        </li>
+                        <li>
+                          <strong>Hi / Lo</strong> — highest and lowest hourly
+                          temperatures recorded across the full time span of
+                          each split.
+                        </li>
+                      </ul>
+                    </li>
+                  </ul>
+                  <p>
+                    Full weather cards (temperature, feels-like, wind, gusts,
+                    precipitation, humidity, and conditions icon) for the
+                    departure and arrival points of each split are also
+                    available inside the Results accordion.
+                  </p>
+                </Section>
+
                 <Section title="Auto-Name from City Labels">
                   <p>
                     Once city labels have loaded for all splits, the{" "}
@@ -753,6 +824,33 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
               {/* ── Disclaimers ── */}
               <Category title="⚠️ Disclaimers" catKey="disclaimers">
+                <Section title="Weather Data Accuracy">
+                  <p>
+                    Weather data is <strong>sampled at split endpoints</strong>{" "}
+                    — one hourly data point per split start and end. Accuracy is
+                    therefore only as granular as the distance of your splits
+                    and segments. A split spanning 80 miles produces a single
+                    sample at each end; conditions along the middle are not
+                    captured.
+                  </p>
+                  <p>
+                    <strong>
+                      More splits — or shorter splits — yield more detailed and
+                      accurate weather coverage.
+                    </strong>{" "}
+                    If weather conditions along the route matter to your
+                    planning, consider adding intermediate splits or using the
+                    sub-split feature to increase sample density.
+                  </p>
+                  <p>
+                    Wind direction and impact percentages (cardinal buckets,
+                    head/cross/tail) are computed from those same endpoint
+                    samples. On a segment with only one or two splits the
+                    percentages are binary (0% or 100%) rather than a meaningful
+                    statistical distribution.
+                  </p>
+                </Section>
+
                 <Section title="Browser & Device Support">
                   <p>
                     This app requires a modern desktop or tablet browser.
@@ -980,7 +1078,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                 <Section title="Down Time Ratio">
                   <p>
-                    Idle time expressed as a fraction of moving time (0–1).
+                    Idle time expressed as a fraction of moving time (0-1).
                     Accounts for traffic lights, crossings, brief stops, etc.
                   </p>
                   <ul>
@@ -1070,7 +1168,12 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                   <p>
                     A concrete number of minutes added to a split — e.g. a
                     planned restaurant stop. <strong>Can be negative</strong> to
-                    represent time saved.
+                    represent time saved. Unlike down time, adjustment time does
+                    not add to the active time of a split; it is a separate
+                    quantity that only contributes to elapsed time. This can be
+                    useful if you want to explicitly account for a stop that is
+                    not purely a function of time (i.e. down time ratio does not
+                    capture it well).
                   </p>
                 </Section>
 

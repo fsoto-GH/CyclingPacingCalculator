@@ -286,6 +286,8 @@ export function computeSplitProfile(
       avgGradePct: 0,
       steepPct: 0,
       surface,
+      startLat: closest.lat,
+      startLon: closest.lon,
       endLat: closest.lat,
       endLon: closest.lon,
       endTimezone: tzlookup(closest.lat, closest.lon),
@@ -313,6 +315,7 @@ export function computeSplitProfile(
   const avgGradePct = (elevGainM / (splitDistKm * 1000)) * 100;
   const steepPct = (steepDistKm / splitDistKm) * 100;
 
+  const startPt = slice[0];
   const endPt = slice[slice.length - 1];
 
   return {
@@ -321,6 +324,8 @@ export function computeSplitProfile(
     avgGradePct: Math.round(avgGradePct * 10) / 10,
     steepPct: Math.round(steepPct),
     surface,
+    startLat: startPt.lat,
+    startLon: startPt.lon,
     endLat: endPt.lat,
     endLon: endPt.lon,
     endTimezone: tzlookup(endPt.lat, endPt.lon),
