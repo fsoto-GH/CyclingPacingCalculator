@@ -1,9 +1,15 @@
 /**
  * Overpass API (OpenStreetMap) query for nearby amenities.
  * No API key required. Uses the public overpass-api.de endpoint.
+ *
+ * When paid APIs are enabled (paidApisEnabled=true) the query is routed through
+ * the backend /v1/cycling/nearby_stops proxy instead of hitting Overpass
+ * directly.  The proxy may use Google Places for higher-quality results when
+ * the server has a GOOGLE_PLACES_API_KEY configured.
  */
 
 import type { DayHoursEntry } from "../types";
+import { getNearbyStops } from "../api";
 
 // Define the fixed-length tuple type
 type WeekHours = [
@@ -261,11 +267,18 @@ interface OverpassResponse {
 }
 
 /**
- * Query Overpass API for nearby amenities.
- * @param lat      - Latitude of split endpoint
- * @param lon      - Longitude of split endpoint
- * @param radiusM  - Search radius in metres (default 1000)
- * @param signal   - AbortSignal for cancellation
+ * Query for nearby amenities.
+ *
+ * When `usePaidApi` is true, the request goes through the backend proxy
+ * (/v1/cycling/nearby_stops), which may use Google Places if configured.
+ * Otherwise, Overpass is queried directly with mirror fallback.
+ *
+ * @param lat           - Latitude of split endpoint
+ * @param lon           - Longitude of split endpoint
+ * @param radiusM       - Search radius in metres (default 1000)
+ * @param signal        - AbortSignal for cancellation
+ * @param amenityFilter - Limit to these OSM amenity types
+ * @param usePaidApi    - Route through backend proxy (default false)
  */
 export async function queryNearbyAmenities(
   lat: number,
@@ -273,7 +286,26 @@ export async function queryNearbyAmenities(
   radiusM = 1610,
   signal?: AbortSignal,
   amenityFilter?: string[],
+  usePaidApi = false,
 ): Promise<NearbyAmenity[]> {
+  if (usePaidApi) {
+    // Route through the backend proxy; normalize the response to NearbyAmenity.
+    const raw = await getNearbyStops(lat, lon, radiusM, amenityFilter, signal);
+    return raw.map((r) => ({
+      id: r.id,
+      name: r.name,
+      amenity: r.amenity,
+      distanceM: Math.round(r.distance_m),
+      lat: r.lat,
+      lon: r.lon,
+      address: r.address,
+      streetLine: r.street_line,
+      hasLocality: r.has_locality,
+      hours: null, // backend doesn't parse OSM hours yet
+      rawHours: r.raw_hours ?? null,
+    }));
+  }
+
   const types =
     amenityFilter && amenityFilter.length > 0
       ? amenityFilter.map(sanitizeAmenityType).filter(Boolean)

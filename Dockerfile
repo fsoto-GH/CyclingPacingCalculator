@@ -15,6 +15,10 @@ WORKDIR /pacing
 COPY frontend/package.json frontend/package-lock.json ./frontend/
 RUN cd frontend && npm ci
 COPY frontend/ ./frontend/
+
+# Accept the feature-flag build arg and pass it to Vite
+ARG VITE_ENABLE_PAID_APIS=false
+ENV VITE_ENABLE_PAID_APIS=${VITE_ENABLE_PAID_APIS}
 RUN cd frontend && npm run build
 
 # Install Python deps
