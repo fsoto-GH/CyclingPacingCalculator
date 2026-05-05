@@ -148,7 +148,7 @@ export default function FindNearbyModal({
           <span className="fnm-checks-title">Stop Types</span>
           <button
             type="button"
-            className="fnm-select-all-btn"
+            className="action-btn action-btn-export fnm-select-all-btn"
             onClick={handleSelectAll}
           >
             {AMENITY_LIST.every((t) => selectedTypes.has(t))

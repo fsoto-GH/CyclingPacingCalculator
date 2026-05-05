@@ -6,6 +6,7 @@ import {
   AMENITY_LABELS,
 } from "../calculator/overpass";
 import type { NearbyAmenity } from "../calculator/overpass";
+import { useAppSettings } from "../AppSettingsContext";
 
 function fmtDist(m: number, unitSystem: UnitSystem): string {
   if (unitSystem === "imperial") {
@@ -35,6 +36,7 @@ export default function NearbyStopsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const { paidApisEnabled } = useAppSettings();
 
   const handleSearch = useCallback(async () => {
     abortRef.current?.abort();
@@ -46,7 +48,14 @@ export default function NearbyStopsPanel({
     setResults(null);
 
     try {
-      const amenities = await queryNearbyAmenities(lat, lon, 1000, ctrl.signal);
+      const amenities = await queryNearbyAmenities(
+        lat,
+        lon,
+        1000,
+        ctrl.signal,
+        undefined,
+        paidApisEnabled,
+      );
       // Sort: distance ascending, then those with hours before those without
       amenities.sort((a, b) => {
         if (a.distanceM !== b.distanceM) return a.distanceM - b.distanceM;

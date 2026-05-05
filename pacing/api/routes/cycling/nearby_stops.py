@@ -68,7 +68,7 @@ def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 async def _query_overpass(
     lat: float,
     lon: float,
-    radius_m: int,
+    radius_m: float,
     types: list[str],
 ) -> list[NearbyAmenity]:
     type_str = "|".join(types)
@@ -139,31 +139,49 @@ async def _query_overpass(
 async def _query_google_places(
     lat: float,
     lon: float,
-    radius_m: int,
+    radius_m: float,
     types: list[str],
 ) -> list[NearbyAmenity]:
     """
     Call Google Places Nearby Search (New) API.
     Maps OSM amenity types to Google place types as best as possible.
     """
-    # Google → OSM amenity mapping (inverted here)
-    GOOGLE_TYPE_MAP: dict[str, list[str]] = {
-        "gas_station": ["fuel"],
-        "grocery_or_supermarket": ["supermarket", "convenience"],
+    # OSM amenity -> Google Places (New) place types.
+    # Keep this to known, broadly supported types to avoid 400s from invalid
+    # legacy type names.
+    OSM_TO_GOOGLE_TYPES: dict[str, list[str]] = {
+        "fuel": ["gas_station"],
+        "supermarket": ["supermarket"],
+        "convenience": ["convenience_store"],
         "pharmacy": ["pharmacy"],
-        "restaurant": ["restaurant", "food_court"],
+        "restaurant": ["restaurant"],
+        "food_court": ["food_court"],
         "cafe": ["cafe"],
-        "fast_food_restaurant": ["fast_food"],
-        "ice_cream_shop": ["ice_cream"],
+        "fast_food": ["meal_takeaway"],
+        "ice_cream": ["ice_cream_shop"],
     }
-    # Build the set of Google types that cover the requested OSM types
+
     requested = set(types)
     google_types: list[str] = []
-    for g_type, osm_types in GOOGLE_TYPE_MAP.items():
-        if requested.intersection(osm_types):
-            google_types.append(g_type)
+    for osm_type in requested:
+        google_types.extend(OSM_TO_GOOGLE_TYPES.get(osm_type, []))
+
+    # Deduplicate while preserving order.
+    google_types = list(dict.fromkeys(google_types))
+
+    # Fallback default type set if caller passed unknown OSM amenity filters.
     if not google_types:
-        google_types = list(GOOGLE_TYPE_MAP.keys())
+        google_types = [
+            "gas_station",
+            "supermarket",
+            "convenience_store",
+            "pharmacy",
+            "restaurant",
+            "food_court",
+            "cafe",
+            "meal_takeaway",
+            "ice_cream_shop",
+        ]
 
     url = "https://places.googleapis.com/v1/places:searchNearby"
     headers = {
@@ -187,7 +205,14 @@ async def _query_google_places(
     }
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.post(url, json=body, headers=headers)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # Bubble up the provider response body so callers can diagnose
+            # invalid type names / field masks / project config issues.
+            raise RuntimeError(
+                f"Google Places HTTP {exc.response.status_code}: {exc.response.text}"
+            )
         data = resp.json()
 
     results: list[NearbyAmenity] = []
@@ -201,11 +226,24 @@ async def _query_google_places(
         # Derive best-matching OSM amenity type from Google types
         g_types_for_place: list[str] = place.get("types", [])
         amenity = ""
-        for g_type in g_types_for_place:
-            osm = GOOGLE_TYPE_MAP.get(g_type, [])
-            if osm:
-                amenity = osm[0]
-                break
+        if "gas_station" in g_types_for_place:
+            amenity = "fuel"
+        elif "supermarket" in g_types_for_place:
+            amenity = "supermarket"
+        elif "convenience_store" in g_types_for_place:
+            amenity = "convenience"
+        elif "pharmacy" in g_types_for_place:
+            amenity = "pharmacy"
+        elif "restaurant" in g_types_for_place:
+            amenity = "restaurant"
+        elif "food_court" in g_types_for_place:
+            amenity = "food_court"
+        elif "cafe" in g_types_for_place:
+            amenity = "cafe"
+        elif "meal_takeaway" in g_types_for_place:
+            amenity = "fast_food"
+        elif "ice_cream_shop" in g_types_for_place:
+            amenity = "ice_cream"
         # Use a stable int id derived from the place ID string
         place_id_str: str = place.get("id", "")
         fake_id = abs(hash(place_id_str)) % (10 ** 9)
@@ -229,7 +267,7 @@ async def _query_google_places(
 async def nearby_stops(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
-    radius_m: int = Query(1610, ge=50, le=50_000),
+    radius_m: float = Query(1610, ge=50, le=50_000),
     amenity_filter: Optional[str] = Query(
         None,
         description="Comma-separated OSM amenity types to include",
@@ -245,11 +283,25 @@ async def nearby_stops(
         else DEFAULT_AMENITY_TYPES[:]
     )
 
-    try:
-        if settings.google_places_api_key:
+    if settings.google_places_api_key:
+        try:
             return await _query_google_places(lat, lon, radius_m, types)
-        else:
-            return await _query_overpass(lat, lon, radius_m, types)
+        except Exception as google_exc:
+            # Fail open to Overpass so nearby-stops still works when Google
+            # rejects the request (e.g., invalid type, billing/config issue).
+            try:
+                return await _query_overpass(lat, lon, radius_m, types)
+            except Exception as overpass_exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Nearby-stops lookup failed: "
+                        f"Google error: {google_exc}; Overpass error: {overpass_exc}"
+                    ),
+                )
+
+    try:
+        return await _query_overpass(lat, lon, radius_m, types)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

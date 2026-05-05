@@ -48,6 +48,8 @@ import {
   fetchSplitWeatherPairs,
   type SplitWeatherPair,
 } from "../calculator/weather";
+import { useAppSettings } from "../AppSettingsContext";
+import { PAID_APIS_ENABLED } from "../config";
 import tzlookup from "tz-lookup";
 import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
@@ -74,10 +76,13 @@ const ExampleModal = lazy(() => import("./ExampleModal"));
 const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
 const ConfirmModal = lazy(() => import("./ConfirmModal"));
 const ProjectionsView = lazy(() => import("./ProjectionsView.tsx"));
+const GpxSearchModal = lazy(() => import("./GpxSearchModal"));
+const RacePlanModal = lazy(() => import("./RacePlanModal"));
 import { EXAMPLES } from "../examples";
 import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
 import { FieldErrorContext, FieldError, AllErrorsContext } from "./FieldError";
 import NumberInput from "./NumberInput";
+import PaidApiToggle from "./PaidApiToggle";
 
 function makeDefaultSegment(): SegmentFormState {
   return {
@@ -315,6 +320,8 @@ export default function CourseForm() {
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [gpxSearchOpen, setGpxSearchOpen] = useState(false);
+  const [racePlanOpen, setRacePlanOpen] = useState(false);
   const [confirmExampleOpen, setConfirmExampleOpen] = useState(false);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
@@ -444,6 +451,14 @@ export default function CourseForm() {
     [],
   );
 
+  const handleGoToPlanningSplit = useCallback(
+    (segIdx: number, splitIdx: number) => {
+      setActiveTab("planning");
+      handleMapMarkerClick(segIdx, splitIdx);
+    },
+    [handleMapMarkerClick],
+  );
+
   // Clear mapNavTarget after children have consumed the signal so stale
   // values don't re-fire when components remount (collapse → expand).
   useEffect(() => {
@@ -551,6 +566,8 @@ export default function CourseForm() {
     new URLSearchParams(window.location.search).get("engine") === "api"
       ? "api"
       : "client";
+
+  const { paidApisEnabled, user } = useAppSettings();
 
   // Persist form to localStorage on every change
   useEffect(() => {
@@ -1013,6 +1030,21 @@ export default function CourseForm() {
     });
   }, []);
 
+  /** Load GPX track points directly (from RideWithGPS API) without a file. */
+  const handleGpxLoadDirect = useCallback(
+    (track: import("../types").GpxTrackPoint[], routeName: string) => {
+      setGpxFileName(routeName);
+      setGpxTrack(track);
+      setGpxSurface(null);
+      setGpxMissingWarning(null);
+      if (track.length > 0) {
+        const detectedTz = tzlookup(track[0].lat, track[0].lon);
+        if (detectedTz) update({ timezone: detectedTz });
+      }
+    },
+    [],
+  );
+
   const sLabel = speedLabel(form.unitSystem);
   const dLabel = distanceLabel(form.unitSystem);
   const fmtInTz = formatIsoInTzShort;
@@ -1106,6 +1138,7 @@ export default function CourseForm() {
     setWeatherLoading(true);
     fetchSplitWeatherPairs(
       flatSplits.filter((s) => s.startLat !== 0 || s.endLat !== 0),
+      paidApisEnabled,
     )
       .then((flat) => {
         let fi = 0;
@@ -1950,6 +1983,17 @@ export default function CourseForm() {
                 style={{ display: "none" }}
                 onChange={handleImport}
               />
+              {PAID_APIS_ENABLED && user && (
+                <button
+                  type="button"
+                  className="nav-btn"
+                  onClick={() => setRacePlanOpen(true)}
+                  title="Save or load race plans"
+                >
+                  <i className="fa-solid fa-cloud" />
+                  <span className="nav-btn-label">My Plans</span>
+                </button>
+              )}
               <button
                 type="button"
                 className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
@@ -1977,9 +2021,26 @@ export default function CourseForm() {
                 style={{ display: "none" }}
                 onChange={handleGpxLoad}
               />
+              {PAID_APIS_ENABLED && paidApisEnabled && (
+                <button
+                  type="button"
+                  className="nav-btn"
+                  onClick={() => setGpxSearchOpen(true)}
+                  title="Search and import routes from RideWithGPS"
+                >
+                  <span className="nav-btn-icon">
+                    <i className="fas fa-search" />
+                  </span>
+                  <span className="nav-btn-label">Search RideWithGPS</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Paid-API toggle — only rendered when built with VITE_ENABLE_PAID_APIS=true */}
+        {PAID_APIS_ENABLED && <PaidApiToggle />}
+
         <p className="app-description">
           Plan multi-day cycling events with detailed pacing, rest stops, and
           time estimates. Define segments and splits with custom speeds, decay
@@ -2349,6 +2410,29 @@ export default function CourseForm() {
               onConfirm={handleConvertUnitSystem}
               onCancel={handleKeepUnitSystemValues}
             />
+
+            {/* Paid-feature modals — only rendered when feature flag is on */}
+            {PAID_APIS_ENABLED && (
+              <GpxSearchModal
+                open={gpxSearchOpen}
+                onClose={() => setGpxSearchOpen(false)}
+                onSelect={(track, routeName) => {
+                  handleGpxLoadDirect(track, routeName);
+                  setGpxSearchOpen(false);
+                }}
+              />
+            )}
+            {PAID_APIS_ENABLED && user && (
+              <RacePlanModal
+                open={racePlanOpen}
+                onClose={() => setRacePlanOpen(false)}
+                currentForm={form}
+                onLoad={(loadedForm) => {
+                  setForm(loadedForm);
+                  setRacePlanOpen(false);
+                }}
+              />
+            )}
           </Suspense>
 
           <div
@@ -3306,6 +3390,7 @@ export default function CourseForm() {
                   etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
                   etaMarginClose={parseInt(etaMargins.close, 10) || 7}
                   splitWeather={splitWeather}
+                  onGoToSplit={handleGoToPlanningSplit}
                 />
               </Suspense>
             </div>

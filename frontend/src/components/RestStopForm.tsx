@@ -189,7 +189,8 @@ export default function RestStopFormComponent({
               onChange={(e) => setAddressDraft(e.target.value)}
               onBlur={() => {
                 if (addressDraft !== value.address) {
-                  update({ address: addressDraft });
+                  // Clear coords so map geocoding can refresh from the new address.
+                  update({ address: addressDraft, lat: null, lon: null });
                 }
               }}
               onKeyDown={(e) => {

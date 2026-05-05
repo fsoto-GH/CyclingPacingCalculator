@@ -36,6 +36,7 @@ import { reverseGeocode, forwardGeocode } from "../calculator/geocode";
 import type { NearbyAmenity } from "../calculator/overpass";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
+import { useAppSettings } from "../AppSettingsContext";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ export default function TransitSegmentMap({
 
   // ── Nearby search state ────────────────────────────────────────────────────
   const { radiusM, selectedTypes, customTypes } = useContext(AmenityContext);
+  const { paidApisEnabled } = useAppSettings();
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
   const [showNearby, setShowNearby] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -303,6 +305,7 @@ export default function TransitSegmentMap({
           searchRadius,
           ctrl.signal,
           all,
+          paidApisEnabled,
         );
         if (ctrl.signal.aborted) return;
         const byDistThenName = (a: NearbyAmenity, b: NearbyAmenity) =>

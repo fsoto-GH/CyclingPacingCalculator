@@ -1,14 +1,17 @@
 import CourseForm from "./components/CourseForm";
 import { AmenityProvider } from "./amenityContext";
+import { AppSettingsProvider } from "./AppSettingsContext";
 import "./App.css";
 
 function App() {
   return (
-    <AmenityProvider>
-      <div className="app-container">
-        <CourseForm />
-      </div>
-    </AmenityProvider>
+    <AppSettingsProvider>
+      <AmenityProvider>
+        <div className="app-container">
+          <CourseForm />
+        </div>
+      </AmenityProvider>
+    </AppSettingsProvider>
   );
 }
 

@@ -35,6 +35,7 @@ import { reverseGeocode, forwardGeocode } from "../calculator/geocode";
 import type { NearbyAmenity } from "../calculator/overpass";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
+import { useAppSettings } from "../AppSettingsContext";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -371,6 +372,7 @@ export default function SplitEndpointMap({
 }: SplitEndpointMapProps) {
   const [showNearby, setShowNearby] = useState(false);
   const { radiusM, selectedTypes, customTypes } = useContext(AmenityContext);
+  const { paidApisEnabled } = useAppSettings();
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -546,6 +548,7 @@ export default function SplitEndpointMap({
           searchRadius,
           ctrl.signal,
           all,
+          paidApisEnabled,
         );
         if (ctrl.signal.aborted) return;
         const byDistThenName = (a: NearbyAmenity, b: NearbyAmenity) =>

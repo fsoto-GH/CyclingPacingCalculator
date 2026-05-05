@@ -109,6 +109,7 @@ interface ProjectionsViewProps {
   etaMarginOpen?: number;
   etaMarginClose?: number;
   splitWeather?: (SplitWeatherPair | null)[][] | null;
+  onGoToSplit?: (segIdx: number, splitIdx: number) => void;
 }
 
 export default function ProjectionsView({
@@ -129,6 +130,7 @@ export default function ProjectionsView({
   etaMarginOpen = 15,
   etaMarginClose = 7,
   splitWeather,
+  onGoToSplit,
 }: ProjectionsViewProps) {
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
@@ -192,6 +194,7 @@ export default function ProjectionsView({
             etaMarginOpen={etaMarginOpen}
             etaMarginClose={etaMarginClose}
             segmentWeather={splitWeather?.[segIndex] ?? null}
+            onGoToSplit={onGoToSplit}
           />
         );
       })}
@@ -357,6 +360,7 @@ function ProjectionSegment({
   etaMarginOpen,
   etaMarginClose,
   segmentWeather,
+  onGoToSplit,
 }: {
   segment: SegmentDetail;
   segIndex: number;
@@ -379,6 +383,7 @@ function ProjectionSegment({
   etaMarginOpen: number;
   etaMarginClose: number;
   segmentWeather?: (SplitWeatherPair | null)[] | null;
+  onGoToSplit?: (segIdx: number, splitIdx: number) => void;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
@@ -855,8 +860,28 @@ function ProjectionSegment({
             )}
           </div>
 
-          {(citySummary || sleepHms) && (
+          {(citySummary ||
+            sleepHms ||
+            (isTransitSegment &&
+              transitFormSplit?.rest_stop.enabled &&
+              transitEtaInfo)) && (
             <div className="proj-segment-header-location split-header-city">
+              {isTransitSegment &&
+                transitFormSplit?.rest_stop.enabled &&
+                transitEtaInfo && (
+                  <span
+                    className={`eta-badge eta-${transitEtaInfo.status}`}
+                    title={`${transitEtaInfo.statusWord} (${transitEtaInfo.nearDetail ? transitEtaInfo.nearDetail : transitEtaInfo.hoursLabel})`}
+                  >
+                    {transitEtaInfo.status === "open" &&
+                      (transitEtaInfo.hoursLabel === "24 hours"
+                        ? "24/7"
+                        : "Open")}
+                    {transitEtaInfo.status === "near-open" && "Near open"}
+                    {transitEtaInfo.status === "near-close" && "Near close"}
+                    {transitEtaInfo.status === "closed" && "Closed"}
+                  </span>
+                )}
               {citySummary && (
                 <span className="proj-segment-city">{citySummary}</span>
               )}
@@ -1245,6 +1270,17 @@ function ProjectionSegment({
 
           {isTransitSegment ? (
             <div className="split-results-panel">
+              {onGoToSplit && (
+                <div className="proj-split-actions">
+                  <button
+                    type="button"
+                    className="split-action-btn"
+                    onClick={() => onGoToSplit(segIndex, 0)}
+                  >
+                    <i className="fas fa-arrow-down" /> Go to split
+                  </button>
+                </div>
+              )}
               {transitSplit && (
                 <dl className="split-results-grid proj-split-results-grid">
                   <div>
@@ -1373,6 +1409,7 @@ function ProjectionSegment({
                 {segment.split_details.map((split, splitIndex) => (
                   <ProjectionSplit
                     key={splitIndex}
+                    segIndex={segIndex}
                     split={split}
                     splitIndex={splitIndex}
                     formSplit={formSegment?.splits[splitIndex]}
@@ -1399,6 +1436,7 @@ function ProjectionSegment({
                         : undefined
                     }
                     splitWeather={segmentWeather?.[splitIndex] ?? null}
+                    onGoToSplit={onGoToSplit}
                   />
                 ))}
               </div>
@@ -1411,6 +1449,7 @@ function ProjectionSegment({
 }
 
 function ProjectionSplit({
+  segIndex,
   split,
   splitIndex,
   formSplit,
@@ -1429,7 +1468,9 @@ function ProjectionSplit({
   segColor,
   expandSignal,
   splitWeather,
+  onGoToSplit,
 }: {
+  segIndex: number;
   split: SplitDetail;
   splitIndex: number;
   formSplit: SegmentForm["splits"][number] | undefined;
@@ -1448,6 +1489,7 @@ function ProjectionSplit({
   segColor: string;
   expandSignal?: number;
   splitWeather?: SplitWeatherPair | null;
+  onGoToSplit?: (segIdx: number, splitIdx: number) => void;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
@@ -1560,6 +1602,19 @@ function ProjectionSplit({
           <div className="split-header-left proj-split-header-main">
             <div className="split-header-titlerow">
               <span className="split-header-title">{name}</span>
+              {onGoToSplit && (
+                <button
+                  type="button"
+                  className="split-action-btn proj-go-to-split-btn"
+                  title="Go to split in Planning"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onGoToSplit(segIndex, splitIndex);
+                  }}
+                >
+                  <i className="fas fa-arrow-down" /> Go to split
+                </button>
+              )}
             </div>
             {(profile || splitDistUser != null) && (
               <div className="split-header-meta">

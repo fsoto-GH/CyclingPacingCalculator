@@ -3908,20 +3908,23 @@ dialog {
 }
 
 .auto-name-prefix-input {
-  background: #1a1a2e;
+  height: 30px;
+  background: #222222;
   border: 1px solid #3a3a3a;
   border-radius: 4px;
-  color: #e2e8f0;
-  font-size: 0.82rem;
-  padding: 0.28rem 0.55rem;
+  color: #ffffff;
+  font-size: 0.85rem;
+  padding: 0 0.5rem;
   outline: none;
   transition: border-color 0.15s;
   width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .auto-name-prefix-input:focus {
   border-color: #4361ee;
+  box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
 }
 
 .auto-name-prefix-preview {
@@ -6275,18 +6278,13 @@ dialog {
 }
 
 .fnm-select-all-btn {
-  background: none;
-  border: none;
-  color: var(--accent, #6b8aff);
-  font-size: 0.75rem;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  min-width: 0;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
 }
 
 .fnm-select-all-btn:hover {
-  color: #93a8ff;
+  color: #fff;
 }
 
 .fnm-select-all-btn:disabled {
@@ -6362,18 +6360,20 @@ dialog {
 
 .fnm-custom-input {
   width: 100%;
+  height: 30px;
   box-sizing: border-box;
-  padding: 0.4rem 0.6rem;
-  background: #0f172a;
-  border: 1px solid #334155;
+  padding: 0 0.5rem;
+  background: #222222;
+  border: 1px solid #3a3a3a;
   border-radius: 4px;
-  color: #e2e8f0;
-  font-size: 0.8rem;
+  color: #ffffff;
+  font-size: 0.85rem;
 }
 
 .fnm-custom-input:focus {
   outline: none;
   border-color: #4361ee;
+  box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
 }
 
 .fnm-custom-input:disabled {
@@ -6512,3 +6512,414 @@ dialog {
   letter-spacing: 0.02em;
 }
 
+
+/* -- Paid API Toggle ------------------------------------------------------- */
+.paid-api-toggle-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.paid-api-toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.paid-api-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.paid-api-toggle-text {
+  font-weight: 600;
+}
+
+.paid-api-toggle-label-disabled {
+  opacity: 0.58;
+}
+
+/* Visually-hidden real checkbox */
+.paid-api-toggle-label input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.paid-api-toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.paid-api-toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: #334155;
+  border-radius: 20px;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.paid-api-toggle-slider::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.paid-api-toggle-label input:checked + .paid-api-toggle-slider {
+  background: #3b82f6;
+}
+
+.paid-api-toggle-label input:checked + .paid-api-toggle-slider::after {
+  transform: translateX(16px);
+}
+
+.paid-api-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.paid-api-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.paid-api-user-name {
+  font-size: 0.82rem;
+  color: #e2e8f0;
+}
+
+.paid-api-signout,
+.paid-api-signin {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.paid-api-signout:hover,
+.paid-api-signin:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+/* -- GPX Search Modal ------------------------------------------------------ */
+.gpx-auth-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  min-height: 2rem;
+}
+
+.gpx-auth-status {
+  font-size: 0.82rem;
+  color: #4ade80;
+}
+
+.gpx-subtitle {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.gpx-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.gpx-mode-tab {
+  border: none;
+  background: #252525;
+  color: #aaaaaa;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+  border-right: 1px solid #3a3a3a;
+}
+
+.gpx-mode-tab:last-child {
+  border-right: none;
+}
+
+.gpx-mode-tab.is-active {
+  background: #4361ee;
+  color: #ffffff;
+}
+
+.gpx-field-label {
+  display: block;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+  margin: 0 0 0.35rem;
+}
+
+.gpx-route-id-panel {
+  margin-bottom: 0.75rem;
+}
+
+.gpx-route-id-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.gpx-help {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.gpx-collection-select {
+  width: 100%;
+  margin-bottom: 0.8rem;
+  height: 30px;
+  padding: 0 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #3a3a3a;
+  background: #222222;
+  color: #ffffff;
+  font-size: 0.85rem;
+}
+
+.gpx-route-list {
+  max-height: 250px;
+  overflow: auto;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0b1220;
+}
+
+.gpx-route-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid #1f2937;
+  background: transparent;
+  color: #e2e8f0;
+  padding: 0.65rem 0.8rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.gpx-route-item:last-child {
+  border-bottom: none;
+}
+
+.gpx-route-item:hover {
+  background: #111827;
+}
+
+.gpx-route-item.is-selected {
+  background: #1f2f48;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #64748b;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  color: #94a3b8;
+}
+
+.gpx-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.gpx-search-input {
+  flex: 1;
+  height: 30px;
+  padding: 0 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #3a3a3a;
+  background: #222222;
+  color: #ffffff;
+  font-size: 0.85rem;
+}
+
+.gpx-search-input:focus {
+  outline: none;
+  border-color: #4361ee;
+  box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
+}
+
+.gpx-route-extra {
+  color: #94a3b8;
+  font-size: 0.76rem;
+}
+
+.gpx-search-locality {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.gpx-search-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin: 0.2rem 0 0;
+}
+
+.gpx-search-desc {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin: 0.25rem 0 0;
+}
+
+.gpx-search-empty {
+  color: #64748b;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.gpx-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+.gpx-page-label {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.gpx-page-total {
+  color: #64748b;
+}
+
+.gpx-pagination .action-btn {
+  min-width: 34px;
+  padding: 0.25rem 0.45rem;
+}
+
+.gpx-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #334155;
+}
+
+.proj-split-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.65rem;
+}
+
+.proj-go-to-split-btn {
+  margin-left: 0.45rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.74rem;
+}
+
+/* -- Race Plan Modal ------------------------------------------------------- */
+.race-plan-save-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.race-plan-name-input,
+.race-plan-rename-input {
+  flex: 1;
+  min-width: 140px;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.88rem;
+}
+
+.race-plan-public-label {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.race-plan-title {
+  cursor: pointer;
+}
+
+.race-plan-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.race-plan-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.race-plan-delete-btn {
+  color: #f87171;
+}
+
+.race-plan-inline-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.race-plan-inline-btn:hover {
+  color: #cbd5e1;
+}

@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # RideWithGPS API key for route search and GPX import.
     ridewithgps_api_key: Optional[str] = None
 
+    # RideWithGPS OAuth 2.0 credentials.
+    # Create an API client at https://ridewithgps.com/settings/developers and
+    # register a Redirect URI of <backend-base-url>/v1/cycling/rwgps/oauth/callback.
+    ridewithgps_client_id: Optional[str] = None
+    ridewithgps_client_secret: Optional[str] = None
+
     # Weather API key placeholder — provider TBD (OpenWeatherMap / Google Weather).
     weather_api_key: Optional[str] = None
 

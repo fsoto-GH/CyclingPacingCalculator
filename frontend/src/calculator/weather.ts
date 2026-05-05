@@ -220,8 +220,57 @@ function findBestHour(h: HourlyData, targetMs: number): number {
 const locKey = (lat: number, lon: number) =>
   `${lat.toFixed(2)},${lon.toFixed(2)}`;
 
+/**
+ * Resolve a URL for a batch weather request.
+ * When usePaidApi is true, the request goes through the backend proxy at
+ * /v1/cycling/forecast so API keys stay server-side.
+ */
+function forecastUrl(
+  lats: string,
+  lons: string,
+  forecastDays: number,
+  usePaidApi: boolean,
+): string {
+  if (usePaidApi) {
+    return (
+      `/v1/cycling/forecast` +
+      `?lat=${lats}&lon=${lons}&mode=forecast&forecast_days=${forecastDays}`
+    );
+  }
+  return (
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lats}&longitude=${lons}` +
+    `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,cloud_cover,is_day` +
+    `&forecast_days=${forecastDays}` +
+    `&timeformat=iso8601`
+  );
+}
+
+function archiveUrl(
+  lats: string,
+  lons: string,
+  startDate: string,
+  endDate: string,
+  usePaidApi: boolean,
+): string {
+  if (usePaidApi) {
+    return (
+      `/v1/cycling/forecast` +
+      `?lat=${lats}&lon=${lons}&mode=archive&start_date=${startDate}&end_date=${endDate}`
+    );
+  }
+  return (
+    `https://archive-api.open-meteo.com/v1/archive` +
+    `?latitude=${lats}&longitude=${lons}` +
+    `&start_date=${startDate}&end_date=${endDate}` +
+    `&hourly=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,cloud_cover` +
+    `&timeformat=iso8601`
+  );
+}
+
 export async function fetchSplitWeather(
   splits: { lat: number; lon: number; endTimeIso: string }[],
+  usePaidApi = false,
 ): Promise<{
   results: (SplitWeather | null)[];
   cache: Map<string, HourlyData>;
@@ -268,12 +317,7 @@ export async function fetchSplitWeather(
       const batch = locEntries.slice(i, i + BATCH);
       const lats = batch.map(([, v]) => v.lat).join(",");
       const lons = batch.map(([, v]) => v.lon).join(",");
-      const url =
-        `https://api.open-meteo.com/v1/forecast` +
-        `?latitude=${lats}&longitude=${lons}` +
-        `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,cloud_cover,is_day` +
-        `&forecast_days=16` +
-        `&timeformat=iso8601`;
+      const url = forecastUrl(lats, lons, 16, usePaidApi);
       try {
         const resp = await fetch(url);
         if (!resp.ok) continue;
@@ -338,12 +382,13 @@ export async function fetchSplitWeather(
         if (v.minDate < bMin) bMin = v.minDate;
         if (v.maxDate > bMax) bMax = v.maxDate;
       }
-      const url =
-        `https://archive-api.open-meteo.com/v1/archive` +
-        `?latitude=${lats}&longitude=${lons}` +
-        `&start_date=${toDateStr(bMin)}&end_date=${toDateStr(bMax)}` +
-        `&hourly=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,cloud_cover` +
-        `&timeformat=iso8601`;
+      const url = archiveUrl(
+        lats,
+        lons,
+        toDateStr(bMin),
+        toDateStr(bMax),
+        usePaidApi,
+      );
       type ArchiveResponse = {
         hourly: Omit<HourlyData, "precipitation_probability" | "is_day">;
       };
@@ -419,6 +464,7 @@ export async function fetchSplitWeatherPairs(
     endLon: number;
     endTimeIso: string;
   }[],
+  usePaidApi = false,
 ): Promise<SplitWeatherPair[]> {
   if (splits.length === 0) return [];
 
@@ -428,7 +474,7 @@ export async function fetchSplitWeatherPairs(
     { lat: s.endLat, lon: s.endLon, endTimeIso: s.endTimeIso },
   ]);
 
-  const { results, cache } = await fetchSplitWeather(flat);
+  const { results, cache } = await fetchSplitWeather(flat, usePaidApi);
 
   return splits.map((s, i) => {
     const start = results[i * 2] ?? null;

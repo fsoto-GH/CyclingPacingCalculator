@@ -11,26 +11,57 @@ interface PaidApiToggleProps {
  * Only mount this component when PAID_APIS_ENABLED === true (checked by caller).
  */
 export default function PaidApiToggle({ className }: PaidApiToggleProps) {
-  const { paidApisEnabled, setPaidApisEnabled } = useAppSettings();
+  const {
+    paidApisFrontendEnabled,
+    setPaidApisFrontendEnabled,
+    useFreemiumApis,
+    setUseFreemiumApis,
+    paidApisEnabled,
+  } = useAppSettings();
   const { user, authLoading, login, logout } = useAuth();
 
   return (
     <div className={`paid-api-toggle-bar${className ? ` ${className}` : ""}`}>
-      <label className="paid-api-toggle-label">
-        <span className="paid-api-toggle-text">
-          {paidApisEnabled ? "Premium APIs on" : "Premium APIs off"}
-        </span>
-        <span className="paid-api-toggle-switch">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={paidApisEnabled}
-            onChange={(e) => setPaidApisEnabled(e.target.checked)}
-            aria-label="Enable premium APIs"
-          />
-          <span className="paid-api-toggle-slider" />
-        </span>
-      </label>
+      <div className="paid-api-toggle-group">
+        <label className="paid-api-toggle-label">
+          <span className="paid-api-toggle-text">
+            {paidApisFrontendEnabled
+              ? "Enable paid APIs"
+              : "Paid APIs disabled"}
+          </span>
+          <span className="paid-api-toggle-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={paidApisFrontendEnabled}
+              onChange={(e) => setPaidApisFrontendEnabled(e.target.checked)}
+              aria-label="Enable paid APIs"
+            />
+            <span className="paid-api-toggle-slider" />
+          </span>
+        </label>
+
+        <label
+          className={`paid-api-toggle-label${
+            !paidApisFrontendEnabled ? " paid-api-toggle-label-disabled" : ""
+          }`}
+        >
+          <span className="paid-api-toggle-text">
+            {paidApisEnabled ? "Using freemium APIs" : "Using free APIs"}
+          </span>
+          <span className="paid-api-toggle-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={paidApisFrontendEnabled && useFreemiumApis}
+              onChange={(e) => setUseFreemiumApis(e.target.checked)}
+              disabled={!paidApisFrontendEnabled}
+              aria-label="Use freemium APIs"
+            />
+            <span className="paid-api-toggle-slider" />
+          </span>
+        </label>
+      </div>
 
       {!authLoading &&
         (user ? (

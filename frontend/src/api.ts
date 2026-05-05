@@ -97,53 +97,6 @@ export async function getForecast(
   return resp.data;
 }
 
-// ── GPX search / import (RideWithGPS) ─────────────────────────────────────────
-
-export interface RouteSearchResult {
-  id: number;
-  name: string;
-  distance_m: number;
-  description: string | null;
-  locality: string | null;
-  user_name: string | null;
-  preview_photo_url: string | null;
-}
-
-export async function searchGpxRoutes(
-  q: string,
-  offset = 0,
-  limit = 20,
-): Promise<RouteSearchResult[]> {
-  const resp = await axios.get<RouteSearchResult[]>("/v1/cycling/gpx/search", {
-    params: { q, offset, limit },
-    withCredentials: true,
-  });
-  return resp.data;
-}
-
-export interface GpxTrackPointApi {
-  lat: number;
-  lon: number;
-  ele: number;
-  cumDist: number;
-}
-
-export interface RouteDetail {
-  id: number;
-  name: string;
-  distance_m: number;
-  description: string | null;
-  locality: string | null;
-  track_points: GpxTrackPointApi[];
-}
-
-export async function getGpxRoute(id: number): Promise<RouteDetail> {
-  const resp = await axios.get<RouteDetail>(`/v1/cycling/gpx/${id}`, {
-    withCredentials: true,
-  });
-  return resp.data;
-}
-
 // ── Race plans ────────────────────────────────────────────────────────────────
 
 export interface RacePlanSummary {
@@ -156,7 +109,7 @@ export interface RacePlanSummary {
 }
 
 export interface RacePlanFull extends RacePlanSummary {
-  payload: CoursePayload;
+  payload: unknown;
 }
 
 export async function listRacePlans(): Promise<RacePlanSummary[]> {
@@ -176,7 +129,7 @@ export async function getRacePlan(id: string): Promise<RacePlanFull> {
 export async function createRacePlan(
   name: string,
   isPublic: boolean,
-  payload: CoursePayload,
+  payload: unknown,
 ): Promise<RacePlanFull> {
   const resp = await axios.post<RacePlanFull>(
     "/v1/cycling/race_plan",
@@ -188,7 +141,7 @@ export async function createRacePlan(
 
 export async function updateRacePlan(
   id: string,
-  patch: Partial<{ name: string; is_public: boolean; payload: CoursePayload }>,
+  patch: Partial<{ name: string; is_public: boolean; payload: unknown }>,
 ): Promise<RacePlanFull> {
   const resp = await axios.put<RacePlanFull>(
     `/v1/cycling/race_plan/${id}`,
