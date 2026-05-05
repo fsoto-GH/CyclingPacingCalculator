@@ -6,6 +6,7 @@ import React, {
   useCallback,
 } from "react";
 import { getAuthUser } from "./api";
+import { PAID_APIS_ENABLED } from "./config";
 
 export interface AuthUser {
   id: string;
@@ -98,11 +99,18 @@ export function AppSettingsProvider({
 
   // Hydrate user from the server on mount (session cookie already set by browser)
   useEffect(() => {
+    if (!PAID_APIS_ENABLED || !paidApisFrontendEnabled) {
+      setUser(null);
+      setAuthLoading(false);
+      return;
+    }
+
+    setAuthLoading(true);
     getAuthUser()
       .then((u) => setUser(u))
       .catch(() => setUser(null))
       .finally(() => setAuthLoading(false));
-  }, []);
+  }, [paidApisFrontendEnabled]);
 
   return (
     <AppSettingsContext.Provider

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RestStopForm, DayHoursEntry } from "../types";
 import { FieldError } from "./FieldError";
 import DayHoursInput from "./DayHoursInput";
+import { parseHighPrecisionCoordinateAddress } from "../calculator/geocode";
 
 interface EtaInfo {
   status: "open" | "near-open" | "near-close" | "closed";
@@ -186,11 +187,32 @@ export default function RestStopFormComponent({
               id={`${prefix}-address`}
               type="text"
               value={addressDraft}
-              onChange={(e) => setAddressDraft(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setAddressDraft(next);
+
+                // For precise coordinate input, commit immediately so the map
+                // marker appears without waiting for blur.
+                const parsed = parseHighPrecisionCoordinateAddress(next);
+                if (!parsed) return;
+                if (
+                  value.address === next &&
+                  value.lat === parsed.lat &&
+                  value.lon === parsed.lon
+                ) {
+                  return;
+                }
+                update({ address: next, lat: parsed.lat, lon: parsed.lon });
+              }}
               onBlur={() => {
+                if (parseHighPrecisionCoordinateAddress(addressDraft)) return;
                 if (addressDraft !== value.address) {
                   // Clear coords so map geocoding can refresh from the new address.
-                  update({ address: addressDraft, lat: null, lon: null });
+                  update({
+                    address: addressDraft,
+                    lat: undefined,
+                    lon: undefined,
+                  });
                 }
               }}
               onKeyDown={(e) => {

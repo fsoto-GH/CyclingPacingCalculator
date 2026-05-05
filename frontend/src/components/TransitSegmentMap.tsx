@@ -25,6 +25,7 @@ import {
   fmtDist,
   makeRestStopIcon,
   ScrollWheelActivator,
+  useRestStopGeocode,
 } from "../calculator/mapUtils";
 import {
   AMENITY_ICONS,
@@ -32,7 +33,7 @@ import {
   AMENITY_COLORS,
   queryNearbyAmenities,
 } from "../calculator/overpass";
-import { reverseGeocode, forwardGeocode } from "../calculator/geocode";
+import { reverseGeocode } from "../calculator/geocode";
 import type { NearbyAmenity } from "../calculator/overpass";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
@@ -183,41 +184,7 @@ export default function TransitSegmentMap({
   }, [restStop?.enabled, restStop?.lat, restStop?.lon]);
 
   // Forward-geocode the rest stop address when coords are not yet set
-  const geocodeAbortRef = useRef<AbortController | null>(null);
-  useEffect(() => {
-    const rs = restStop;
-    if (!rs?.enabled || !rs.address?.trim()) return;
-    if (rs.lat != null && rs.lon != null) return;
-
-    geocodeAbortRef.current?.abort();
-    const ctrl = new AbortController();
-    geocodeAbortRef.current = ctrl;
-
-    const name = rs.name?.trim() ?? "";
-    const address = rs.address.trim();
-    const RESERVED = new Set([
-      "home",
-      "house",
-      "my house",
-      "our house",
-      "residence",
-    ]);
-    const normName = name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const query =
-      name && !RESERVED.has(normName) ? `${name} by ${address}` : address;
-
-    forwardGeocode(query, ctrl.signal).then((result) => {
-      if (ctrl.signal.aborted || !result) return;
-      onSelectStop?.({ lat: result.lat, lon: result.lon });
-    });
-
-    return () => ctrl.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restStop?.enabled, restStop?.address, restStop?.name]);
+  useRestStopGeocode(restStop, onSelectStop);
 
   // ── Map bounds ─────────────────────────────────────────────────────────────
   const bounds = useMemo<LatLngBoundsExpression | null>(() => {

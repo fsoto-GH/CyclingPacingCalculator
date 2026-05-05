@@ -146,6 +146,7 @@ export interface SegmentForm {
 export interface CourseForm {
   name?: string;
   gpxFileName?: string; // filename (no .gpx) of the associated GPX, for IDB restore on import
+  rwgpsRouteId?: number | null; // RWGPS route ID used to re-fetch route tracks on reload/import
   unitSystem: UnitSystem;
   mode: Mode;
   timezone: string; // IANA timezone

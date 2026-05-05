@@ -4,8 +4,10 @@
  * MapContainer are also exported here.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
+import type { RestStopForm } from "../types";
+import { forwardGeocode, parseHighPrecisionCoordinateAddress } from "./geocode";
 import { divIcon } from "leaflet";
 import type { GpxTrackPoint, UnitSystem } from "../types";
 
@@ -72,12 +74,49 @@ export function makeRestStopIcon() {
 }
 
 // ── Map sub-components (must render inside a MapContainer) ───────────────────
-
 /**
- * Disables scroll-wheel zoom until the user clicks the map, and re-disables
- * it when the mouse leaves — prevents accidental zoom while scrolling the
- * page past the map.
+ * Fires a forward-geocode whenever the rest-stop address changes and the stop
+ * does not yet have lat/lon coords.  Calls `onSelectStop` with the resolved
+ * coordinates.  Shared by SplitEndpointMap and TransitSegmentMap.
  */
+export function useRestStopGeocode(
+  restStop: RestStopForm | null | undefined,
+  onSelectStop: ((patch: Partial<RestStopForm>) => void) | undefined,
+): void {
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const rs = restStop;
+    if (!rs?.enabled || !rs.address?.trim()) return;
+    if (!onSelectStop) return;
+
+    const parsed = parseHighPrecisionCoordinateAddress(rs.address);
+    if (parsed) {
+      abortRef.current?.abort();
+      if (rs.lat === parsed.lat && rs.lon === parsed.lon) return;
+      onSelectStop({ lat: parsed.lat, lon: parsed.lon });
+      return;
+    }
+
+    if (rs.lat != null && rs.lon != null) return;
+
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    const address = rs.address.trim();
+    const query = address; // Don't include the name in the geocoding query since it often confuses the geocoder and makes results worse.
+
+    forwardGeocode(query, ctrl.signal).then((result) => {
+      if (ctrl.signal.aborted || !result) return;
+      onSelectStop({ lat: result.lat, lon: result.lon });
+    });
+
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restStop?.enabled, restStop?.address, restStop?.name, onSelectStop]);
+}
+
 export function ScrollWheelActivator() {
   const map = useMap();
   useEffect(() => {

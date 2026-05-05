@@ -50,7 +50,6 @@ h1 {
   background: #1a1a1a;
   border: 1px solid #2e2e2e;
   border-bottom: none;
-  border-radius: 6px 6px 0 0;
   padding: 0 0.5rem;
   margin-bottom: 0;
 }
@@ -1390,6 +1389,38 @@ h4 {
 .projections-view .proj-segment-header-title {
   grid-column: 1;
   min-width: 0;
+}
+
+.projections-view .proj-title-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-bottom: 1px dashed #555;
+  text-underline-offset: 2px;
+}
+
+.projections-view .proj-title-link:hover,
+.projections-view .proj-title-link:focus-visible {
+  border-bottom-color: #555;
+}
+
+.projections-view .proj-title-link:focus-visible {
+  outline: 1px solid rgba(125, 211, 252, 0.5);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.projections-view .proj-title-link .proj-title-link-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .projections-view .proj-segment-header-topright {
@@ -3469,8 +3500,15 @@ h4 {
   display: flex;
   gap: 0.6rem;
   align-items: center;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
   justify-content: space-between;
+}
+
+.title-nav-btn-group-left,
+.title-nav-btn-group-right {
+  display: flex;
+  align-items: center;
 }
 
 /* ── Button group (connected border) ── */
@@ -3496,13 +3534,18 @@ h4 {
 @media (max-width: 878px) {
   .title-nav-buttons {
     width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
   }
 
-  .nav-btn-group {
-    flex: 1;
+  .title-nav-btn-group-left,
+  .title-nav-btn-group-right {
+    width: 100%;
   }
 
-  .nav-btn-group .nav-btn {
+  .title-nav-btn-group-left .nav-btn,
+  .title-nav-btn-group-right .nav-btn {
     flex: 1;
     justify-content: center;
   }
@@ -4861,7 +4904,7 @@ dialog {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 30ch;
+  max-width: 100ch;
 }
 
 .gpx-file-stats {
@@ -6718,25 +6761,31 @@ dialog {
 }
 
 .gpx-route-list {
+  height: 250px;
   max-height: 250px;
   overflow: auto;
-  border: 1px solid #334155;
+  border: 1px solid #3a3a3a;
   border-radius: 8px;
-  background: #0b1220;
+  background: #252525;
+}
+
+.gpx-route-id-panel .gpx-route-list {
+  height: auto;
+  max-height: 250px;
 }
 
 .gpx-route-item {
   width: 100%;
   text-align: left;
   border: none;
-  border-bottom: 1px solid #1f2937;
-  background: transparent;
-  color: #e2e8f0;
+  border-bottom: 1px solid #3a3a3a;
+  background: #252525;
+  color: #ffffff;
   padding: 0.65rem 0.8rem;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.12rem;
 }
 
 .gpx-route-item:last-child {
@@ -6744,11 +6793,23 @@ dialog {
 }
 
 .gpx-route-item:hover {
-  background: #111827;
+  background: #2e2e2e;
 }
 
 .gpx-route-item.is-selected {
-  background: #1f2f48;
+  background: #2e2e2e;
+  box-shadow: inset 0 0 0 1px #4361ee;
+}
+
+.gpx-route-item--preview {
+  cursor: default;
+}
+
+.gpx-route-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .link-btn {
@@ -6790,8 +6851,11 @@ dialog {
 }
 
 .gpx-route-extra {
-  color: #94a3b8;
+  color: #cbd5e1;
   font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gpx-search-locality {
@@ -6853,12 +6917,6 @@ dialog {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 0.65rem;
-}
-
-.proj-go-to-split-btn {
-  margin-left: 0.45rem;
-  padding: 0.15rem 0.45rem;
-  font-size: 0.74rem;
 }
 
 /* -- Race Plan Modal ------------------------------------------------------- */

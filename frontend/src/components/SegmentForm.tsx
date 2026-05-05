@@ -419,13 +419,12 @@ export default function SegmentFormComponent({
                 {headerTitle}
                 {splitStatuses?.some((s) => s === "over") && (
                   <span className="gpx-dist-asterisk gpx-dist-asterisk--over">
-                    {splitStatuses.join(", ")}*
+                    {` ${splitStatuses.filter((x) => x === "over").length} over`}
                   </span>
                 )}
                 {splitStatuses?.some((s) => s === "under-last") && (
                   <span className="gpx-dist-asterisk gpx-dist-asterisk--under">
-                    {" "}
-                    *
+                    {` ${splitStatuses.filter((x) => x === "under-last").length} under`}
                   </span>
                 )}
               </span>

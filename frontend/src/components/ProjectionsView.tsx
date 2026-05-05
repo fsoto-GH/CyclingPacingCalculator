@@ -103,13 +103,15 @@ interface ProjectionsViewProps {
   expandAllSignal?: number;
   gpxTrack?: GpxTrackPoint[] | null;
   cityLabels?: (string | null)[][];
+  cityFetching?: boolean[][];
   gpxProfiles?: SplitGpxProfile[][] | null;
   splitCumulativeDists?: (number | null)[][] | null;
   gpxTotalDist?: number | null;
   etaMarginOpen?: number;
   etaMarginClose?: number;
   splitWeather?: (SplitWeatherPair | null)[][] | null;
-  onGoToSplit?: (segIdx: number, splitIdx: number) => void;
+  onZoomToSegment?: (segIdx: number) => void;
+  onZoomToSplit?: (segIdx: number, splitIdx: number) => void;
 }
 
 export default function ProjectionsView({
@@ -124,13 +126,15 @@ export default function ProjectionsView({
   expandAllSignal = 0,
   gpxTrack,
   cityLabels,
+  cityFetching,
   gpxProfiles,
   splitCumulativeDists,
   gpxTotalDist,
   etaMarginOpen = 15,
   etaMarginClose = 7,
   splitWeather,
-  onGoToSplit,
+  onZoomToSegment,
+  onZoomToSplit,
 }: ProjectionsViewProps) {
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
@@ -181,6 +185,7 @@ export default function ProjectionsView({
             expandAllSignal={expandAllSignal}
             gpxTrack={gpxTrack ?? null}
             cityLabels={cityLabels?.[segIndex] ?? []}
+            cityFetching={cityFetching?.[segIndex] ?? []}
             gpxProfiles={gpxProfiles?.[segIndex] ?? null}
             splitCumulativeDists={splitCumulativeDists?.[segIndex] ?? null}
             segmentStartDist={
@@ -194,7 +199,8 @@ export default function ProjectionsView({
             etaMarginOpen={etaMarginOpen}
             etaMarginClose={etaMarginClose}
             segmentWeather={splitWeather?.[segIndex] ?? null}
-            onGoToSplit={onGoToSplit}
+            onZoomToSegment={onZoomToSegment}
+            onZoomToSplit={onZoomToSplit}
           />
         );
       })}
@@ -353,6 +359,7 @@ function ProjectionSegment({
   expandAllSignal,
   gpxTrack,
   cityLabels,
+  cityFetching,
   gpxProfiles,
   splitCumulativeDists,
   segmentStartDist,
@@ -360,7 +367,8 @@ function ProjectionSegment({
   etaMarginOpen,
   etaMarginClose,
   segmentWeather,
-  onGoToSplit,
+  onZoomToSegment,
+  onZoomToSplit,
 }: {
   segment: SegmentDetail;
   segIndex: number;
@@ -376,6 +384,7 @@ function ProjectionSegment({
   expandAllSignal: number;
   gpxTrack: GpxTrackPoint[] | null;
   cityLabels: (string | null)[];
+  cityFetching: boolean[];
   gpxProfiles: SplitGpxProfile[] | null;
   splitCumulativeDists: (number | null)[] | null;
   segmentStartDist: number | null;
@@ -383,7 +392,8 @@ function ProjectionSegment({
   etaMarginOpen: number;
   etaMarginClose: number;
   segmentWeather?: (SplitWeatherPair | null)[] | null;
-  onGoToSplit?: (segIdx: number, splitIdx: number) => void;
+  onZoomToSegment?: (segIdx: number) => void;
+  onZoomToSplit?: (segIdx: number, splitIdx: number) => void;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
@@ -553,6 +563,7 @@ function ProjectionSegment({
   const sleepHms = formSegment ? minutesToHms(formSegment.sleep_time) : "";
   const lastSplitIdx = segment.split_details.length - 1;
   const segEndCity = cityLabels[lastSplitIdx] ?? null;
+  const segEndCityFetching = cityFetching[lastSplitIdx] ?? false;
   const firstSplitResult = segment.split_details[0];
   const lastSplitResult =
     segment.split_details[segment.split_details.length - 1];
@@ -741,16 +752,37 @@ function ProjectionSegment({
         <div className="proj-segment-header-grid">
           <div className="split-header-left proj-segment-header-title">
             <div className="split-header-titlerow">
-              <span className="split-header-title">
-                {isTransitSegment && (
-                  <i
-                    className="fa-solid fa-forward-fast"
-                    title="Transit segment — fixed elapsed time"
-                    style={{ marginRight: "0.4em", opacity: 0.8 }}
-                  />
-                )}
-                {title}
-              </span>
+              {onZoomToSegment && gpxTrack ? (
+                <button
+                  type="button"
+                  className="split-header-title proj-title-link"
+                  title="Go to this segment on the map"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onZoomToSegment(segIndex);
+                  }}
+                >
+                  {isTransitSegment && (
+                    <i
+                      className="fa-solid fa-forward-fast"
+                      title="Transit segment — fixed elapsed time"
+                      style={{ opacity: 0.8 }}
+                    />
+                  )}
+                  <span className="proj-title-link-text">{title}</span>
+                </button>
+              ) : (
+                <span className="split-header-title">
+                  {isTransitSegment && (
+                    <i
+                      className="fa-solid fa-forward-fast"
+                      title="Transit segment — fixed elapsed time"
+                      style={{ marginRight: "0.4em", opacity: 0.8 }}
+                    />
+                  )}
+                  {title}
+                </span>
+              )}
             </div>
           </div>
 
@@ -829,9 +861,22 @@ function ProjectionSegment({
           <div className="proj-segment-header-timing split-header-city">
             <span
               className="proj-city-duration"
-              title={formatHours(segment.elapsed_time_hours, "full")}
+              title={`${formatHours(segment.active_time_hours, "full")} active time (excludes sleep)`}
             >
-              {segment.elapsed_time_hours.toLocaleString(undefined, {
+              <i className="fa-solid fa-stopwatch-20"></i>{" "}
+              {segment.active_time_hours.toLocaleString(undefined, {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              })}{" "}
+              hrs
+            </span>
+            <span className="proj-city-sep"> · </span>
+            <span
+              className="proj-city-duration"
+              title={`${formatHours(segment.down_time_hours, "full")} down time`}
+            >
+              <i className="fa-solid fa-circle-stop"></i>{" "}
+              {segment.down_time_hours.toLocaleString(undefined, {
                 minimumFractionDigits: 1,
                 maximumFractionDigits: 1,
               })}{" "}
@@ -844,6 +889,7 @@ function ProjectionSegment({
                   className="proj-city-pace"
                   title="Average moving speed of the entire segment."
                 >
+                  <i className="fa-solid fa-gauge-simple"></i>{" "}
                   {segment.moving_time_hours > 0
                     ? (segment.distance / segment.moving_time_hours).toFixed(2)
                     : "0.00"}{" "}
@@ -854,6 +900,7 @@ function ProjectionSegment({
                   className="proj-city-pace"
                   title="Average elapsed pace of the entire segment."
                 >
+                  <i className="fa-solid fa-gauge"></i>{" "}
                   {segment.pace.toFixed(2)} {sLabel}
                 </span>
               </>
@@ -861,6 +908,7 @@ function ProjectionSegment({
           </div>
 
           {(citySummary ||
+            segEndCityFetching ||
             sleepHms ||
             (isTransitSegment &&
               transitFormSplit?.rest_stop.enabled &&
@@ -882,10 +930,15 @@ function ProjectionSegment({
                     {transitEtaInfo.status === "closed" && "Closed"}
                   </span>
                 )}
-              {citySummary && (
+              {!segEndCityFetching && citySummary && (
                 <span className="proj-segment-city">{citySummary}</span>
               )}
-              {citySummary && sleepHms && (
+              {segEndCityFetching && (
+                <span className="split-nearby-city--loading">
+                  (finding nearest city...)
+                </span>
+              )}
+              {(citySummary || segEndCityFetching) && sleepHms && (
                 <span className="proj-city-sep"> · </span>
               )}
               {sleepHms && (
@@ -1270,17 +1323,6 @@ function ProjectionSegment({
 
           {isTransitSegment ? (
             <div className="split-results-panel">
-              {onGoToSplit && (
-                <div className="proj-split-actions">
-                  <button
-                    type="button"
-                    className="split-action-btn"
-                    onClick={() => onGoToSplit(segIndex, 0)}
-                  >
-                    <i className="fas fa-arrow-down" /> Go to split
-                  </button>
-                </div>
-              )}
               {transitSplit && (
                 <dl className="split-results-grid proj-split-results-grid">
                   <div>
@@ -1427,6 +1469,7 @@ function ProjectionSegment({
                     }
                     gpxTotalDist={gpxTotalDist}
                     nearbyCity={cityLabels[splitIndex] ?? null}
+                    nearbyCityFetching={cityFetching[splitIndex] ?? false}
                     etaMarginOpen={etaMarginOpen}
                     etaMarginClose={etaMarginClose}
                     segColor={segColor}
@@ -1436,7 +1479,7 @@ function ProjectionSegment({
                         : undefined
                     }
                     splitWeather={segmentWeather?.[splitIndex] ?? null}
-                    onGoToSplit={onGoToSplit}
+                    onZoomToSplit={onZoomToSplit}
                   />
                 ))}
               </div>
@@ -1463,12 +1506,13 @@ function ProjectionSplit({
   prevCumulativeDist,
   gpxTotalDist,
   nearbyCity,
+  nearbyCityFetching,
   etaMarginOpen,
   etaMarginClose,
   segColor,
   expandSignal,
   splitWeather,
-  onGoToSplit,
+  onZoomToSplit,
 }: {
   segIndex: number;
   split: SplitDetail;
@@ -1484,12 +1528,13 @@ function ProjectionSplit({
   prevCumulativeDist: number | null;
   gpxTotalDist: number | null;
   nearbyCity: string | null;
+  nearbyCityFetching: boolean;
   etaMarginOpen: number;
   etaMarginClose: number;
   segColor: string;
   expandSignal?: number;
   splitWeather?: SplitWeatherPair | null;
-  onGoToSplit?: (segIdx: number, splitIdx: number) => void;
+  onZoomToSplit?: (segIdx: number, splitIdx: number) => void;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
@@ -1601,19 +1646,20 @@ function ProjectionSplit({
           {/* (0,0) title + meta */}
           <div className="split-header-left proj-split-header-main">
             <div className="split-header-titlerow">
-              <span className="split-header-title">{name}</span>
-              {onGoToSplit && (
+              {onZoomToSplit && gpxTrack ? (
                 <button
                   type="button"
-                  className="split-action-btn proj-go-to-split-btn"
-                  title="Go to split in Planning"
+                  className="split-header-title proj-title-link"
+                  title="Go to this split on the map"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onGoToSplit(segIndex, splitIndex);
+                    onZoomToSplit(segIndex, splitIndex);
                   }}
                 >
-                  <i className="fas fa-arrow-down" /> Go to split
+                  <span className="proj-title-link-text">{name}</span>
                 </button>
+              ) : (
+                <span className="split-header-title">{name}</span>
               )}
             </div>
             {(profile || splitDistUser != null) && (
@@ -1702,30 +1748,45 @@ function ProjectionSplit({
             <div className="split-header-city">
               <span
                 className="proj-city-duration"
-                title={formatHours(splitTimeHours, "full")}
+                title={`${formatHours(split.moving_time_hours, "full")} moving time`}
               >
-                {splitTimeHours.toLocaleString(undefined, {
+                <i className="fa-solid fa-stopwatch-20"></i>{" "}
+                {split.moving_time_hours.toLocaleString(undefined, {
                   minimumFractionDigits: 1,
                   maximumFractionDigits: 1,
                 })}
-                hrs
+                {" hrs"}
               </span>
-              <>
-                <span className="proj-city-sep"> · </span>
+              <span className="proj-city-sep"> · </span>
+              <span>
                 <span
-                  className="proj-city-pace"
-                  title="Average moving speed for this split."
+                  className="proj-city-duration"
+                  title={`${formatHours(split.down_time_hours, "full")} down time`}
                 >
-                  {split.moving_speed.toFixed(2)} {sLabel}
+                  <i className="fa-solid fa-circle-stop"></i>{" "}
+                  {split.down_time_hours.toLocaleString(undefined, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}
+                  {" hrs"}
                 </span>
-                <span className="proj-city-sep"> · </span>
-                <span
-                  className="proj-city-pace"
-                  title="Average elapsed pace for this split."
-                >
-                  {split.pace.toFixed(2)} {sLabel}
-                </span>
-              </>
+              </span>
+              <span className="proj-city-sep"> · </span>
+              <span
+                className="proj-city-pace"
+                title="Average moving speed for this split."
+              >
+                <i className="fa-solid fa-gauge-simple"></i>{" "}
+                {split.moving_speed.toFixed(2)} {sLabel}
+              </span>
+              <span className="proj-city-sep"> · </span>
+              <span
+                className="proj-city-pace"
+                title="Average elapsed pace for this split."
+              >
+                <i className="fa-solid fa-gauge"></i> {split.pace.toFixed(2)}{" "}
+                {sLabel}
+              </span>
             </div>
           </div>
 
@@ -1758,6 +1819,11 @@ function ProjectionSplit({
             )}
             {nearbyCity && (
               <span className="proj-segment-city">{nearbyCity}</span>
+            )}
+            {nearbyCityFetching && (
+              <span className="split-nearby-city--loading">
+                (finding nearest city...)
+              </span>
             )}
             {sign != null && sign !== "exact" && (
               <span style={{ color: distColor }}>

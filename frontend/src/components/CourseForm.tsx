@@ -83,6 +83,7 @@ import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
 import { FieldErrorContext, FieldError, AllErrorsContext } from "./FieldError";
 import NumberInput from "./NumberInput";
 import PaidApiToggle from "./PaidApiToggle";
+import { getRwgpsToken } from "../rwgpsAuth";
 
 function makeDefaultSegment(): SegmentFormState {
   return {
@@ -216,6 +217,12 @@ function loadSavedForm(): CourseFormState {
       }
     }
 
+    if (parsed.rwgpsRouteId !== undefined && parsed.rwgpsRouteId !== null) {
+      const routeId = Number(parsed.rwgpsRouteId);
+      parsed.rwgpsRouteId =
+        Number.isFinite(routeId) && routeId > 0 ? routeId : null;
+    }
+
     return parsed as CourseFormState;
   } catch {
     /* ignore corrupt data */
@@ -224,6 +231,47 @@ function loadSavedForm(): CourseFormState {
 }
 
 const KM_PER_MI = 1.60934;
+const RWGPS_BASE = "https://ridewithgps.com";
+
+interface RwgpsTrackPoint {
+  x: number;
+  y: number;
+  e: number;
+  d: number;
+}
+
+async function fetchRwgpsRouteById(
+  token: string,
+  routeId: number,
+): Promise<{
+  id: number;
+  name: string;
+  track: GpxTrackPoint[];
+}> {
+  const resp = await fetch(`${RWGPS_BASE}/api/v1/routes/${routeId}.json`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    throw new Error(`RWGPS error ${resp.status}`);
+  }
+  const data = (await resp.json()) as {
+    route: {
+      id: number;
+      name: string;
+      track_points: RwgpsTrackPoint[];
+    };
+  };
+  return {
+    id: data.route.id,
+    name: data.route.name,
+    track: data.route.track_points.map((p) => ({
+      lat: p.y,
+      lon: p.x,
+      ele: p.e,
+      cumDist: p.d / 1000,
+    })),
+  };
+}
 
 function unitConversionFactor(from: UnitSystem, to: UnitSystem): number {
   if (from === to) return 1;
@@ -234,6 +282,48 @@ function formatConvertedNumber(value: number): string {
   const normalized = Number(value.toFixed(4));
   if (Object.is(normalized, -0)) return "0";
   return String(normalized);
+}
+
+function hasAnyPositiveSplitDistance(form: CourseFormState): boolean {
+  return form.segments.some((seg) =>
+    seg.splits.some((split) => {
+      const d = Number(split.distance);
+      return Number.isFinite(d) && d > 0;
+    }),
+  );
+}
+
+function hydrateDistancesFromTrackIfEmpty(
+  form: CourseFormState,
+  totalDistUserUnits: number,
+): CourseFormState {
+  if (!(Number.isFinite(totalDistUserUnits) && totalDistUserUnits > 0)) {
+    return form;
+  }
+  if (hasAnyPositiveSplitDistance(form)) return form;
+
+  const splitCount = form.segments.reduce(
+    (sum, seg) => sum + seg.splits.length,
+    0,
+  );
+  if (splitCount <= 0) return form;
+
+  const perSplit = totalDistUserUnits / splitCount;
+  let marker = 0;
+
+  return {
+    ...form,
+    segments: form.segments.map((seg) => ({
+      ...seg,
+      splits: seg.splits.map((split) => {
+        if (form.mode === "target_distance") {
+          marker += perSplit;
+          return { ...split, distance: formatConvertedNumber(marker) };
+        }
+        return { ...split, distance: formatConvertedNumber(perSplit) };
+      }),
+    })),
+  };
 }
 
 function convertNumericString(raw: string, factor: number): string {
@@ -399,6 +489,10 @@ export default function CourseForm() {
   const [gpxSurface, setGpxSurface] = useState<string | null>(null);
   const [gpxFileName, setGpxFileName] = useState<string | null>(null);
   const [gpxLoading, setGpxLoading] = useState(false);
+  const [rwgpsRestorePending, setRwgpsRestorePending] = useState<number | null>(
+    null,
+  );
+  const rwgpsRestoreInFlightRef = useRef<number | null>(null);
   const gpxFileRef = useRef<HTMLInputElement>(null);
 
   // City of the GPX track's very first point (start of the whole course).
@@ -449,14 +543,6 @@ export default function CourseForm() {
       setSegPage(Math.floor(segIdx / segPageSizeRef.current));
     },
     [],
-  );
-
-  const handleGoToPlanningSplit = useCallback(
-    (segIdx: number, splitIdx: number) => {
-      setActiveTab("planning");
-      handleMapMarkerClick(segIdx, splitIdx);
-    },
-    [handleMapMarkerClick],
   );
 
   // Clear mapNavTarget after children have consumed the signal so stale
@@ -538,6 +624,7 @@ export default function CourseForm() {
   // and letting IDB restore race against it would overwrite the correct GPX.
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("example")) return;
+    if (form.rwgpsRouteId) return;
     loadGpx()
       .then((record) => {
         if (!record) return;
@@ -738,6 +825,7 @@ export default function CourseForm() {
       setTouched(new Set());
 
       if (!gpxUrl) {
+        setRwgpsRestorePending(example.rwgpsRouteId ?? null);
         setGpxTrack(null);
         setGpxFileName(null);
         setGpxSurface(null);
@@ -755,6 +843,7 @@ export default function CourseForm() {
           ?.replace(/\.gpx$/i, "") ?? "example";
       setGpxFileName(displayName);
       setGpxLoading(true);
+      setRwgpsRestorePending(null);
       setGpxTrack(null);
       setGpxSurface(null);
       setGpxMissingWarning(null);
@@ -769,6 +858,7 @@ export default function CourseForm() {
             try {
               setGpxTrack(parseGpx(xml));
               setGpxSurface(extractSurfaceFromXml(xml));
+              setForm((prev) => ({ ...prev, rwgpsRouteId: null }));
               saveGpx(displayName, xml).catch(() => {});
             } catch (err: unknown) {
               const msg =
@@ -928,6 +1018,11 @@ export default function CourseForm() {
           handleLoadExample(parsed);
           setGpxMissingWarning(null);
 
+          if (parsed.rwgpsRouteId) {
+            setRwgpsRestorePending(parsed.rwgpsRouteId);
+            return;
+          }
+
           const embeddedName = parsed.gpxFileName;
           if (!embeddedName) return;
 
@@ -996,6 +1091,8 @@ export default function CourseForm() {
             setGpxTrack(track);
             setGpxSurface(extractSurfaceFromXml(xml));
             setGpxMissingWarning(null);
+            setRwgpsRestorePending(null);
+            setForm((prev) => ({ ...prev, rwgpsRouteId: null }));
             // Auto-detect timezone from the track's first point.
             const detectedTz = tzlookup(track[0].lat, track[0].lon);
             if (detectedTz) update({ timezone: detectedTz });
@@ -1023,7 +1120,9 @@ export default function CourseForm() {
     setGpxSurface(null);
     setGpxFileName(null);
     setGpxLoading(false);
+    setRwgpsRestorePending(null);
     setGpxMissingWarning(null);
+    setForm((prev) => ({ ...prev, rwgpsRouteId: null }));
     if (gpxFileRef.current) gpxFileRef.current.value = "";
     clearGpx().catch(() => {
       /* IDB unavailable */
@@ -1032,11 +1131,38 @@ export default function CourseForm() {
 
   /** Load GPX track points directly (from RideWithGPS API) without a file. */
   const handleGpxLoadDirect = useCallback(
-    (track: import("../types").GpxTrackPoint[], routeName: string) => {
+    (
+      track: import("../types").GpxTrackPoint[],
+      routeName: string,
+      routeId: number,
+    ) => {
+      if (track.length === 0) {
+        setGpxLoading(false);
+        setApiError(
+          `RideWithGPS route ${routeId} did not include track points, so it cannot be mapped.`,
+        );
+        setGpxMissingWarning(
+          `RideWithGPS route ${routeId} has no track points available. Try another route or export/import as GPX.`,
+        );
+        return;
+      }
       setGpxFileName(routeName);
       setGpxTrack(track);
-      setGpxSurface(null);
+      setGpxSurface("unknown");
+      setGpxLoading(false);
+      setApiError(null);
       setGpxMissingWarning(null);
+      setRwgpsRestorePending(null);
+      setForm((prev) => {
+        const totalKm = track[track.length - 1]?.cumDist ?? 0;
+        const totalUserDist =
+          prev.unitSystem === "imperial" ? totalKm / 1.60934 : totalKm;
+        const withRouteId = { ...prev, rwgpsRouteId: routeId };
+        return hydrateDistancesFromTrackIfEmpty(withRouteId, totalUserDist);
+      });
+      clearGpx().catch(() => {
+        /* IDB unavailable */
+      });
       if (track.length > 0) {
         const detectedTz = tzlookup(track[0].lat, track[0].lon);
         if (detectedTz) update({ timezone: detectedTz });
@@ -1044,6 +1170,51 @@ export default function CourseForm() {
     },
     [],
   );
+
+  useEffect(() => {
+    const routeId = form.rwgpsRouteId;
+    if (!routeId || gpxTrack) return;
+    if (rwgpsRestoreInFlightRef.current === routeId) return;
+
+    const token = getRwgpsToken();
+    if (!token) {
+      setGpxLoading(false);
+      setRwgpsRestorePending(routeId);
+      setGpxMissingWarning(
+        `This course references RideWithGPS route ${routeId}. Connect RideWithGPS and select the route to load it.`,
+      );
+      setGpxSearchOpen(true);
+      return;
+    }
+
+    let cancelled = false;
+    rwgpsRestoreInFlightRef.current = routeId;
+    setGpxLoading(true);
+    fetchRwgpsRouteById(token, routeId)
+      .then((detail) => {
+        if (cancelled) return;
+        handleGpxLoadDirect(detail.track, detail.name, detail.id);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRwgpsRestorePending(routeId);
+        setGpxMissingWarning(
+          `Could not auto-load RideWithGPS route ${routeId}. Reconnect RideWithGPS and select the route to continue.`,
+        );
+        setGpxSearchOpen(true);
+      })
+      .finally(() => {
+        rwgpsRestoreInFlightRef.current = null;
+        if (!cancelled) {
+          setGpxLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      rwgpsRestoreInFlightRef.current = null;
+    };
+  }, [form.rwgpsRouteId, gpxTrack, handleGpxLoadDirect]);
 
   const sLabel = speedLabel(form.unitSystem);
   const dLabel = distanceLabel(form.unitSystem);
@@ -1851,6 +2022,97 @@ export default function CourseForm() {
     [computeFieldErrors, form],
   );
 
+  const gpxDistanceWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    splitGpxStatuses.forEach((seg, si) => {
+      const segmentName = form.segments[si]?.name?.trim();
+      seg.forEach((status, sj) => {
+        const splitName = form.segments[si]?.splits[sj]?.name?.trim();
+        const segmentLabel = segmentName || `Segment ${si + 1}`;
+        const splitLabel = splitName || `Split ${sj + 1}`;
+        const locationLabel = `${segmentLabel}, ${splitLabel}`;
+        if (status === "over") {
+          warnings.push(
+            `${locationLabel}: cumulative distance exceeds GPX total.`,
+          );
+        } else if (status === "under-last") {
+          warnings.push(
+            `${locationLabel}: course distance has not yet reached GPX total.`,
+          );
+        }
+      });
+    });
+    return warnings;
+  }, [form.segments, splitGpxStatuses]);
+
+  const describeFieldId = useCallback((id: string): string => {
+    const courseMap: Record<string, string> = {
+      "init-speed": "Course speed",
+      "min-speed": "Course minimum speed",
+      dtr: "Course down time ratio",
+      "split-delta": "Course speed delta",
+      "seg-count": "Course segment count",
+      "start-time": "Course start time",
+      "ss-mode": "Course sub-split mode",
+      "ss-count": "Course sub-split count",
+      "ss-distance": "Course sub-split distance",
+      "ss-threshold": "Course last sub-split threshold",
+      "ss-distances": "Course sub-split distances",
+    };
+    const segmentMap: Record<string, string> = {
+      "sleep-time": "Sleep time",
+      "split-count": "Split count",
+      dtr: "Down time ratio",
+      "moving-speed": "Segment speed",
+      "min-speed": "Segment minimum speed",
+      "transit-time": "Transit elapsed time",
+      "transit-dist": "Transit distance",
+    };
+    const splitMap: Record<string, string> = {
+      distance: "Split distance",
+      "moving-speed": "Split speed",
+      "ss-count": "Sub-split count",
+      "ss-distance": "Sub-split distance",
+      "ss-threshold": "Sub-split threshold",
+      "ss-distances": "Sub-split distances",
+    };
+
+    if (id.startsWith("course-")) {
+      const key = id.slice("course-".length);
+      return courseMap[key] ?? `Course field (${key})`;
+    }
+
+    const transitRs = id.match(/^seg(\d+)-transit-rs-(.+)$/);
+    if (transitRs) {
+      const seg = Number(transitRs[1]) + 1;
+      return `Segment ${seg} transit rest stop ${transitRs[2]}`;
+    }
+
+    const splitRs = id.match(/^seg(\d+)-split(\d+)-rs-(.+)$/);
+    if (splitRs) {
+      const seg = Number(splitRs[1]) + 1;
+      const split = Number(splitRs[2]) + 1;
+      return `Segment ${seg}, Split ${split} rest stop ${splitRs[3]}`;
+    }
+
+    const split = id.match(/^seg(\d+)-split(\d+)-(.+)$/);
+    if (split) {
+      const seg = Number(split[1]) + 1;
+      const splitNum = Number(split[2]) + 1;
+      const key = split[3];
+      return `Segment ${seg}, Split ${splitNum} ${splitMap[key] ?? key}`;
+    }
+
+    const segment = id.match(/^seg(\d+)-(.+)$/);
+    if (segment) {
+      const seg = Number(segment[1]) + 1;
+      const key = segment[2];
+      return `Segment ${seg} ${segmentMap[key] ?? key}`;
+    }
+
+    return id;
+  }, []);
+
   const visibleErrors = useMemo(() => {
     const visible: Record<string, string> = {};
     for (const [id, msg] of Object.entries(allErrors)) {
@@ -1957,16 +2219,16 @@ export default function CourseForm() {
             <span className="app-version">v{__APP_VERSION__}</span>
           </h1>
           <div className="title-nav-buttons">
-            <button
-              type="button"
-              className="nav-btn nav-btn-legend"
-              onClick={() => setLegendOpen(true)}
-              title="Open the guide"
-            >
-              <i className="fa-solid fa-book-atlas"></i>
-              <span className="nav-btn-label">Guide</span>
-            </button>
-            <div className="nav-btn-group">
+            <div className="nav-btn-group title-nav-btn-group-left">
+              <button
+                type="button"
+                className="nav-btn nav-btn-legend"
+                onClick={() => setLegendOpen(true)}
+                title="Open the guide"
+              >
+                <i className="fa-solid fa-book-atlas"></i>
+                <span className="nav-btn-label">Guide</span>
+              </button>
               <button
                 type="button"
                 className="nav-btn"
@@ -1994,6 +2256,9 @@ export default function CourseForm() {
                   <span className="nav-btn-label">My Plans</span>
                 </button>
               )}
+            </div>
+
+            <div className="nav-btn-group title-nav-btn-group-right">
               <button
                 type="button"
                 className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
@@ -2021,19 +2286,20 @@ export default function CourseForm() {
                 style={{ display: "none" }}
                 onChange={handleGpxLoad}
               />
-              {PAID_APIS_ENABLED && paidApisEnabled && (
-                <button
-                  type="button"
-                  className="nav-btn"
-                  onClick={() => setGpxSearchOpen(true)}
-                  title="Search and import routes from RideWithGPS"
-                >
-                  <span className="nav-btn-icon">
-                    <i className="fas fa-search" />
-                  </span>
-                  <span className="nav-btn-label">Search RideWithGPS</span>
-                </button>
-              )}
+              <button
+                type="button"
+                className="nav-btn"
+                onClick={() => {
+                  setRwgpsRestorePending(form.rwgpsRouteId ?? null);
+                  setGpxSearchOpen(true);
+                }}
+                title="Search and import routes from RideWithGPS"
+              >
+                <span className="nav-btn-icon">
+                  <i className="fas fa-search" />
+                </span>
+                <span className="nav-btn-label">Search RideWithGPS</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2067,7 +2333,11 @@ export default function CourseForm() {
           <div className="gpx-file-field">
             <div className="gpx-file-meta">
               <span className="gpx-file-label">
-                <i className="fas fa-map" /> GPX route
+                <i className="fas fa-map" /> GPX route{" "}
+                {
+                  /* Display when loaded from RideWithGPS*/
+                  form.rwgpsRouteId ? "(Route Loaded from RideWithGPS)" : ""
+                }
               </span>
               <span className="gpx-file-name">{gpxFileName}</span>
               <span className="gpx-file-stats">
@@ -2148,27 +2418,33 @@ export default function CourseForm() {
             <div className="split-header-titlerow">
               <button
                 type="button"
-                className={`course-validation-btn${Object.keys(allErrors).length > 0 || apiError ? " course-validation-btn--error" : " course-validation-btn--ok"}`}
+                className={`course-validation-btn${Object.keys(allErrors).length > 0 || apiError || gpxDistanceWarnings.length > 0 ? " course-validation-btn--error" : " course-validation-btn--ok"}`}
                 title={
                   Object.keys(allErrors).length > 0
                     ? `${Object.keys(allErrors).length} validation error${Object.keys(allErrors).length === 1 ? "" : "s"} — click to view`
-                    : apiError
-                      ? "Calculation error — click to view"
-                      : "No validation errors"
+                    : gpxDistanceWarnings.length > 0
+                      ? `${gpxDistanceWarnings.length} GPX distance warning${gpxDistanceWarnings.length === 1 ? "" : "s"} — click to view`
+                      : apiError
+                        ? "Calculation error — click to view"
+                        : "No validation errors"
                 }
                 onClick={(e) => {
                   e.stopPropagation();
                   setValidationDialogOpen(true);
                 }}
                 aria-label={
-                  Object.keys(allErrors).length > 0 || apiError
+                  Object.keys(allErrors).length > 0 ||
+                  apiError ||
+                  gpxDistanceWarnings.length > 0
                     ? "View validation errors"
                     : "Form is valid"
                 }
               >
                 <i
                   className={
-                    Object.keys(allErrors).length > 0 || apiError
+                    Object.keys(allErrors).length > 0 ||
+                    apiError ||
+                    gpxDistanceWarnings.length > 0
                       ? "fa-solid fa-circle-exclamation"
                       : "fa-regular fa-circle-check"
                   }
@@ -2278,53 +2554,75 @@ export default function CourseForm() {
           className="legend-modal"
           onClose={() => setValidationDialogOpen(false)}
         >
-          <div className="legend-header">
-            <h2>
-              {Object.keys(allErrors).length > 0 || apiError ? (
-                <>
-                  <i className="fa-solid fa-circle-exclamation validation-dialog__icon--error" />{" "}
-                  Validation Errors
-                </>
-              ) : (
-                <>
-                  <i className="fa-regular fa-circle-check validation-dialog__icon--ok" />{" "}
-                  Form Valid
-                </>
-              )}
-            </h2>
-            <button
-              className="legend-close"
-              onClick={() => setValidationDialogOpen(false)}
-              aria-label="Close"
-            >
-              <i className="fas fa-times" />
-            </button>
-          </div>
-          <div className="legend-body">
-            {Object.keys(allErrors).length === 0 && !apiError ? (
-              <p className="validation-dialog__ok-msg">
-                No validation errors — the form is ready to calculate.
-              </p>
-            ) : (
+          {(() => {
+            const hasValidationIssues =
+              Object.keys(allErrors).length > 0 ||
+              Boolean(apiError) ||
+              gpxDistanceWarnings.length > 0;
+            return (
               <>
-                {Object.keys(allErrors).length > 0 && (
-                  <ul className="validation-dialog__list">
-                    {Object.values(allErrors).map((msg, idx) => (
-                      <li key={idx}>{msg}</li>
-                    ))}
-                  </ul>
-                )}
-                {apiError && (
-                  <div className="validation-dialog__api-error">
-                    <strong>
-                      {useEngine === "client" ? "Calc Error" : "Server Error"}:
-                    </strong>
-                    <pre>{apiError}</pre>
-                  </div>
-                )}
+                <div className="legend-header">
+                  <h2>
+                    {hasValidationIssues ? (
+                      <>
+                        <i className="fa-solid fa-circle-exclamation validation-dialog__icon--error" />{" "}
+                        Validation Issues
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-regular fa-circle-check validation-dialog__icon--ok" />{" "}
+                        Form Valid
+                      </>
+                    )}
+                  </h2>
+                  <button
+                    className="legend-close"
+                    onClick={() => setValidationDialogOpen(false)}
+                    aria-label="Close"
+                  >
+                    <i className="fas fa-times" />
+                  </button>
+                </div>
+                <div className="legend-body">
+                  {!hasValidationIssues ? (
+                    <p className="validation-dialog__ok-msg">
+                      No validation errors — the form is ready to calculate.
+                    </p>
+                  ) : (
+                    <>
+                      {gpxDistanceWarnings.length > 0 && (
+                        <ul className="validation-dialog__list">
+                          {gpxDistanceWarnings.map((msg, idx) => (
+                            <li key={`gpx-warning-${idx}`}>{msg}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {Object.keys(allErrors).length > 0 && (
+                        <ul className="validation-dialog__list">
+                          {Object.entries(allErrors).map(([id, msg], idx) => (
+                            <li key={`${id}-${idx}`}>
+                              {describeFieldId(id)}: {msg}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {apiError && (
+                        <div className="validation-dialog__api-error">
+                          <strong>
+                            {useEngine === "client"
+                              ? "Calc Error"
+                              : "Server Error"}
+                            :
+                          </strong>
+                          <pre>{apiError}</pre>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </>
-            )}
-          </div>
+            );
+          })()}
         </dialog>
 
         <div className="app-tab-bar" role="tablist">
@@ -2411,17 +2709,18 @@ export default function CourseForm() {
               onCancel={handleKeepUnitSystemValues}
             />
 
-            {/* Paid-feature modals — only rendered when feature flag is on */}
-            {PAID_APIS_ENABLED && (
-              <GpxSearchModal
-                open={gpxSearchOpen}
-                onClose={() => setGpxSearchOpen(false)}
-                onSelect={(track, routeName) => {
-                  handleGpxLoadDirect(track, routeName);
-                  setGpxSearchOpen(false);
-                }}
-              />
-            )}
+            <GpxSearchModal
+              open={gpxSearchOpen}
+              onClose={() => setGpxSearchOpen(false)}
+              unitSystem={form.unitSystem}
+              initialMode={rwgpsRestorePending ? "route-id" : "collections"}
+              initialRouteId={rwgpsRestorePending}
+              onSelect={(track, routeName, routeId) => {
+                handleGpxLoadDirect(track, routeName, routeId);
+                setRwgpsRestorePending(null);
+                setGpxSearchOpen(false);
+              }}
+            />
             {PAID_APIS_ENABLED && user && (
               <RacePlanModal
                 open={racePlanOpen}
@@ -3384,13 +3683,15 @@ export default function CourseForm() {
                   expandAllSignal={expandAllSignal}
                   gpxTrack={gpxTrack}
                   cityLabels={cityLabels}
+                  cityFetching={cityFetching}
                   gpxProfiles={gpxProfiles}
                   splitCumulativeDists={splitCumulativeDists}
                   gpxTotalDist={gpxTotalDistUser}
                   etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
                   etaMarginClose={parseInt(etaMargins.close, 10) || 7}
                   splitWeather={splitWeather}
-                  onGoToSplit={handleGoToPlanningSplit}
+                  onZoomToSegment={handleZoomToSegment}
+                  onZoomToSplit={handleZoomToSplit}
                 />
               </Suspense>
             </div>
@@ -3506,8 +3807,10 @@ export default function CourseForm() {
           </div>
           <div className="legend-body">
             <p style={{ marginTop: 0, marginBottom: "1rem" }}>
-              Create segments with uniform splits in{" "}
-              <strong>Split Distance</strong> mode.
+              Create segments with uniform splits. In{" "}
+              <strong>Split Distance</strong> mode each split gets the distance
+              value directly; in <strong>Target Distance</strong> mode the
+              values are rolled up into cumulative course markers.
             </p>
             <div className="fields-grid qs-fields-grid">
               <div className="field">
@@ -3586,24 +3889,36 @@ export default function CourseForm() {
                     disabled={!valid}
                     title={valid ? undefined : "Fill in all fields to continue"}
                     onClick={() => {
-                      const newSegs: SegmentFormState[] = Array.from(
-                        { length: nSeg },
-                        () => ({
-                          ...makeDefaultSegment(),
-                          sleep_time: sleepVal,
-                          splits: Array.from({ length: nSpl }, () => ({
-                            ...makeDefaultSplit(),
-                            distance: String(dist),
-                          })),
-                          splitCount: String(nSpl),
-                        }),
-                      );
-                      setForm((prev) => ({
-                        ...prev,
-                        mode: "distance",
-                        segmentCount: String(prev.segments.length + nSeg),
-                        segments: [...prev.segments, ...newSegs],
-                      }));
+                      setForm((prev) => {
+                        const isTarget = prev.mode === "target_distance";
+                        const lastSeg = prev.segments[prev.segments.length - 1];
+                        const lastSplit =
+                          lastSeg?.splits[lastSeg.splits.length - 1];
+                        const lastDist = parseFloat(lastSplit?.distance ?? "0");
+                        const startOffset =
+                          isTarget && !isNaN(lastDist) ? lastDist : 0;
+                        const newSegs: SegmentFormState[] = Array.from(
+                          { length: nSeg },
+                          (_, si) => ({
+                            ...makeDefaultSegment(),
+                            sleep_time: sleepVal,
+                            splits: Array.from({ length: nSpl }, (_, sj) => ({
+                              ...makeDefaultSplit(),
+                              distance: isTarget
+                                ? String(
+                                    startOffset + (si * nSpl + sj + 1) * dist,
+                                  )
+                                : String(dist),
+                            })),
+                            splitCount: String(nSpl),
+                          }),
+                        );
+                        return {
+                          ...prev,
+                          segmentCount: String(prev.segments.length + nSeg),
+                          segments: [...prev.segments, ...newSegs],
+                        };
+                      });
                       setQuickSetup((q) => ({ ...q, open: false }));
                     }}
                   >
@@ -3631,24 +3946,28 @@ export default function CourseForm() {
                   disabled={!valid}
                   title={valid ? undefined : "Fill in all fields to continue"}
                   onClick={() => {
-                    const newSegs: SegmentFormState[] = Array.from(
-                      { length: nSeg },
-                      () => ({
-                        ...makeDefaultSegment(),
-                        sleep_time: sleepVal,
-                        splits: Array.from({ length: nSpl }, () => ({
-                          ...makeDefaultSplit(),
-                          distance: String(dist),
-                        })),
-                        splitCount: String(nSpl),
-                      }),
-                    );
-                    setForm((prev) => ({
-                      ...prev,
-                      mode: "distance",
-                      segmentCount: String(nSeg),
-                      segments: newSegs,
-                    }));
+                    setForm((prev) => {
+                      const isTarget = prev.mode === "target_distance";
+                      const newSegs: SegmentFormState[] = Array.from(
+                        { length: nSeg },
+                        (_, si) => ({
+                          ...makeDefaultSegment(),
+                          sleep_time: sleepVal,
+                          splits: Array.from({ length: nSpl }, (_, sj) => ({
+                            ...makeDefaultSplit(),
+                            distance: isTarget
+                              ? String((si * nSpl + sj + 1) * dist)
+                              : String(dist),
+                          })),
+                          splitCount: String(nSpl),
+                        }),
+                      );
+                      return {
+                        ...prev,
+                        segmentCount: String(nSeg),
+                        segments: newSegs,
+                      };
+                    });
                     setQuickSetup((q) => ({ ...q, open: false }));
                   }}
                 >

@@ -262,6 +262,47 @@ export interface ForwardGeocodeResult {
   name?: string;
 }
 
+/**
+ * Parse a coordinate-like address string and return lat/lon when both values
+ * include at least 3 decimal places. Accepts either `lat, lon` or `lon, lat`
+ * (the latter is auto-swapped when ranges make that unambiguous).
+ */
+export function parseHighPrecisionCoordinateAddress(
+  address: string,
+): { lat: number; lon: number } | null {
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+
+  const unwrapped =
+    trimmed.startsWith("(") && trimmed.endsWith(")")
+      ? trimmed.slice(1, -1).trim()
+      : trimmed;
+  const parts = unwrapped.split(",").map((p) => p.trim());
+  if (parts.length !== 2) return null;
+
+  const DECIMAL_3_PLUS = /^[+-]?\d+\.\d{3,}$/;
+  if (!DECIMAL_3_PLUS.test(parts[0]) || !DECIMAL_3_PLUS.test(parts[1])) {
+    return null;
+  }
+
+  const a = Number(parts[0]);
+  const b = Number(parts[1]);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+
+  const aCanBeLat = Math.abs(a) <= 90;
+  const aCanBeLon = Math.abs(a) <= 180;
+  const bCanBeLat = Math.abs(b) <= 90;
+  const bCanBeLon = Math.abs(b) <= 180;
+
+  if (aCanBeLat && bCanBeLon) {
+    return { lat: a, lon: b };
+  }
+  if (aCanBeLon && bCanBeLat) {
+    return { lat: b, lon: a };
+  }
+  return null;
+}
+
 const forwardCache = new Map<string, ForwardGeocodeResult | null>();
 const forwardInflight = new Map<string, Promise<ForwardGeocodeResult | null>>();
 const FORWARD_MIN_INTERVAL_MS = 1100;

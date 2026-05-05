@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GpxTrackPoint } from "../types";
+import type { GpxTrackPoint, UnitSystem } from "../types";
 import { getRwgpsToken, clearRwgpsAuth, startRwgpsOAuth } from "../rwgpsAuth";
 
 const RWGPS_BASE = "https://ridewithgps.com";
@@ -40,19 +40,37 @@ interface RwgpsTrackPoint {
 interface GpxSearchModalProps {
   open: boolean;
   onClose: () => void;
+  unitSystem: UnitSystem;
+  initialMode?: SearchMode;
+  initialRouteId?: number | null;
   /** Called with track points + route metadata when user selects a route. */
-  onSelect: (trackPoints: GpxTrackPoint[], routeName: string) => void;
+  onSelect: (
+    trackPoints: GpxTrackPoint[],
+    routeName: string,
+    routeId: number,
+  ) => void;
 }
 
-function fmtDist(m: number): string {
-  const mi = m / 1609.34;
-  return `${mi.toFixed(1)} mi / ${(m / 1000).toFixed(1)} km`;
+function fmtDist(m: number, unitSystem: UnitSystem): string {
+  if (unitSystem === "imperial") {
+    return `${(m / 1609.34).toFixed(1)} mi`;
+  }
+  return `${(m / 1000).toFixed(1)} km`;
 }
 
-function fmtElevPair(gainM?: number | null, lossM?: number | null): string {
-  const gain = Math.round(gainM ?? 0);
-  const loss = Math.round(lossM ?? 0);
-  return `+${gain.toLocaleString()} m / -${loss.toLocaleString()} m`;
+function fmtElevPair(
+  gainM: number | null | undefined,
+  lossM: number | null | undefined,
+  unitSystem: UnitSystem,
+): string {
+  const gain = gainM ?? 0;
+  const loss = lossM ?? 0;
+  if (unitSystem === "imperial") {
+    const gainFt = Math.round(gain * 3.28084);
+    const lossFt = Math.round(loss * 3.28084);
+    return `+${gainFt.toLocaleString()} ft / -${lossFt.toLocaleString()} ft`;
+  }
+  return `+${Math.round(gain).toLocaleString()} m / -${Math.round(loss).toLocaleString()} m`;
 }
 
 function toAbsoluteUrl(url: string): string {
@@ -137,12 +155,12 @@ async function fetchCollectionRoutes(
 async function fetchRouteDetail(
   token: string,
   id: number,
-): Promise<{ name: string; track_points: RwgpsTrackPoint[] }> {
+): Promise<RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] }> {
   const data = (await fetchJson(
     token,
     `${RWGPS_BASE}/api/v1/routes/${id}.json`,
   )) as {
-    route: { name: string; track_points: RwgpsTrackPoint[] };
+    route: RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] };
   };
   return data.route;
 }
@@ -150,6 +168,9 @@ async function fetchRouteDetail(
 export default function GpxSearchModal({
   open,
   onClose,
+  unitSystem,
+  initialMode = "collections",
+  initialRouteId = null,
   onSelect,
 }: GpxSearchModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -157,6 +178,9 @@ export default function GpxSearchModal({
 
   const [mode, setMode] = useState<SearchMode>("collections");
   const [routeIdInput, setRouteIdInput] = useState("");
+  const [routeIdPreview, setRouteIdPreview] = useState<
+    (RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] }) | null
+  >(null);
 
   const [collections, setCollections] = useState<RwgpsCollection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<
@@ -222,12 +246,37 @@ export default function GpxSearchModal({
       }
     };
 
-    setMode("collections");
-    setRouteIdInput("");
+    setMode(initialMode);
+    setRouteIdInput(initialRouteId != null ? String(initialRouteId) : "");
+    setRouteIdPreview(null);
     setNameFilter("");
     setPage(1);
     load();
-  }, [open, rwgpsToken]);
+  }, [open, rwgpsToken, initialMode, initialRouteId]);
+
+  useEffect(() => {
+    if (!open || !rwgpsToken || mode !== "route-id" || initialRouteId == null) {
+      return;
+    }
+    if (routeIdInput !== String(initialRouteId)) return;
+    if (routeIdPreview?.id === initialRouteId) return;
+
+    setLoadingId(initialRouteId);
+    setError(null);
+    fetchRouteDetail(rwgpsToken, initialRouteId)
+      .then((detail) => {
+        setRouteIdPreview(detail);
+      })
+      .catch((e: unknown) => {
+        setRouteIdPreview(null);
+        setError(
+          (e as Error).message ?? `Failed to load route ${initialRouteId}.`,
+        );
+      })
+      .finally(() => {
+        setLoadingId(null);
+      });
+  }, [open, rwgpsToken, mode, initialRouteId, routeIdInput, routeIdPreview]);
 
   useEffect(() => {
     if (!open || !rwgpsToken || !selectedCollection) return;
@@ -291,14 +340,17 @@ export default function GpxSearchModal({
     setLoadingId(id);
     setError(null);
     try {
-      const detail = await fetchRouteDetail(rwgpsToken, id);
+      const detail =
+        routeIdPreview && routeIdPreview.id === id
+          ? routeIdPreview
+          : await fetchRouteDetail(rwgpsToken, id);
       const track: GpxTrackPoint[] = detail.track_points.map((p) => ({
         lat: p.y,
         lon: p.x,
         ele: p.e,
         cumDist: p.d / 1000,
       }));
-      onSelect(track, detail.name);
+      onSelect(track, detail.name, detail.id);
       onClose();
     } catch (e: unknown) {
       setError((e as Error).message ?? `Failed to load route ${id}.`);
@@ -313,7 +365,38 @@ export default function GpxSearchModal({
       setError("Route ID must be digits only.");
       return;
     }
-    await handleSelectRouteId(Number(trimmed));
+
+    if (!rwgpsToken) return;
+    const id = Number(trimmed);
+    setLoadingId(id);
+    setError(null);
+    try {
+      const detail = await fetchRouteDetail(rwgpsToken, id);
+      setRouteIdPreview(detail);
+    } catch (e: unknown) {
+      setRouteIdPreview(null);
+      setError((e as Error).message ?? `Failed to load route ${id}.`);
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
+  function routeMetaLineOne(r: RwgpsRouteSummary): string {
+    return `${fmtDist(r.distance, unitSystem)} · ${fmtElevPair(
+      r.elevation_gain,
+      r.elevation_loss,
+      unitSystem,
+    )}`;
+  }
+
+  function routeMetaLineTwo(r: RwgpsRouteSummary): string {
+    return [
+      [r.locality, r.administrative_area].filter(Boolean).join(", "),
+      r.track_type,
+      r.terrain,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   return (
@@ -403,9 +486,16 @@ export default function GpxSearchModal({
                     className="gpx-search-input"
                     placeholder="e.g. 12345678"
                     value={routeIdInput}
-                    onChange={(e) =>
-                      setRouteIdInput(e.target.value.replace(/\D+/g, ""))
-                    }
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/\D+/g, "");
+                      setRouteIdInput(next);
+                      if (
+                        routeIdPreview &&
+                        routeIdPreview.id !== Number(next)
+                      ) {
+                        setRouteIdPreview(null);
+                      }
+                    }}
                     autoFocus
                   />
                   <button
@@ -420,7 +510,7 @@ export default function GpxSearchModal({
                       <span className="btn-spinner btn-spinner-sm" />
                     ) : (
                       <>
-                        Open <i className="fas fa-arrow-right" />
+                        Search <i className="fas fa-arrow-right" />
                       </>
                     )}
                   </button>
@@ -428,6 +518,35 @@ export default function GpxSearchModal({
                 <p className="gpx-help">
                   Enter the numeric route ID from the RWGPS URL.
                 </p>
+
+                {routeIdPreview && (
+                  <div
+                    className="gpx-route-list"
+                    role="listbox"
+                    aria-label="Route search result"
+                  >
+                    <div
+                      className="gpx-route-item gpx-route-item--preview"
+                      role="option"
+                      aria-selected
+                    >
+                      <strong
+                        className="gpx-route-name"
+                        title={routeIdPreview.name}
+                      >
+                        {routeIdPreview.name}
+                      </strong>
+                      <span className="gpx-route-extra">
+                        {routeMetaLineOne(routeIdPreview)}
+                      </span>
+                      {routeMetaLineTwo(routeIdPreview) && (
+                        <span className="gpx-route-extra">
+                          {routeMetaLineTwo(routeIdPreview)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -494,25 +613,15 @@ export default function GpxSearchModal({
                         role="option"
                         aria-selected={isSelected}
                       >
-                        <strong>{r.name}</strong>
-                        <span className="gpx-search-meta">
-                          {fmtDist(r.distance)}
-                        </span>
+                        <strong className="gpx-route-name" title={r.name}>
+                          {r.name}
+                        </strong>
                         <span className="gpx-route-extra">
-                          {fmtElevPair(r.elevation_gain, r.elevation_loss)}
+                          {routeMetaLineOne(r)}
                         </span>
-                        {(r.locality || r.administrative_area) && (
+                        {routeMetaLineTwo(r) && (
                           <span className="gpx-route-extra">
-                            {[r.locality, r.administrative_area]
-                              .filter(Boolean)
-                              .join(", ")}
-                          </span>
-                        )}
-                        {(r.track_type || r.terrain) && (
-                          <span className="gpx-route-extra">
-                            {[r.track_type, r.terrain]
-                              .filter(Boolean)
-                              .join(" · ")}
+                            {routeMetaLineTwo(r)}
                           </span>
                         )}
                       </button>
@@ -563,10 +672,18 @@ export default function GpxSearchModal({
                 className="action-btn action-btn-export"
                 disabled={
                   loadingId !== null ||
-                  routeIdInput.trim().length === 0 ||
-                  !/^\d+$/.test(routeIdInput)
+                  (mode === "route-id"
+                    ? routeIdPreview == null
+                    : routeIdInput.trim().length === 0 ||
+                      !/^\d+$/.test(routeIdInput))
                 }
-                onClick={() => handleSelectRouteId(Number(routeIdInput))}
+                onClick={() => {
+                  if (mode === "route-id") {
+                    if (routeIdPreview) handleSelectRouteId(routeIdPreview.id);
+                    return;
+                  }
+                  handleSelectRouteId(Number(routeIdInput));
+                }}
               >
                 {loadingId !== null ? (
                   <span className="btn-spinner btn-spinner-sm" />
