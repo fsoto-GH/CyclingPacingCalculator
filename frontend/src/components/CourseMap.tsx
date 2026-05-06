@@ -26,6 +26,7 @@ import type {
 } from "leaflet";
 import type {
   GpxTrackPoint,
+  HourlyWeatherPoint,
   UnitSystem,
   SegmentForm,
   SplitGpxProfile,
@@ -34,6 +35,7 @@ import type { RestStopForm } from "../types";
 import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
 import { distanceLabel, SEGMENT_COLORS } from "../utils";
 const ElevationProfile = lazy(() => import("./ElevationProfile"));
+const TemperatureChart = lazy(() => import("./TemperatureChart"));
 
 interface RouteMarker {
   lat: number;
@@ -59,6 +61,12 @@ interface CourseMapProps {
   courseName?: string;
   /** When set, zoom the map to the given segment (or split within it). */
   zoomTarget?: { segIdx: number; splitIdx?: number; rev: number } | null;
+  /** Hourly weather points for the wind overlay and temperature chart. */
+  hourlyWeather?: HourlyWeatherPoint[] | null;
+  /** IANA timezone of the course start — forwarded to TemperatureChart. */
+  courseTz?: string;
+  /** ISO end-times of each segment — used for boundary lines in TemperatureChart. */
+  segmentBoundaryTimes?: string[];
 }
 
 /** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2–3k. */
@@ -405,6 +413,9 @@ export default function CourseMap({
   onMarkerClick,
   courseName,
   zoomTarget,
+  hourlyWeather,
+  courseTz,
+  segmentBoundaryTimes,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
   const toUserDist =
@@ -537,10 +548,13 @@ export default function CourseMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMarkers, setShowMarkers] = useState(true);
+  const [showSplitMarkers, setShowSplitMarkers] = useState(true);
   const [showRestStops, setShowRestStops] = useState(false);
+  const [showWindOverlay, setShowWindOverlay] = useState(false);
   const [mapStyle, setMapStyle] = useState<"osm" | "topo">("osm");
   const [selectedSegIdx, setSelectedSegIdx] = useState<number | null>(null);
   const [hoverKm, setHoverKm] = useState<number | null>(null);
+  const [hoverWeatherPt, setHoverWeatherPt] = useState<HourlyWeatherPoint | null>(null);
   const [elevZoomRange, setElevZoomRange] = useState<[number, number] | null>(
     null,
   );
@@ -707,6 +721,15 @@ export default function CourseMap({
           <i className="fa-solid fa-flag" />
         </button>
         <button
+          className="map-split-markers-btn"
+          onClick={() => setShowSplitMarkers((v) => !v)}
+          title={showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"}
+          aria-label={showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"}
+          style={{ opacity: showSplitMarkers ? 1 : 0.5 }}
+        >
+          <i className="fa-solid fa-location-pin" />
+        </button>
+        <button
           className="map-stop-btn"
           onClick={() => setShowRestStops((v) => !v)}
           title={
@@ -736,6 +759,19 @@ export default function CourseMap({
         >
           🗻
         </button>
+        {hourlyWeather && hourlyWeather.length > 0 && (
+          <button
+            className="map-wind-btn"
+            onClick={() => setShowWindOverlay((v) => !v)}
+            title={showWindOverlay ? "Hide wind overlay" : "Show wind overlay"}
+            aria-label={
+              showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
+            }
+            style={{ opacity: showWindOverlay ? 1 : 0.5 }}
+          >
+            <i className="fa-solid fa-wind" />
+          </button>
+        )}
         <button
           className="map-reset-btn"
           onClick={() =>
@@ -831,7 +867,7 @@ export default function CourseMap({
               showRestStops ? (
                 <StopMarker key={i} m={m} onMarkerClick={onMarkerClick} />
               ) : null
-            ) : (
+            ) : showSplitMarkers ? (
               <SplitMarker
                 key={i}
                 m={m}
@@ -842,7 +878,7 @@ export default function CourseMap({
                 }
                 onMarkerClick={onMarkerClick}
               />
-            ),
+            ) : null,
           )}
           {hoverKm !== null &&
             (() => {
@@ -862,6 +898,104 @@ export default function CourseMap({
                 />
               ) : null;
             })()}
+          {/* Temperature chart hover dot */}
+          {hoverWeatherPt !== null && (
+            <CircleMarker
+              center={[hoverWeatherPt.lat, hoverWeatherPt.lon]}
+              radius={7}
+              pathOptions={{
+                color: "#fff",
+                weight: 2.5,
+                fillColor: "#60a5fa",
+                fillOpacity: 1,
+              }}
+              interactive={false}
+              pane="route-labels"
+            />
+          )}
+          {/* Wind overlay — one arrow per hourly sample */}
+          {showWindOverlay &&
+            hourlyWeather &&
+            hourlyWeather.map((pt, i) => {
+              // ── Scale constants — adjust these to taste ──────────────────
+              /** px at 0 km/h wind */
+              const ARROW_MIN = 12;
+              /** px at max wind */
+              const ARROW_MAX = 64;
+              /** wind speed (km/h) that maps to ARROW_MAX */
+              const SPEED_AT_MAX = 60;
+              // ─────────────────────────────────────────────────────────────
+              const sz = Math.round(
+                ARROW_MIN +
+                  (ARROW_MAX - ARROW_MIN) *
+                    Math.min(pt.weather.windSpeed / SPEED_AT_MAX, 1),
+              );
+              const half = sz / 2;
+              // Arrow drawn in a 0 0 10 20 viewBox: shaft + arrowhead
+              // Shaft runs from (5,18) up to (5,8); head is a triangle at the top
+              const arrowSvg = `<svg viewBox="0 0 10 20" width="${sz}" height="${sz}" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${
+                (pt.weather.windDirection + 180) % 360
+              }deg);transform-origin:50% 50%;display:block;overflow:visible"><line x1="5" y1="18" x2="5" y2="9" stroke="rgba(255,255,255,0.9)" stroke-width="2.5" stroke-linecap="round"/><line x1="5" y1="18" x2="5" y2="9" stroke="#111827" stroke-width="1" stroke-linecap="round"/><polygon points="5,1 9,10 5,7 1,10" fill="#111827" stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+              return (
+                <Marker
+                  key={i}
+                  position={[pt.lat, pt.lon]}
+                  icon={divIcon({
+                    html: arrowSvg,
+                    className: "",
+                    iconSize: [sz, sz],
+                    iconAnchor: [half, half],
+                  })}
+                  pane="route-labels"
+                >
+                  <Popup>
+                    <div style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
+                      <strong>
+                        {new Date(pt.timeIso).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </strong>
+                      <br />
+                      Wind:{" "}
+                      {unitSystem === "imperial"
+                        ? Math.round(pt.weather.windSpeed / 1.60934)
+                        : Math.round(pt.weather.windSpeed)}{" "}
+                      {unitSystem === "imperial" ? "mph" : "km/h"} from{" "}
+                      {
+                        [
+                          "N",
+                          "NNE",
+                          "NE",
+                          "ENE",
+                          "E",
+                          "ESE",
+                          "SE",
+                          "SSE",
+                          "S",
+                          "SSW",
+                          "SW",
+                          "WSW",
+                          "W",
+                          "WNW",
+                          "NW",
+                          "NNW",
+                        ][Math.round(pt.weather.windDirection / 22.5) % 16]
+                      }
+                      {pt.weather.windGusts > pt.weather.windSpeed
+                        ? ` (gusts ${unitSystem === "imperial" ? Math.round(pt.weather.windGusts / 1.60934) : Math.round(pt.weather.windGusts)} ${unitSystem === "imperial" ? "mph" : "km/h"})`
+                        : ""}
+                      <br />
+                      Temp:{" "}
+                      {unitSystem === "imperial"
+                        ? Math.round((pt.weather.temperature * 9) / 5 + 32)
+                        : Math.round(pt.weather.temperature)}
+                      {unitSystem === "imperial" ? "°F" : "°C"}
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
         </MapContainer>
       </div>
       {/* ── Legend ── */}
@@ -1040,6 +1174,18 @@ export default function CourseMap({
             </div>
           );
         })()}
+        {/* Temperature chart — shown once hourly weather is fetched */}
+        {hourlyWeather && hourlyWeather.length >= 2 && courseTz && (
+          <Suspense fallback={null}>
+            <TemperatureChart
+              hourlyWeather={hourlyWeather}
+              courseTz={courseTz}
+              unitSystem={unitSystem}
+              segmentBoundaryTimes={segmentBoundaryTimes}
+              onHoverPoint={setHoverWeatherPt}
+            />
+          </Suspense>
+        )}
       </div>
     </div>
   );

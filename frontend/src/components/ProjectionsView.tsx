@@ -3,6 +3,7 @@ import type {
   CourseForm as CourseFormState,
   CourseDetail,
   GpxTrackPoint,
+  HourlyWeatherPoint,
   SegmentDetail,
   SegmentForm,
   SplitDetail,
@@ -110,6 +111,7 @@ interface ProjectionsViewProps {
   etaMarginOpen?: number;
   etaMarginClose?: number;
   splitWeather?: (SplitWeatherPair | null)[][] | null;
+  hourlyWeather?: HourlyWeatherPoint[] | null;
   onZoomToSegment?: (segIdx: number) => void;
   onZoomToSplit?: (segIdx: number, splitIdx: number) => void;
 }
@@ -133,6 +135,7 @@ export default function ProjectionsView({
   etaMarginOpen = 15,
   etaMarginClose = 7,
   splitWeather,
+  hourlyWeather,
   onZoomToSegment,
   onZoomToSplit,
 }: ProjectionsViewProps) {
@@ -199,6 +202,11 @@ export default function ProjectionsView({
             etaMarginOpen={etaMarginOpen}
             etaMarginClose={etaMarginClose}
             segmentWeather={splitWeather?.[segIndex] ?? null}
+            segmentHourlyWeather={
+              hourlyWeather
+                ? hourlyWeather.filter((p) => p.segIdx === segIndex)
+                : null
+            }
             onZoomToSegment={onZoomToSegment}
             onZoomToSplit={onZoomToSplit}
           />
@@ -367,6 +375,7 @@ function ProjectionSegment({
   etaMarginOpen,
   etaMarginClose,
   segmentWeather,
+  segmentHourlyWeather,
   onZoomToSegment,
   onZoomToSplit,
 }: {
@@ -392,6 +401,7 @@ function ProjectionSegment({
   etaMarginOpen: number;
   etaMarginClose: number;
   segmentWeather?: (SplitWeatherPair | null)[] | null;
+  segmentHourlyWeather?: HourlyWeatherPoint[] | null;
   onZoomToSegment?: (segIdx: number) => void;
   onZoomToSplit?: (segIdx: number, splitIdx: number) => void;
 }) {
@@ -600,10 +610,13 @@ function ProjectionSegment({
   const segTempMax = _segMaxs.length > 0 ? Math.max(..._segMaxs) : undefined;
 
   // Segment-level weather summary stats
+  // Prefer hourly data (more samples) when available; fall back to split-pair endpoints.
   const segWeatherStats = useMemo(() => {
-    if (!segmentWeather || segmentWeather.length === 0) return null;
-    const hasSamples = segmentWeather.some((p) => p?.start || p?.end);
-    if (!hasSamples) return null;
+    const hasHourly = segmentHourlyWeather && segmentHourlyWeather.length > 0;
+    if (!hasHourly && (!segmentWeather || segmentWeather.length === 0))
+      return null;
+    if (!hasHourly && !segmentWeather?.some((p) => p?.start || p?.end))
+      return null;
 
     let totalSplits = 0;
     let rainySplits = 0;
@@ -615,66 +628,115 @@ function ProjectionSegment({
       crossCount = 0,
       windBearingCount = 0;
 
-    segmentWeather.forEach((pair, i) => {
-      if (!pair) return;
-      const primary = pair.end ?? pair.start;
-      if (!primary) return;
-      totalSplits++;
-
-      // Rainy: use precip probability when available, else actual precipitation
-      const isRainy = primary.precipitationProbabilityAvailable
-        ? primary.precipitationProbability >= 30
-        : primary.precipitation > 0;
-      if (isRainy) rainySplits++;
-
-      // Humidity: average all available endpoint samples
-      if (pair.start) {
-        humiditySum += pair.start.humidity;
+    if (hasHourly && segmentHourlyWeather) {
+      // Use all hourly points for wind and humidity (high-precision)
+      for (const pt of segmentHourlyWeather) {
+        const w = pt.weather;
+        humiditySum += w.humidity;
         humidityCount++;
-      }
-      if (pair.end) {
-        humiditySum += pair.end.humidity;
-        humidityCount++;
-      }
 
-      // Wind direction breakdown from all endpoint samples
-      const windSamples = [pair.start, pair.end].filter(
-        (w): w is SplitWeather => w !== null,
-      );
-      for (const w of windSamples) {
         const dir = w.windDirection;
         if (dir >= 315 || dir < 45) dirCounts.N++;
         else if (dir < 135) dirCounts.E++;
         else if (dir < 225) dirCounts.S++;
         else dirCounts.W++;
+
+        // Wind impact: bearing from point to next point along track isn't
+        // available per hourly sample, so use the containing split's profile.
+        const profile = gpxProfiles?.[pt.splitIdx];
+        if (
+          profile &&
+          !(
+            profile.startLat === profile.endLat &&
+            profile.startLon === profile.endLon
+          )
+        ) {
+          const bearing = computeBearing(
+            profile.startLat,
+            profile.startLon,
+            profile.endLat,
+            profile.endLon,
+          );
+          const diff = (w.windDirection - bearing + 360) % 360;
+          const angle = diff > 180 ? 360 - diff : diff;
+          if (angle <= 45) headCount++;
+          else if (angle >= 135) tailCount++;
+          else crossCount++;
+          windBearingCount++;
+        }
       }
 
-      // Wind impact: compare wind direction to route bearing
-      const profile = gpxProfiles?.[i];
-      const windW = pair.end ?? pair.start;
-      if (
-        profile &&
-        windW &&
-        !(
-          profile.startLat === profile.endLat &&
-          profile.startLon === profile.endLon
-        )
-      ) {
-        const bearing = computeBearing(
-          profile.startLat,
-          profile.startLon,
-          profile.endLat,
-          profile.endLon,
-        );
-        // angle: 0° = pure headwind (wind from ahead), 180° = pure tailwind
-        const diff = (windW.windDirection - bearing + 360) % 360;
-        const angle = diff > 180 ? 360 - diff : diff;
-        if (angle <= 45) headCount++;
-        else if (angle >= 135) tailCount++;
-        else crossCount++;
-        windBearingCount++;
+      // Rainy splits: still derived from per-split pairs (need per-split context)
+      if (segmentWeather) {
+        segmentWeather.forEach((pair) => {
+          if (!pair) return;
+          const primary = pair.end ?? pair.start;
+          if (!primary) return;
+          totalSplits++;
+          const isRainy = primary.precipitationProbabilityAvailable
+            ? primary.precipitationProbability >= 30
+            : primary.precipitation > 0;
+          if (isRainy) rainySplits++;
+        });
       }
-    });
+    } else {
+      // Legacy path: two samples per split (start + end)
+      segmentWeather!.forEach((pair, i) => {
+        if (!pair) return;
+        const primary = pair.end ?? pair.start;
+        if (!primary) return;
+        totalSplits++;
+
+        const isRainy = primary.precipitationProbabilityAvailable
+          ? primary.precipitationProbability >= 30
+          : primary.precipitation > 0;
+        if (isRainy) rainySplits++;
+
+        if (pair.start) {
+          humiditySum += pair.start.humidity;
+          humidityCount++;
+        }
+        if (pair.end) {
+          humiditySum += pair.end.humidity;
+          humidityCount++;
+        }
+
+        const windSamples = [pair.start, pair.end].filter(
+          (w): w is SplitWeather => w !== null,
+        );
+        for (const w of windSamples) {
+          const dir = w.windDirection;
+          if (dir >= 315 || dir < 45) dirCounts.N++;
+          else if (dir < 135) dirCounts.E++;
+          else if (dir < 225) dirCounts.S++;
+          else dirCounts.W++;
+        }
+
+        const profile = gpxProfiles?.[i];
+        const windW = pair.end ?? pair.start;
+        if (
+          profile &&
+          windW &&
+          !(
+            profile.startLat === profile.endLat &&
+            profile.startLon === profile.endLon
+          )
+        ) {
+          const bearing = computeBearing(
+            profile.startLat,
+            profile.startLon,
+            profile.endLat,
+            profile.endLon,
+          );
+          const diff = (windW.windDirection - bearing + 360) % 360;
+          const angle = diff > 180 ? 360 - diff : diff;
+          if (angle <= 45) headCount++;
+          else if (angle >= 135) tailCount++;
+          else crossCount++;
+          windBearingCount++;
+        }
+      });
+    }
 
     const windTotal = dirCounts.N + dirCounts.E + dirCounts.S + dirCounts.W;
     return {
@@ -700,7 +762,7 @@ function ProjectionSegment({
             }
           : undefined,
     };
-  }, [segmentWeather, gpxProfiles]);
+  }, [segmentWeather, segmentHourlyWeather, gpxProfiles]);
 
   const transitSplit = segment.split_details[0] ?? null;
   const transitFormSplit = formSegment?.splits[0];
@@ -1479,6 +1541,13 @@ function ProjectionSegment({
                         : undefined
                     }
                     splitWeather={segmentWeather?.[splitIndex] ?? null}
+                    splitHourlyWeather={
+                      segmentHourlyWeather
+                        ? segmentHourlyWeather.filter(
+                            (p) => p.splitIdx === splitIndex,
+                          )
+                        : null
+                    }
                     onZoomToSplit={onZoomToSplit}
                   />
                 ))}
@@ -1512,6 +1581,7 @@ function ProjectionSplit({
   segColor,
   expandSignal,
   splitWeather,
+  splitHourlyWeather,
   onZoomToSplit,
 }: {
   segIndex: number;
@@ -1534,6 +1604,7 @@ function ProjectionSplit({
   segColor: string;
   expandSignal?: number;
   splitWeather?: SplitWeatherPair | null;
+  splitHourlyWeather?: HourlyWeatherPoint[] | null;
   onZoomToSplit?: (segIdx: number, splitIdx: number) => void;
 }) {
   const [collapsed, setCollapsed] = useState(true);
@@ -2197,6 +2268,7 @@ function ProjectionSplit({
                     unitSystem={unitSystem}
                     restStop={formSplit?.rest_stop ?? null}
                     onSelectStop={() => {}}
+                    splitHourlyWeather={splitHourlyWeather}
                   />
                 </Suspense>
               </div>

@@ -45,9 +45,12 @@ import {
   interpolateLatLon,
 } from "../calculator/gpxParser";
 import {
-  fetchSplitWeatherPairs,
+  computeHourlyCoursePoints,
+  fetchHourlyCourseWeather,
+  deriveWeatherPairsFromHourly,
   type SplitWeatherPair,
 } from "../calculator/weather";
+import type { HourlyWeatherPoint } from "../types";
 import { useAppSettings } from "../AppSettingsContext";
 import { PAID_APIS_ENABLED } from "../config";
 import tzlookup from "tz-lookup";
@@ -1242,15 +1245,28 @@ export default function CourseForm() {
   );
 
   // ── Weather forecast state (lives here so it survives tab changes) ──
-  const [splitWeather, setSplitWeather] = useState<
-    (SplitWeatherPair | null)[][] | null
+  const [hourlyWeather, setHourlyWeather] = useState<
+    HourlyWeatherPoint[] | null
   >(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
 
   // Clear stale weather whenever the result or GPX profiles change.
   useEffect(() => {
-    setSplitWeather(null);
+    setHourlyWeather(null);
   }, [result, gpxProfiles]);
+
+  // Derive the per-split SplitWeatherPair[][] from hourly data (no re-fetch).
+  const splitWeather = useMemo<(SplitWeatherPair | null)[][] | null>(() => {
+    if (!hourlyWeather || !result) return null;
+    const splitCounts = result.segment_details.map(
+      (seg) => seg.split_details.length,
+    );
+    return deriveWeatherPairsFromHourly(
+      hourlyWeather,
+      result.segment_details.length,
+      splitCounts,
+    );
+  }, [hourlyWeather, result]);
 
   const weatherAvailable = useMemo(() => {
     if (!gpxProfiles || !result) return false;
@@ -1262,80 +1278,26 @@ export default function CourseForm() {
   }, [gpxProfiles, result]);
 
   const handleFetchWeather = useCallback(() => {
-    if (!gpxProfiles || !result) return;
+    if (!gpxProfiles || !result || !gpxTrack) return;
 
-    const flatSplits: {
-      startLat: number;
-      startLon: number;
-      startTimeIso: string;
-      endLat: number;
-      endLon: number;
-      endTimeIso: string;
-    }[] = [];
-    const segLengths: number[] = [];
-
-    for (let si = 0; si < result.segment_details.length; si++) {
-      const seg = result.segment_details[si];
-      segLengths.push(seg.split_details.length);
-      for (let sj = 0; sj < seg.split_details.length; sj++) {
-        const profile = gpxProfiles[si]?.[sj];
-        if (profile) {
-          flatSplits.push({
-            startLat: profile.startLat,
-            startLon: profile.startLon,
-            startTimeIso: seg.split_details[sj].start_time,
-            endLat: profile.endLat,
-            endLon: profile.endLon,
-            endTimeIso: seg.split_details[sj].end_time,
-          });
-        } else {
-          flatSplits.push({
-            startLat: 0,
-            startLon: 0,
-            startTimeIso: "",
-            endLat: 0,
-            endLon: 0,
-            endTimeIso: "",
-          });
-        }
-      }
-    }
-
-    const hasCoords = flatSplits.some(
-      (s) => s.startLat !== 0 || s.endLat !== 0,
+    const coords = computeHourlyCoursePoints(
+      result,
+      gpxProfiles,
+      gpxTrack,
+      interpolateLatLon,
     );
-    if (!hasCoords) return;
+    if (coords.length === 0) return;
 
     setWeatherLoading(true);
-    fetchSplitWeatherPairs(
-      flatSplits.filter((s) => s.startLat !== 0 || s.endLat !== 0),
-      paidApisEnabled,
-    )
-      .then((flat) => {
-        let fi = 0;
-        const nested: (SplitWeatherPair | null)[][] = [];
-        let idx = 0;
-        for (const len of segLengths) {
-          const row: (SplitWeatherPair | null)[] = [];
-          for (let j = 0; j < len; j++) {
-            const s = flatSplits[idx];
-            if (s.startLat !== 0 || s.endLat !== 0) {
-              row.push(flat[fi] ?? null);
-              fi++;
-            } else {
-              row.push(null);
-            }
-            idx++;
-          }
-          nested.push(row);
-        }
-        setSplitWeather(nested);
+    fetchHourlyCourseWeather(coords, paidApisEnabled)
+      .then((points) => {
+        setHourlyWeather(points);
         setWeatherLoading(false);
       })
       .catch(() => {
         setWeatherLoading(false);
       });
-  }, [result, gpxProfiles]);
+  }, [result, gpxProfiles, gpxTrack]);
 
   // Memoized — avoids re-running the 30k-point RDP on every render.
   const bannerGainM = useMemo(
@@ -2407,6 +2369,11 @@ export default function CourseForm() {
                   onMarkerClick={handleMapMarkerClick}
                   courseName={form.name?.trim() || undefined}
                   zoomTarget={mapZoomTarget}
+                  hourlyWeather={hourlyWeather}
+                  courseTz={form.timezone}
+                  segmentBoundaryTimes={result?.segment_details.map(
+                    (seg) => seg.end_time,
+                  )}
                 />
               </Suspense>
             )}
@@ -2515,7 +2482,7 @@ export default function CourseForm() {
             )}
             {activeTab === "projections" &&
               weatherAvailable &&
-              !splitWeather && (
+              !hourlyWeather && (
                 <button
                   type="button"
                   className="segments-toggle-btn"
@@ -3584,6 +3551,7 @@ export default function CourseForm() {
                       </dl>
                     </div>
                   )}
+
                 </div>
               )}
 
@@ -3690,6 +3658,7 @@ export default function CourseForm() {
                   etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
                   etaMarginClose={parseInt(etaMargins.close, 10) || 7}
                   splitWeather={splitWeather}
+                  hourlyWeather={hourlyWeather}
                   onZoomToSegment={handleZoomToSegment}
                   onZoomToSplit={handleZoomToSplit}
                 />

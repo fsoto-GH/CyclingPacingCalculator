@@ -25,6 +25,23 @@ export interface SplitGpxProfile {
   endKm: number;
 }
 
+/**
+ * Weather data sampled at a specific wall-clock hour along the course.
+ * The lat/lon is interpolated along the GPX track based on the fraction of
+ * elapsed time within the enclosing split.
+ */
+export interface HourlyWeatherPoint {
+  /** UTC ISO string for this wall-clock hour (e.g. "2025-07-15T14:00:00.000Z"). */
+  timeIso: string;
+  lat: number;
+  lon: number;
+  weather: import("./calculator/weather").SplitWeather;
+  /** Segment index this point belongs to. */
+  segIdx: number;
+  /** Split index (within segment) this point belongs to. */
+  splitIdx: number;
+}
+
 // ── API request types ──
 export type Mode = "distance" | "target_distance";
 export type SubSplitMode = "even" | "fixed" | "custom" | "hour";

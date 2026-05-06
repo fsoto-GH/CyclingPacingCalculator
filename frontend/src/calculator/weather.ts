@@ -514,3 +514,160 @@ export async function fetchSplitWeatherPairs(
     return { start, end, tempMin, tempMax };
   });
 }
+
+// ── Hourly course weather ─────────────────────────────────────────────────────
+
+/**
+ * Intermediate shape: hourly point without weather data yet attached.
+ * @internal
+ */
+interface HourlyCourseCoord {
+  timeIso: string;
+  lat: number;
+  lon: number;
+  segIdx: number;
+  splitIdx: number;
+}
+
+/**
+ * Compute one coordinate per wall-clock hour across the entire course by
+ * linearly interpolating along the GPX track within each split.
+ *
+ * For a given hour `h` that falls within split [startMs, endMs]:
+ *   frac  = (h − startMs) / (endMs − startMs)
+ *   km    = startKm + frac × (endKm − startKm)
+ *   latlon = interpolateLatLon(track, km)
+ *
+ * The first and last point of each split are always included (at their exact
+ * boundary times) so the course has no gaps.
+ */
+export function computeHourlyCoursePoints(
+  result: import("../types").CourseDetail,
+  gpxProfiles: import("../types").SplitGpxProfile[][],
+  gpxTrack: import("../types").GpxTrackPoint[],
+  interpolate: (
+    track: import("../types").GpxTrackPoint[],
+    km: number,
+  ) => { lat: number; lon: number } | null,
+): HourlyCourseCoord[] {
+  const points: HourlyCourseCoord[] = [];
+  const ONE_HOUR_MS = 3_600_000;
+
+  for (let si = 0; si < result.segment_details.length; si++) {
+    const seg = result.segment_details[si];
+    for (let sj = 0; sj < seg.split_details.length; sj++) {
+      const split = seg.split_details[sj];
+      const profile = gpxProfiles[si]?.[sj];
+      if (!profile) continue;
+
+      const startMs = new Date(split.start_time).getTime();
+      const endMs = new Date(split.end_time).getTime();
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+      const durationMs = endMs - startMs;
+      if (durationMs <= 0) continue;
+
+      const { startKm, endKm } = profile;
+
+      const getLatLon = (ms: number): { lat: number; lon: number } | null => {
+        const frac = (ms - startMs) / durationMs;
+        const km = startKm + frac * (endKm - startKm);
+        return interpolate(gpxTrack, km);
+      };
+
+      // First wall-clock hour at or after split start
+      const firstHourMs = Math.ceil(startMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+
+      for (let h = firstHourMs; h <= endMs; h += ONE_HOUR_MS) {
+        const ll = getLatLon(h);
+        if (!ll) continue;
+        points.push({
+          timeIso: new Date(h).toISOString(),
+          lat: ll.lat,
+          lon: ll.lon,
+          segIdx: si,
+          splitIdx: sj,
+        });
+      }
+    }
+  }
+
+  return points;
+}
+
+/**
+ * Fetch weather for a list of hourly course coordinate points, returning the
+ * same list with `weather` attached. Points for which no weather is available
+ * (outside 16-day window or missing coords) are omitted from the result.
+ */
+export async function fetchHourlyCourseWeather(
+  points: HourlyCourseCoord[],
+  usePaidApi = false,
+): Promise<import("../types").HourlyWeatherPoint[]> {
+  if (points.length === 0) return [];
+
+  const { results } = await fetchSplitWeather(
+    points.map((p) => ({ lat: p.lat, lon: p.lon, endTimeIso: p.timeIso })),
+    usePaidApi,
+  );
+
+  const out: import("../types").HourlyWeatherPoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const w = results[i];
+    if (!w) continue;
+    out.push({ ...points[i], weather: w });
+  }
+  return out;
+}
+
+/**
+ * Derive `SplitWeatherPair[][]` (keyed by [segIdx][splitIdx]) from a flat
+ * array of `HourlyWeatherPoint`s.  This replaces the original `fetchSplitWeatherPairs`
+ * call — no additional network requests are made.
+ *
+ * For each split the function picks:
+ *   - `start` — the earliest hourly point in the split
+ *   - `end`   — the latest hourly point in the split
+ *   - `tempMin` / `tempMax` — min/max temperature across all hourly points
+ */
+export function deriveWeatherPairsFromHourly(
+  hourly: import("../types").HourlyWeatherPoint[],
+  segmentCount: number,
+  splitCountsPerSegment: number[],
+): (SplitWeatherPair | null)[][] {
+  // Build nested structure with empty rows first
+  const result: (SplitWeatherPair | null)[][] = Array.from(
+    { length: segmentCount },
+    (_, si) =>
+      Array.from({ length: splitCountsPerSegment[si] ?? 0 }, () => null),
+  );
+
+  // Group hourly points by [segIdx][splitIdx]
+  const grouped = new Map<string, import("../types").HourlyWeatherPoint[]>();
+  for (const pt of hourly) {
+    const key = `${pt.segIdx}:${pt.splitIdx}`;
+    let arr = grouped.get(key);
+    if (!arr) {
+      arr = [];
+      grouped.set(key, arr);
+    }
+    arr.push(pt);
+  }
+
+  for (const [key, pts] of grouped) {
+    const [si, sj] = key.split(":").map(Number);
+    if (!result[si] || result[si][sj] === undefined) continue;
+
+    // pts are in insertion order which is already chronological
+    const start = pts[0].weather;
+    const end = pts[pts.length - 1].weather;
+    const temps = pts.map((p) => p.weather.temperature);
+    result[si][sj] = {
+      start,
+      end,
+      tempMin: Math.min(...temps),
+      tempMax: Math.max(...temps),
+    };
+  }
+
+  return result;
+}
