@@ -1268,6 +1268,67 @@ export default function CourseForm() {
     );
   }, [hourlyWeather, result]);
 
+  // Whole-course wind direction + impact stats derived from all hourly samples.
+  const courseWindStats = useMemo(() => {
+    if (!hourlyWeather || hourlyWeather.length === 0) return null;
+    const dirCounts = { N: 0, E: 0, S: 0, W: 0 };
+    let headCount = 0,
+      tailCount = 0,
+      crossCount = 0,
+      windBearingCount = 0;
+    for (const pt of hourlyWeather) {
+      const w = pt.weather;
+      const dir = w.windDirection;
+      if (dir >= 315 || dir < 45) dirCounts.N++;
+      else if (dir < 135) dirCounts.E++;
+      else if (dir < 225) dirCounts.S++;
+      else dirCounts.W++;
+      const profile = gpxProfiles?.[pt.segIdx]?.[pt.splitIdx];
+      if (
+        profile &&
+        !(
+          profile.startLat === profile.endLat &&
+          profile.startLon === profile.endLon
+        )
+      ) {
+        const φ1 = (profile.startLat * Math.PI) / 180;
+        const φ2 = (profile.endLat * Math.PI) / 180;
+        const Δλ = ((profile.endLon - profile.startLon) * Math.PI) / 180;
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x =
+          Math.cos(φ1) * Math.sin(φ2) -
+          Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        const bearing = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+        const diff = (w.windDirection - bearing + 360) % 360;
+        const angle = diff > 180 ? 360 - diff : diff;
+        if (angle <= 45) headCount++;
+        else if (angle >= 135) tailCount++;
+        else crossCount++;
+        windBearingCount++;
+      }
+    }
+    const windTotal = dirCounts.N + dirCounts.E + dirCounts.S + dirCounts.W;
+    return {
+      windDir:
+        windTotal > 0
+          ? {
+              N: Math.round((dirCounts.N / windTotal) * 100),
+              E: Math.round((dirCounts.E / windTotal) * 100),
+              S: Math.round((dirCounts.S / windTotal) * 100),
+              W: Math.round((dirCounts.W / windTotal) * 100),
+            }
+          : null,
+      windImpact:
+        windBearingCount > 0
+          ? {
+              head: Math.round((headCount / windBearingCount) * 100),
+              tail: Math.round((tailCount / windBearingCount) * 100),
+              cross: Math.round((crossCount / windBearingCount) * 100),
+            }
+          : null,
+    };
+  }, [hourlyWeather, gpxProfiles]);
+
   const weatherAvailable = useMemo(() => {
     if (!gpxProfiles || !result) return false;
     const maxForecast = new Date();
@@ -2007,73 +2068,81 @@ export default function CourseForm() {
     return warnings;
   }, [form.segments, splitGpxStatuses]);
 
-  const describeFieldId = useCallback((id: string): string => {
-    const courseMap: Record<string, string> = {
-      "init-speed": "Course speed",
-      "min-speed": "Course minimum speed",
-      dtr: "Course down time ratio",
-      "split-delta": "Course speed delta",
-      "seg-count": "Course segment count",
-      "start-time": "Course start time",
-      "ss-mode": "Course sub-split mode",
-      "ss-count": "Course sub-split count",
-      "ss-distance": "Course sub-split distance",
-      "ss-threshold": "Course last sub-split threshold",
-      "ss-distances": "Course sub-split distances",
-    };
-    const segmentMap: Record<string, string> = {
-      "sleep-time": "Sleep time",
-      "split-count": "Split count",
-      dtr: "Down time ratio",
-      "moving-speed": "Segment speed",
-      "min-speed": "Segment minimum speed",
-      "transit-time": "Transit elapsed time",
-      "transit-dist": "Transit distance",
-    };
-    const splitMap: Record<string, string> = {
-      distance: "Split distance",
-      "moving-speed": "Split speed",
-      "ss-count": "Sub-split count",
-      "ss-distance": "Sub-split distance",
-      "ss-threshold": "Sub-split threshold",
-      "ss-distances": "Sub-split distances",
-    };
+  const describeFieldId = useCallback(
+    (id: string): string => {
+      const courseMap: Record<string, string> = {
+        "init-speed": "Course speed",
+        "min-speed": "Course minimum speed",
+        dtr: "Course down time ratio",
+        "split-delta": "Course speed delta",
+        "seg-count": "Course segment count",
+        "start-time": "Course start time",
+        "ss-mode": "Course sub-split mode",
+        "ss-count": "Course sub-split count",
+        "ss-distance": "Course sub-split distance",
+        "ss-threshold": "Course last sub-split threshold",
+        "ss-distances": "Course sub-split distances",
+      };
+      const segmentMap: Record<string, string> = {
+        "sleep-time": "Sleep time",
+        "split-count": "Split count",
+        dtr: "Down time ratio",
+        "moving-speed": "Segment speed",
+        "min-speed": "Segment minimum speed",
+        "transit-time": "Transit elapsed time",
+        "transit-dist": "Transit distance",
+      };
+      const splitMap: Record<string, string> = {
+        distance: "Split distance",
+        "moving-speed": "Split speed",
+        "ss-count": "Sub-split count",
+        "ss-distance": "Sub-split distance",
+        "ss-threshold": "Sub-split threshold",
+        "ss-distances": "Sub-split distances",
+      };
 
-    if (id.startsWith("course-")) {
-      const key = id.slice("course-".length);
-      return courseMap[key] ?? `Course field (${key})`;
-    }
+      const segLabel = (si: number) =>
+        form.segments[si]?.name?.trim() || `Segment ${si + 1}`;
+      const splitLabel = (si: number, sj: number) =>
+        form.segments[si]?.splits[sj]?.name?.trim() || `Split ${sj + 1}`;
 
-    const transitRs = id.match(/^seg(\d+)-transit-rs-(.+)$/);
-    if (transitRs) {
-      const seg = Number(transitRs[1]) + 1;
-      return `Segment ${seg} transit rest stop ${transitRs[2]}`;
-    }
+      if (id.startsWith("course-")) {
+        const key = id.slice("course-".length);
+        return courseMap[key] ?? `Course field (${key})`;
+      }
 
-    const splitRs = id.match(/^seg(\d+)-split(\d+)-rs-(.+)$/);
-    if (splitRs) {
-      const seg = Number(splitRs[1]) + 1;
-      const split = Number(splitRs[2]) + 1;
-      return `Segment ${seg}, Split ${split} rest stop ${splitRs[3]}`;
-    }
+      const transitRs = id.match(/^seg(\d+)-transit-rs-(.+)$/);
+      if (transitRs) {
+        const si = Number(transitRs[1]);
+        return `${segLabel(si)} transit rest stop ${transitRs[2]}`;
+      }
 
-    const split = id.match(/^seg(\d+)-split(\d+)-(.+)$/);
-    if (split) {
-      const seg = Number(split[1]) + 1;
-      const splitNum = Number(split[2]) + 1;
-      const key = split[3];
-      return `Segment ${seg}, Split ${splitNum} ${splitMap[key] ?? key}`;
-    }
+      const splitRs = id.match(/^seg(\d+)-split(\d+)-rs-(.+)$/);
+      if (splitRs) {
+        const si = Number(splitRs[1]);
+        const sj = Number(splitRs[2]);
+        return `${segLabel(si)}, ${splitLabel(si, sj)} rest stop ${splitRs[3]}`;
+      }
 
-    const segment = id.match(/^seg(\d+)-(.+)$/);
-    if (segment) {
-      const seg = Number(segment[1]) + 1;
-      const key = segment[2];
-      return `Segment ${seg} ${segmentMap[key] ?? key}`;
-    }
+      const split = id.match(/^seg(\d+)-split(\d+)-(.+)$/);
+      if (split) {
+        const si = Number(split[1]);
+        const sj = Number(split[2]);
+        const key = split[3];
+        return `${segLabel(si)}, ${splitLabel(si, sj)} ${splitMap[key] ?? key}`;
+      }
 
-    return id;
-  }, []);
+      const segment = id.match(/^seg(\d+)-(.+)$/);
+      if (segment) {
+        const si = Number(segment[1]);
+        const key = segment[2];
+        return `${segLabel(si)} ${segmentMap[key] ?? key}`;
+      }
+
+      return id;
+    },
+    [form.segments],
+  );
 
   const visibleErrors = useMemo(() => {
     const visible: Record<string, string> = {};
@@ -3333,6 +3402,37 @@ export default function CourseForm() {
                           {formatHours(result.transit_time_hours)}
                         </dd>
                       </div>
+                      <div>
+                        <dt title="Average moving speed across the course">
+                          Speed
+                        </dt>
+                        <dd>
+                          {result.moving_time_hours > 0
+                            ? (
+                                result.distance / result.moving_time_hours
+                              ).toFixed(2)
+                            : "0.00"}{" "}
+                          {sLabel}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Average pace for the course">Pace</dt>
+                        <dd>
+                          {(Math.max(
+                            0,
+                            result.elapsed_time_hours - result.sleep_time_hours,
+                          ) > 0
+                            ? result.distance /
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              )
+                            : 0
+                          ).toFixed(2)}{" "}
+                          {sLabel}
+                        </dd>
+                      </div>
                     </dl>
                   </div>
 
@@ -3352,38 +3452,6 @@ export default function CourseForm() {
                   {showCourseResultsGrid && (
                     <div className="split-results-panel">
                       <dl className="split-results-grid">
-                        <div>
-                          <dt title="Average moving speed across the course">
-                            Speed
-                          </dt>
-                          <dd>
-                            {result.moving_time_hours > 0
-                              ? (
-                                  result.distance / result.moving_time_hours
-                                ).toFixed(2)
-                              : "0.00"}{" "}
-                            {sLabel}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt title="Average pace for the course">Pace</dt>
-                          <dd>
-                            {(Math.max(
-                              0,
-                              result.elapsed_time_hours -
-                                result.sleep_time_hours,
-                            ) > 0
-                              ? result.distance /
-                                Math.max(
-                                  0,
-                                  result.elapsed_time_hours -
-                                    result.sleep_time_hours,
-                                )
-                              : 0
-                            ).toFixed(2)}{" "}
-                            {sLabel}
-                          </dd>
-                        </div>
                         <div>
                           <dt title="Moving-time ratio: active first, course elapsed in parentheses">
                             Moving Ratio
@@ -3548,10 +3616,41 @@ export default function CourseForm() {
                             )}
                           </dd>
                         </div>
+                        {courseWindStats?.windDir && (
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <dt title="Proportion of hourly forecast samples with wind from each cardinal direction">
+                              Wind Direction
+                            </dt>
+                            <dd>
+                              <i className="fa-solid fa-arrow-up" />{" "}
+                              {courseWindStats.windDir.N}%{" · "}
+                              <i className="fa-solid fa-arrow-right" />{" "}
+                              {courseWindStats.windDir.E}%{" · "}
+                              <i className="fa-solid fa-arrow-down" />{" "}
+                              {courseWindStats.windDir.S}%{" · "}
+                              <i className="fa-solid fa-arrow-left" />{" "}
+                              {courseWindStats.windDir.W}%
+                            </dd>
+                          </div>
+                        )}
+                        {courseWindStats?.windImpact && (
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <dt title="Proportion of hourly samples by wind angle relative to route bearing: headwind (≤45° ahead), crosswind (45–135°), tailwind (≥135° behind)">
+                              Wind Impact
+                            </dt>
+                            <dd>
+                              <i className="fa-solid fa-arrow-up" />{" "}
+                              {courseWindStats.windImpact.head}% head{" · "}
+                              <i className="fa-solid fa-arrows-left-right" />{" "}
+                              {courseWindStats.windImpact.cross}% cross{" · "}
+                              <i className="fa-solid fa-arrow-down" />{" "}
+                              {courseWindStats.windImpact.tail}% tail
+                            </dd>
+                          </div>
+                        )}
                       </dl>
                     </div>
                   )}
-
                 </div>
               )}
 

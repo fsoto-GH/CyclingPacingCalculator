@@ -1358,9 +1358,13 @@ function ProjectionSegment({
                           Wind Direction
                         </dt>
                         <dd>
-                          N: {segWeatherStats.windDir.N}% · E:{" "}
-                          {segWeatherStats.windDir.E}% · S:{" "}
-                          {segWeatherStats.windDir.S}% · W:{" "}
+                          <i className="fa-solid fa-arrow-up" />{" "}
+                          {segWeatherStats.windDir.N}%{" · "}
+                          <i className="fa-solid fa-arrow-right" />{" "}
+                          {segWeatherStats.windDir.E}%{" · "}
+                          <i className="fa-solid fa-arrow-down" />{" "}
+                          {segWeatherStats.windDir.S}%{" · "}
+                          <i className="fa-solid fa-arrow-left" />{" "}
                           {segWeatherStats.windDir.W}%
                         </dd>
                       </div>
@@ -1371,8 +1375,11 @@ function ProjectionSegment({
                           Wind Impact
                         </dt>
                         <dd>
-                          ▲ {segWeatherStats.windImpact.head}% head · ↔{" "}
-                          {segWeatherStats.windImpact.cross}% cross · ▼{" "}
+                          <i className="fa-solid fa-arrow-up" />{" "}
+                          {segWeatherStats.windImpact.head}% head{" · "}
+                          <i className="fa-solid fa-arrows-left-right" />{" "}
+                          {segWeatherStats.windImpact.cross}% cross{" · "}
+                          <i className="fa-solid fa-arrow-down" />{" "}
                           {segWeatherStats.windImpact.tail}% tail
                         </dd>
                       </div>
