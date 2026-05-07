@@ -3126,7 +3126,7 @@ export default function CourseForm() {
                   </button>
                   <span className="seg-page-label">
                     {totalSegPages > 1
-                      ? `Segments ${clampedSegPage * segPageSize + 1}–${Math.min(
+                      ? `Segments ${clampedSegPage * segPageSize + 1}-${Math.min(
                           (clampedSegPage + 1) * segPageSize,
                           form.segments.length,
                         )} of ${form.segments.length}`
@@ -3635,7 +3635,7 @@ export default function CourseForm() {
                         )}
                         {courseWindStats?.windImpact && (
                           <div style={{ gridColumn: "1 / -1" }}>
-                            <dt title="Proportion of hourly samples by wind angle relative to route bearing: headwind (≤45° ahead), crosswind (45–135°), tailwind (≥135° behind)">
+                            <dt title="Proportion of hourly samples by wind angle relative to route bearing: headwind (≤45° ahead), crosswind (45-135°), tailwind (≥135° behind)">
                               Wind Impact
                             </dt>
                             <dd>
@@ -3694,7 +3694,7 @@ export default function CourseForm() {
                 </button>
                 <span className="seg-page-label">
                   {totalSegPages > 1
-                    ? `Segments ${clampedSegPage * segPageSize + 1}–${Math.min(
+                    ? `Segments ${clampedSegPage * segPageSize + 1}-${Math.min(
                         (clampedSegPage + 1) * segPageSize,
                         form.segments.length,
                       )} of ${form.segments.length}`

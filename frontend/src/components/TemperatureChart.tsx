@@ -34,7 +34,7 @@ interface ChartPoint {
   windSpeed: number;
   /** Wind gusts in display units, capped the same way. */
   windGusts: number;
-  /** Precipitation probability 0–100, or null if unavailable. */
+  /** Precipitation probability 0-100, or null if unavailable. */
   precip: number | null;
   raw: HourlyWeatherPoint;
 }
@@ -184,7 +184,7 @@ const TemperatureChart = memo(function TemperatureChart({
   const yMin = Math.floor(minTemp - pad);
   const yMax = Math.ceil(maxTemp + pad);
 
-  // Right axis: shared 0–100 scale for precip % and wind speed (km/h or mph ≤ 100)
+  // Right axis: shared 0-100 scale for precip % and wind speed (km/h or mph ≤ 100)
   const showSecondary = showWind || showPrecip;
   // Label the right axis with the active series units
   const rightAxisLabel =
@@ -355,7 +355,7 @@ const TemperatureChart = memo(function TemperatureChart({
             tickFormatter={(v: number) => `${v}${tempUnit}`}
           />
 
-          {/* Right axis — wind / precip (shared 0–100 scale) */}
+          {/* Right axis — wind / precip (shared 0-100 scale) */}
           {showSecondary && (
             <YAxis
               yAxisId="right"

@@ -69,7 +69,7 @@ interface CourseMapProps {
   segmentBoundaryTimes?: string[];
 }
 
-/** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2–3k. */
+/** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2-3k. */
 function decimateTrack(track: GpxTrackPoint[]): [number, number][] {
   if (track.length === 0) return [];
   const result: [number, number][] = [[track[0].lat, track[0].lon]];
@@ -554,7 +554,8 @@ export default function CourseMap({
   const [mapStyle, setMapStyle] = useState<"osm" | "topo">("osm");
   const [selectedSegIdx, setSelectedSegIdx] = useState<number | null>(null);
   const [hoverKm, setHoverKm] = useState<number | null>(null);
-  const [hoverWeatherPt, setHoverWeatherPt] = useState<HourlyWeatherPoint | null>(null);
+  const [hoverWeatherPt, setHoverWeatherPt] =
+    useState<HourlyWeatherPoint | null>(null);
   const [elevZoomRange, setElevZoomRange] = useState<[number, number] | null>(
     null,
   );
@@ -723,8 +724,12 @@ export default function CourseMap({
         <button
           className="map-split-markers-btn"
           onClick={() => setShowSplitMarkers((v) => !v)}
-          title={showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"}
-          aria-label={showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"}
+          title={
+            showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"
+          }
+          aria-label={
+            showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"
+          }
           style={{ opacity: showSplitMarkers ? 1 : 0.5 }}
         >
           <i className="fa-solid fa-location-pin" />

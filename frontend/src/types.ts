@@ -25,6 +25,14 @@ export interface SplitGpxProfile {
   endKm: number;
 }
 
+export interface GpxWaypoint {
+  name: string;
+  lat: number;
+  lon: number;
+  description?: string;
+  symbol: "food";
+}
+
 /**
  * Weather data sampled at a specific wall-clock hour along the course.
  * The lat/lon is interpolated along the GPX track based on the fraction of

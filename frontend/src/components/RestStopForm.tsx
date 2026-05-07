@@ -35,7 +35,7 @@ function fmtCompact(time: string): string {
 function entryCompactLabel(entry: DayHoursEntry): string {
   if (entry.mode === "24h") return "24h";
   if (entry.mode === "closed") return "Closed";
-  return `${fmtCompact(entry.opens)}–${fmtCompact(entry.closes)}`;
+  return `${fmtCompact(entry.opens)}-${fmtCompact(entry.closes)}`;
 }
 
 function hoursDetailSummary(rs: RestStopForm): string {
@@ -56,7 +56,7 @@ function hoursDetailSummary(rs: RestStopForm): string {
       const dayStr =
         start === end
           ? DAY_LABELS[start]
-          : `${DAY_LABELS[start]}–${DAY_LABELS[end]}`;
+          : `${DAY_LABELS[start]}-${DAY_LABELS[end]}`;
       return `${dayStr}: ${label}`;
     })
     .join(" · ");

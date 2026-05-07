@@ -453,7 +453,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     <li>
                       <strong>Elevation analysis</strong> — per-split gain,
                       loss, grade, steep-grade %, and dominant surface type,
-                      computed with Ramer–Douglas–Peucker simplification +
+                      computed with Ramer-Douglas-Peucker simplification +
                       sliding-window smoothing to filter GPS noise.
                     </li>
                     <li>

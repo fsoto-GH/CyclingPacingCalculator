@@ -60,7 +60,7 @@ export default function DayHoursInput({
             value={value.opens}
             onChange={(e) => update({ opens: e.target.value })}
           />
-          <span className="hours-sep">–</span>
+          <span className="hours-sep">-</span>
           <label htmlFor={`${id}-closes`} className="sr-only">
             Closes
           </label>

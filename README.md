@@ -234,7 +234,7 @@ The parser reads either `<trkpt>` (track) or `<rtept>` (route) elements, extract
 
 Raw GPS elevation data is notoriously noisy. A naïve cumulative-sum approach can produce wildly inflated gain/loss figures. The calculator uses a two-step algorithm that matches the output of [gpx.studio](https://gpx.studio):
 
-1. **Ramer–Douglas–Peucker (RDP) simplification** is run on the `(cumulative distance, elevation)` 2D plane with a 20 m perpendicular-distance tolerance. This identifies _significant terrain anchors_ — the peaks and valleys that represent genuine changes in slope — while discarding GPS jitter between them.
+1. **Ramer-Douglas-Peucker (RDP) simplification** is run on the `(cumulative distance, elevation)` 2D plane with a 20 m perpendicular-distance tolerance. This identifies _significant terrain anchors_ — the peaks and valleys that represent genuine changes in slope — while discarding GPS jitter between them.
 
 2. **100 m sliding-window smoothing** is then applied _between each pair of adjacent anchors_. A running sum maintains the window average in O(1) per step (the window start and end pointers advance monotonically), so the overall pass is O(n) rather than O(n·w). The raw GPS elevation is forced at each anchor endpoint to prevent drift.
 
@@ -341,13 +341,13 @@ The Projections tab detects when a segment crosses a timezone boundary (e.g. CDT
 
 ## 🟢 Open Hours & Rest Stop Configuration
 
-Each split can have a rest stop with per-day open hours. Hours can be set identically for every day or configured per day of the week (Mon–Sun). The mode options are:
+Each split can have a rest stop with per-day open hours. Hours can be set identically for every day or configured per day of the week (Mon-Sun). The mode options are:
 
 - **Hours** — opens/closes at specific times
 - **24h** — open around the clock
 - **Closed** — always closed on that day
 
-The ETA badge in results reflects which day of the week the calculator predicts you'll arrive, resolved in the split's effective timezone. This means a stop that is open Monday–Friday 08:00–20:00 will correctly show as closed if your pacing puts you there on a Saturday night.
+The ETA badge in results reflects which day of the week the calculator predicts you'll arrive, resolved in the split's effective timezone. This means a stop that is open Monday-Friday 08:00-20:00 will correctly show as closed if your pacing puts you there on a Saturday night.
 
 ---
 
@@ -379,7 +379,7 @@ This app requires a modern desktop or tablet browser.
 | Viewport   | Support level                                                         |
 | ---------- | --------------------------------------------------------------------- |
 | ≥ 600 px   | Full — all features display correctly                                 |
-| 390–599 px | Limited — most features work but maps, charts, and tables are cramped |
+| 390-599 px | Limited — most features work but maps, charts, and tables are cramped |
 | < 390 px   | Not supported — layout issues expected                                |
 
 The app is **not optimised for touch-only use**. GPX file uploads, map interactions, and multi-column forms work best with a keyboard and pointer device.

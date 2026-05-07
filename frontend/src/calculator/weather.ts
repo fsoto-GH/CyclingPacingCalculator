@@ -113,7 +113,7 @@ export function windDirectionLabel(deg: number): string {
  * Archive API differences vs. forecast:
  *   - Uses start_date / end_date instead of forecast_days.
  *   - No precipitation_probability field → synthesized as 0.
- *   - No is_day field → approximated from UTC hour (06:00–20:00 = day).
+ *   - No is_day field → approximated from UTC hour (06:00-20:00 = day).
  */
 
 // ── Open-Meteo response shape (subset) ──
@@ -147,7 +147,7 @@ function toDateStr(d: Date): string {
  * The archive API omits precipitation_probability and is_day.
  * Synthesize them so the HourlyData shape is uniform across both APIs.
  * is_day approximation: use the location's longitude to estimate local solar
- * time (1 h per 15° of longitude), then treat 06:00–20:00 solar time as day.
+ * time (1 h per 15° of longitude), then treat 06:00-20:00 solar time as day.
  * This avoids the UTC-offset error that would otherwise flag 3 AM EDT as daytime.
  */
 function patchArchiveHourly(

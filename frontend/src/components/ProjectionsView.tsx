@@ -242,7 +242,7 @@ function fmtWindPrecise(kmh: number, unitSystem: UnitSystem): string {
     : `${kmh.toFixed(1)} km/h`;
 }
 
-/** Bearing from point 1 → point 2, degrees 0–360 clockwise from north. */
+/** Bearing from point 1 → point 2, degrees 0-360 clockwise from north. */
 function computeBearing(
   lat1: number,
   lon1: number,
@@ -1371,7 +1371,7 @@ function ProjectionSegment({
                     )}
                     {segWeatherStats.windImpact && (
                       <div style={{ gridColumn: "1 / -1" }}>
-                        <dt title="Proportion of splits by wind angle relative to route bearing: headwind (wind ≤45° ahead), crosswind (45–135°), tailwind (≥135° behind)">
+                        <dt title="Proportion of splits by wind angle relative to route bearing: headwind (wind ≤45° ahead), crosswind (45-135°), tailwind (≥135° behind)">
                           Wind Impact
                         </dt>
                         <dd>

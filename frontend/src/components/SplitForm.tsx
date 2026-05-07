@@ -21,7 +21,7 @@ import {
 interface EtaInfo {
   status: "open" | "near-open" | "near-close" | "closed";
   statusWord: string; // e.g. "Open", "Near open", "Near close", "Closed"
-  hoursLabel: string; // e.g. "6:00 AM – 10:00 PM" or "24 hours" or "Closed"
+  hoursLabel: string; // e.g. "6:00 AM - 10:00 PM" or "24 hours" or "Closed"
   nearDetail: string | null; // e.g. "5 min before opening" or "10 min after closing"
   arrivalTime: string; // e.g. "1:31 PM EDT"
 }
