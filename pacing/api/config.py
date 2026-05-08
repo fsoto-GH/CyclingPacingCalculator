@@ -18,19 +18,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./cycling_pacing.db"
 
     # ── Auth ──────────────────────────────────────────────────────────────────
-    # A strong random string used to sign JWTs.  Generate with:
-    #   python -c "import secrets; print(secrets.token_hex(32))"
-    jwt_secret: str = "change-me-in-production"
+    # JWT secret from Supabase: Settings → API → JWT Secret.
+    # Used to verify access tokens issued by Supabase Auth.
+    supabase_jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
-    # Access token lifetime in seconds (default: 30 days)
-    jwt_expires_seconds: int = 60 * 60 * 24 * 30
 
-    # Google OAuth 2.0 credentials
-    google_client_id: Optional[str] = None
-    google_client_secret: Optional[str] = None
-
-    # Where Google redirects after consent (must match what's configured in
-    # Google Cloud Console → OAuth 2.0 credentials → Authorized redirect URIs)
+    # Frontend / CORS origin.
     frontend_url: str = "http://localhost:5173"
 
     # ── Paid / premium API keys (all optional) ────────────────────────────────

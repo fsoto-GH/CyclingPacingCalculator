@@ -1,6 +1,23 @@
 import axios from "axios";
 import type { CoursePayload, CourseDetail } from "./types";
-import type { AuthUser } from "./AppSettingsContext";
+import { supabase } from "./supabaseClient";
+
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Returns the current Supabase access token, or null if not signed in.
+ * Use this to attach Authorization: Bearer <token> to authenticated requests.
+ */
+async function getAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+/** Returns Authorization header object, or empty object if not signed in. */
+async function authHeader(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 // ── Calculator ────────────────────────────────────────────────────────────────
 
@@ -12,20 +29,6 @@ export async function calculateCourse(
     payload,
   );
   return response.data;
-}
-
-// ── Auth ──────────────────────────────────────────────────────────────────────
-
-/** Returns the currently authenticated user or null (never throws on 401). */
-export async function getAuthUser(): Promise<AuthUser | null> {
-  try {
-    const resp = await axios.get<AuthUser>("/v1/auth/me", {
-      withCredentials: true,
-    });
-    return resp.data;
-  } catch {
-    return null;
-  }
 }
 
 // ── Nearby stops ──────────────────────────────────────────────────────────────
@@ -61,7 +64,7 @@ export async function getNearbyStops(
   }
   const resp = await axios.get<NearbyAmenityResult[]>(
     "/v1/cycling/nearby_stops",
-    { params, signal, withCredentials: true },
+    { params, signal, headers: await authHeader() },
   );
   return resp.data;
 }
@@ -114,14 +117,14 @@ export interface RacePlanFull extends RacePlanSummary {
 
 export async function listRacePlans(): Promise<RacePlanSummary[]> {
   const resp = await axios.get<RacePlanSummary[]>("/v1/cycling/race_plan", {
-    withCredentials: true,
+    headers: await authHeader(),
   });
   return resp.data;
 }
 
 export async function getRacePlan(id: string): Promise<RacePlanFull> {
   const resp = await axios.get<RacePlanFull>(`/v1/cycling/race_plan/${id}`, {
-    withCredentials: true,
+    headers: await authHeader(),
   });
   return resp.data;
 }
@@ -134,7 +137,7 @@ export async function createRacePlan(
   const resp = await axios.post<RacePlanFull>(
     "/v1/cycling/race_plan",
     { name, is_public: isPublic, payload },
-    { withCredentials: true },
+    { headers: await authHeader() },
   );
   return resp.data;
 }
@@ -146,13 +149,13 @@ export async function updateRacePlan(
   const resp = await axios.put<RacePlanFull>(
     `/v1/cycling/race_plan/${id}`,
     patch,
-    { withCredentials: true },
+    { headers: await authHeader() },
   );
   return resp.data;
 }
 
 export async function deleteRacePlan(id: string): Promise<void> {
   await axios.delete(`/v1/cycling/race_plan/${id}`, {
-    withCredentials: true,
+    headers: await authHeader(),
   });
 }

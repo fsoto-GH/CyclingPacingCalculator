@@ -17,9 +17,10 @@ import json
 import urllib.parse
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from pacing.api.auth.deps import CurrentUser, get_current_user
 from pacing.api.config import settings
 
 router = APIRouter(prefix="/v1/cycling/rwgps/oauth", tags=["rwgps-oauth"])
@@ -61,6 +62,7 @@ async def oauth_start(
         description="The opener window's origin (window.location.origin). "
         "Passed through the OAuth flow and used as the postMessage targetOrigin.",
     ),
+    _current_user: CurrentUser = Depends(get_current_user),
 ):
     """Redirect the popup to the RideWithGPS OAuth consent page."""
     if not settings.ridewithgps_client_id:

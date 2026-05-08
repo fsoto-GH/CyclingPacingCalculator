@@ -5,7 +5,7 @@ import React, {
   useState,
   useCallback,
 } from "react";
-import { getAuthUser } from "./api";
+import { supabase } from "./supabaseClient";
 import { PAID_APIS_ENABLED } from "./config";
 
 export interface AuthUser {
@@ -97,7 +97,7 @@ export function AppSettingsProvider({
     }
   }, []);
 
-  // Hydrate user from the server on mount (session cookie already set by browser)
+  // Hydrate user from the Supabase session on mount, and keep in sync.
   useEffect(() => {
     if (!PAID_APIS_ENABLED || !paidApisFrontendEnabled) {
       setUser(null);
@@ -106,10 +106,53 @@ export function AppSettingsProvider({
     }
 
     setAuthLoading(true);
-    getAuthUser()
-      .then((u) => setUser(u))
-      .catch(() => setUser(null))
-      .finally(() => setAuthLoading(false));
+
+    // Hydrate from existing session immediately.
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user ?? null;
+      setUser(
+        u
+          ? {
+              id: u.id,
+              email: u.email ?? "",
+              name:
+                (u.user_metadata?.full_name as string | undefined) ??
+                (u.user_metadata?.name as string | undefined) ??
+                u.email ??
+                "",
+              avatar_url:
+                (u.user_metadata?.avatar_url as string | undefined) ?? null,
+            }
+          : null,
+      );
+      setAuthLoading(false);
+    });
+
+    // Keep in sync for sign-in / sign-out events.
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const u = session?.user ?? null;
+        setUser(
+          u
+            ? {
+                id: u.id,
+                email: u.email ?? "",
+                name:
+                  (u.user_metadata?.full_name as string | undefined) ??
+                  (u.user_metadata?.name as string | undefined) ??
+                  u.email ??
+                  "",
+                avatar_url:
+                  (u.user_metadata?.avatar_url as string | undefined) ?? null,
+              }
+            : null,
+        );
+      },
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, [paidApisFrontendEnabled]);
 
   return (

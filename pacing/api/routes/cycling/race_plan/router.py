@@ -12,10 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from pacing.api.auth.deps import get_current_user, get_optional_user
+from pacing.api.auth.deps import CurrentUser, get_current_user, get_optional_user
 from pacing.api.database import get_db
 from pacing.api.models.race_plan import RacePlan
-from pacing.api.models.user import User
 
 router = APIRouter(prefix="/v1/cycling/race_plan", tags=["race-plan"])
 
@@ -46,7 +45,7 @@ def _get_plan_or_404(plan_id: str, db: Session) -> RacePlan:
     return plan
 
 
-def _assert_owner(plan: RacePlan, user: User) -> None:
+def _assert_owner(plan: RacePlan, user: CurrentUser) -> None:
     if plan.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -58,7 +57,7 @@ def _assert_owner(plan: RacePlan, user: User) -> None:
 
 @router.get("", response_model=list[dict])
 def list_race_plans(
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Return all race plans owned by the current user."""
@@ -74,7 +73,7 @@ def list_race_plans(
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
 def create_race_plan(
     body: RacePlanCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     plan = RacePlan(
@@ -92,7 +91,7 @@ def create_race_plan(
 @router.get("/{plan_id}", response_model=dict)
 def get_race_plan(
     plan_id: str,
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: Optional[CurrentUser] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     plan = _get_plan_or_404(plan_id, db)
@@ -109,7 +108,7 @@ def get_race_plan(
 def update_race_plan(
     plan_id: str,
     body: RacePlanUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     plan = _get_plan_or_404(plan_id, db)
@@ -128,7 +127,7 @@ def update_race_plan(
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_race_plan(
     plan_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     plan = _get_plan_or_404(plan_id, db)

@@ -11,9 +11,10 @@ need to know which backend was used.
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
+from pacing.api.auth.deps import CurrentUser, get_optional_user
 from pacing.api.config import settings
 
 router = APIRouter(prefix="/v1/cycling", tags=["cycling"])
@@ -272,10 +273,12 @@ async def nearby_stops(
         None,
         description="Comma-separated OSM amenity types to include",
     ),
+    current_user: Optional[CurrentUser] = Depends(get_optional_user),
 ):
     """
     Return nearby amenities for the given coordinates.
-    Uses Google Places when GOOGLE_PLACES_API_KEY is configured; falls back to Overpass.
+    Uses Google Places when GOOGLE_PLACES_API_KEY is configured and the caller
+    has enable_google_places = True; falls back to Overpass (open, no auth).
     """
     types: list[str] = (
         [_sanitize(t) for t in amenity_filter.split(",") if _sanitize(t)]
@@ -283,12 +286,17 @@ async def nearby_stops(
         else DEFAULT_AMENITY_TYPES[:]
     )
 
-    if settings.google_places_api_key:
+    use_google = (
+        bool(settings.google_places_api_key)
+        and current_user is not None
+        and current_user.enable_google_places
+    )
+
+    if use_google:
         try:
             return await _query_google_places(lat, lon, radius_m, types)
         except Exception as google_exc:
-            # Fail open to Overpass so nearby-stops still works when Google
-            # rejects the request (e.g., invalid type, billing/config issue).
+            # Fail open to Overpass so nearby-stops still works on Google errors.
             try:
                 return await _query_overpass(lat, lon, radius_m, types)
             except Exception as overpass_exc:
