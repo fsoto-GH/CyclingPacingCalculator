@@ -563,7 +563,10 @@ export default function CourseMap({
   const [elevZoomRange, setElevZoomRange] = useState<[number, number] | null>(
     null,
   );
-  const [tempZoomKey, setTempZoomKey] = useState<{ segIdx: number; splitIdx?: number } | null>(null);
+  const [tempZoomKey, setTempZoomKey] = useState<{
+    segIdx: number;
+    splitIdx?: number;
+  } | null>(null);
   const [, startSelectionTransition] = useTransition();
 
   // Throttle hover updates to one per animation frame — mousemove fires at

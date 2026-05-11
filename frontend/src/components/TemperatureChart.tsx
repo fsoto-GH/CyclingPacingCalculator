@@ -732,7 +732,14 @@ const TemperatureChart = memo(function TemperatureChart({
                 width={36}
                 tickFormatter={(v: number) => `${v}`}
               />
-              <YAxis yAxisId="right-pad" orientation="right" width={36} tick={false} axisLine={false} tickLine={false} />
+              <YAxis
+                yAxisId="right-pad"
+                orientation="right"
+                width={36}
+                tick={false}
+                axisLine={false}
+                tickLine={false}
+              />
               {tooltipFor("temp")}
               {showFeelsLike && (
                 <Line
@@ -809,7 +816,14 @@ const TemperatureChart = memo(function TemperatureChart({
                 width={36}
                 tickFormatter={(v: number) => `${v}`}
               />
-              <YAxis yAxisId="right-pad" orientation="right" width={36} tick={false} axisLine={false} tickLine={false} />
+              <YAxis
+                yAxisId="right-pad"
+                orientation="right"
+                width={36}
+                tick={false}
+                axisLine={false}
+                tickLine={false}
+              />
               {tooltipFor("wind")}
               {showGusts && (
                 <Line
@@ -909,9 +923,17 @@ const TemperatureChart = memo(function TemperatureChart({
                 orientation="right"
                 domain={[0, 100]}
                 width={36}
-                tick={hasPrecip && showPrecipProb ? { fill: "#94a3b8", fontSize: 10 } : false}
-                axisLine={hasPrecip && showPrecipProb ? { stroke: "#334155" } : false}
-                tickLine={hasPrecip && showPrecipProb ? { stroke: "#334155" } : false}
+                tick={
+                  hasPrecip && showPrecipProb
+                    ? { fill: "#94a3b8", fontSize: 10 }
+                    : false
+                }
+                axisLine={
+                  hasPrecip && showPrecipProb ? { stroke: "#334155" } : false
+                }
+                tickLine={
+                  hasPrecip && showPrecipProb ? { stroke: "#334155" } : false
+                }
                 tickFormatter={(v: number) => `${v}%`}
               />
               {tooltipFor("precip")}
@@ -994,7 +1016,14 @@ const TemperatureChart = memo(function TemperatureChart({
                 width={36}
                 tickFormatter={(v: number) => `${v}%`}
               />
-              <YAxis yAxisId="right-pad" orientation="right" width={36} tick={false} axisLine={false} tickLine={false} />
+              <YAxis
+                yAxisId="right-pad"
+                orientation="right"
+                width={36}
+                tick={false}
+                axisLine={false}
+                tickLine={false}
+              />
               {tooltipFor("cover")}
               <Area
                 yAxisId="cover"

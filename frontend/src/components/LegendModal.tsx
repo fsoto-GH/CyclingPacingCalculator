@@ -859,9 +859,8 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                 <Section title="Weather Fetching &amp; Rate Limits">
                   <p>
-                    Weather data is fetched from{" "}
-                    <strong>Open-Meteo</strong> directly from your browser.
-                    Because the free API allows only{" "}
+                    Weather data is fetched from <strong>Open-Meteo</strong>{" "}
+                    directly from your browser. Because the free API allows only{" "}
                     <strong>50 locations per request</strong>, long routes are
                     split into multiple batches of 50 unique points. Each batch
                     is fetched sequentially with a short courtesy delay between
@@ -875,12 +874,11 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     button pulses while fetching is in progress.
                   </p>
                   <p>
-                    If the API returns a{" "}
-                    <strong>429 Too Many Requests</strong> response the app
-                    automatically retries up to three times, honouring any{" "}
-                    <code>Retry-After</code> delay (capped at 2 minutes).
-                    Routes with thousands of unique split-endpoint coordinates
-                    may still take a minute or more to fully load.
+                    If the API returns a <strong>429 Too Many Requests</strong>{" "}
+                    response the app automatically retries up to three times,
+                    honouring any <code>Retry-After</code> delay (capped at 2
+                    minutes). Routes with thousands of unique split-endpoint
+                    coordinates may still take a minute or more to fully load.
                   </p>
                 </Section>
 
