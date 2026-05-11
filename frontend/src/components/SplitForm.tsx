@@ -913,15 +913,11 @@ export default function SplitFormComponent({
                         value.differentTimezone ? value.timezone : courseTz
                       }
                       onChange={(tz) =>
-                        update(
-                          tz === courseTz
-                            ? { differentTimezone: false, tzManuallySet: false }
-                            : {
-                                differentTimezone: true,
-                                timezone: tz,
-                                tzManuallySet: true,
-                              },
-                        )
+                        update({
+                          differentTimezone: true,
+                          timezone: tz,
+                          tzManuallySet: true,
+                        })
                       }
                     />
                   </div>

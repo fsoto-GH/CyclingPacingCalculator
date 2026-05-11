@@ -155,6 +155,12 @@ const SEARCH_INDEX: SearchEntry[] = [
   },
   {
     catKey: "disclaimers",
+    secTitle: "Weather Fetching & Rate Limits",
+    keywords:
+      "weather fetch rate limit batch batching open-meteo 50 locations progressive loading 429 retry retry-after slow forecast loading",
+  },
+  {
+    catKey: "disclaimers",
     secTitle: "Data Accuracy",
     keywords:
       "accuracy openstreetmap volunteer data address hours verify planning race event",
@@ -848,6 +854,31 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     samples. On a segment with only one or two splits the
                     percentages are binary (0% or 100%) rather than a meaningful
                     statistical distribution.
+                  </p>
+                </Section>
+
+                <Section title="Weather Fetching &amp; Rate Limits">
+                  <p>
+                    Weather data is fetched from <strong>Open-Meteo</strong>{" "}
+                    directly from your browser. Because the free API allows only{" "}
+                    <strong>50 locations per request</strong>, long routes are
+                    split into multiple batches of 50 unique points. Each batch
+                    is fetched sequentially with a short courtesy delay between
+                    requests to stay well within the free-tier rate limits (600
+                    calls/minute, 5,000/hour).
+                  </p>
+                  <p>
+                    Data appears <strong>progressively</strong> as each batch
+                    completes — you will see the forecast chart and split-level
+                    weather populate incrementally. The "Loading forecast…"
+                    button pulses while fetching is in progress.
+                  </p>
+                  <p>
+                    If the API returns a <strong>429 Too Many Requests</strong>{" "}
+                    response the app automatically retries up to three times,
+                    honouring any <code>Retry-After</code> delay (capped at 2
+                    minutes). Routes with thousands of unique split-endpoint
+                    coordinates may still take a minute or more to fully load.
                   </p>
                 </Section>
 

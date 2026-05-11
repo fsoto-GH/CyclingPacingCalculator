@@ -1803,9 +1803,13 @@ function ProjectionSplit({
           <div className="proj-split-header-topright">
             <div className="split-header-dist-row">
               {tzBadgeAbbr && (
-                <span className="split-header-meta-item split-header-meta-item--tz">
+                <span
+                  className={`split-header-meta-item split-header-meta-item--tz${formSplit?.tzManuallySet ? " tz-manual" : ""}`}
+                  title={`Split timezone: ${effectiveTz}${formSplit?.tzManuallySet ? " (manually set — auto-detection paused)" : " (auto-detected)"}`}
+                >
                   <i className="fa-solid fa-clock-rotate-left"></i>{" "}
                   {tzBadgeAbbr}
+                  {formSplit?.tzManuallySet && " ✏️"}
                 </span>
               )}
               {hasDist && (

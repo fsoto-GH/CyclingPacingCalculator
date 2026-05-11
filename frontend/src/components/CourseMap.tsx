@@ -34,6 +34,7 @@ import type {
 import type { RestStopForm } from "../types";
 import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
 import { distanceLabel, SEGMENT_COLORS } from "../utils";
+import type { SunriseSunsetEntry } from "../calculator/weather";
 const ElevationProfile = lazy(() => import("./ElevationProfile"));
 const TemperatureChart = lazy(() => import("./TemperatureChart"));
 
@@ -67,6 +68,8 @@ interface CourseMapProps {
   courseTz?: string;
   /** ISO end-times of each segment — used for boundary lines in TemperatureChart. */
   segmentBoundaryTimes?: string[];
+  /** Sunrise and sunset events for the course date range. */
+  sunriseSunset?: SunriseSunsetEntry[];
 }
 
 /** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2-3k. */
@@ -416,6 +419,7 @@ export default function CourseMap({
   hourlyWeather,
   courseTz,
   segmentBoundaryTimes,
+  sunriseSunset,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
   const toUserDist =
@@ -559,6 +563,10 @@ export default function CourseMap({
   const [elevZoomRange, setElevZoomRange] = useState<[number, number] | null>(
     null,
   );
+  const [tempZoomKey, setTempZoomKey] = useState<{
+    segIdx: number;
+    splitIdx?: number;
+  } | null>(null);
   const [, startSelectionTransition] = useTransition();
 
   // Throttle hover updates to one per animation frame — mousemove fires at
@@ -612,6 +620,11 @@ export default function CourseMap({
           ]);
         }
       }
+      setTempZoomKey(
+        zoomTarget.splitIdx != null
+          ? { segIdx: zoomTarget.segIdx, splitIdx: zoomTarget.splitIdx }
+          : { segIdx: zoomTarget.segIdx },
+      );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomTarget]);
@@ -685,6 +698,9 @@ export default function CourseMap({
             startSelectionTransition(() => {
               setSelectedSegIdx(si);
             });
+            // Zoom elevation profile and forecast chart to this split.
+            setElevZoomRange([p.startKm, p.endKm]);
+            setTempZoomKey({ segIdx: si, splitIdx: sj });
             // Defer the expensive sliceTrackPoints call to after paint.
             requestAnimationFrame(() => fitToSplit(si, sj));
             return;
@@ -1064,14 +1080,16 @@ export default function CourseMap({
                 if (segProfiles && segProfiles.length > 0) {
                   const segStart = segProfiles[0].startKm;
                   const segEnd = segProfiles[segProfiles.length - 1].endKm;
-                  setElevZoomRange((prev) =>
-                    prev && prev[0] === segStart && prev[1] === segEnd
-                      ? null
-                      : [segStart, segEnd],
-                  );
+                  const alreadyZoomed =
+                    elevZoomRange &&
+                    elevZoomRange[0] === segStart &&
+                    elevZoomRange[1] === segEnd;
+                  setElevZoomRange(alreadyZoomed ? null : [segStart, segEnd]);
+                  setTempZoomKey(alreadyZoomed ? null : { segIdx: i });
                 } else {
                   // No profiles yet — clear any stale zoom.
                   setElevZoomRange(null);
+                  setTempZoomKey(null);
                 }
               }}
               title={`Zoom to ${seg.name}`}
@@ -1153,12 +1171,15 @@ export default function CourseMap({
             <div className="cml-elev-panel">
               <div className="cml-elev-header">
                 <span className="cml-elev-title">{elevTitle}</span>
-                {elevZoomRange && (
+                {(elevZoomRange || tempZoomKey) && (
                   <button
                     type="button"
                     className="cml-elev-reset"
-                    onClick={() => setElevZoomRange(null)}
-                    title="Return to full course elevation"
+                    onClick={() => {
+                      setElevZoomRange(null);
+                      setTempZoomKey(null);
+                    }}
+                    title="Return to full course view"
                   >
                     <i className="fa-solid fa-arrow-rotate-left" /> Reset
                   </button>
@@ -1180,17 +1201,64 @@ export default function CourseMap({
           );
         })()}
         {/* Temperature chart — shown once hourly weather is fetched */}
-        {hourlyWeather && hourlyWeather.length >= 2 && courseTz && (
-          <Suspense fallback={null}>
-            <TemperatureChart
-              hourlyWeather={hourlyWeather}
-              courseTz={courseTz}
-              unitSystem={unitSystem}
-              segmentBoundaryTimes={segmentBoundaryTimes}
-              onHoverPoint={setHoverWeatherPt}
-            />
-          </Suspense>
-        )}
+        {hourlyWeather &&
+          hourlyWeather.length >= 2 &&
+          courseTz &&
+          (() => {
+            // Compute zoom domain from hourlyWeather when a zoom key is set
+            let tempZoomDomain: [number, number] | null = null;
+            let tempZoomLabel: string | undefined;
+            if (tempZoomKey) {
+              const pts =
+                tempZoomKey.splitIdx !== undefined
+                  ? hourlyWeather.filter(
+                      (p) =>
+                        p.segIdx === tempZoomKey.segIdx &&
+                        p.splitIdx === tempZoomKey.splitIdx,
+                    )
+                  : hourlyWeather.filter(
+                      (p) => p.segIdx === tempZoomKey.segIdx,
+                    );
+              if (pts.length >= 2) {
+                const times = pts.map((p) => new Date(p.timeIso).getTime());
+                const minMs = Math.min(...times);
+                const maxMs = Math.max(...times);
+                const span = maxMs - minMs;
+                const pad = Math.max(span * 0.05, 900_000);
+                tempZoomDomain = [minMs - pad, maxMs + pad];
+                tempZoomLabel =
+                  tempZoomKey.splitIdx !== undefined
+                    ? "split view"
+                    : "segment view";
+              }
+            }
+            return (
+              <div className="cml-elev-panel">
+                <div className="cml-elev-header">
+                  <span className="cml-elev-title">
+                    <i className="fa-solid fa-temperature-half" /> Forecast
+                    {tempZoomLabel && (
+                      <span className="temp-chart-zoom-badge">
+                        {tempZoomLabel}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <Suspense fallback={null}>
+                  <TemperatureChart
+                    hourlyWeather={hourlyWeather}
+                    courseTz={courseTz}
+                    unitSystem={unitSystem}
+                    segmentBoundaryTimes={segmentBoundaryTimes}
+                    onHoverPoint={setHoverWeatherPt}
+                    sunriseSunset={sunriseSunset}
+                    zoomDomain={tempZoomDomain}
+                    zoomLabel={tempZoomLabel}
+                  />
+                </Suspense>
+              </div>
+            );
+          })()}
       </div>
     </div>
   );

@@ -49,6 +49,7 @@ import {
   fetchHourlyCourseWeather,
   deriveWeatherPairsFromHourly,
   type SplitWeatherPair,
+  type SunriseSunsetEntry,
 } from "../calculator/weather";
 import type { HourlyWeatherPoint } from "../types";
 import { useAppSettings } from "../AppSettingsContext";
@@ -1248,11 +1249,13 @@ export default function CourseForm() {
   const [hourlyWeather, setHourlyWeather] = useState<
     HourlyWeatherPoint[] | null
   >(null);
+  const [sunriseSunset, setSunriseSunset] = useState<SunriseSunsetEntry[]>([]);
   const [weatherLoading, setWeatherLoading] = useState(false);
 
   // Clear stale weather whenever the result or GPX profiles change.
   useEffect(() => {
     setHourlyWeather(null);
+    setSunriseSunset([]);
   }, [result, gpxProfiles]);
 
   // Derive the per-split SplitWeatherPair[][] from hourly data (no re-fetch).
@@ -1350,9 +1353,13 @@ export default function CourseForm() {
     if (coords.length === 0) return;
 
     setWeatherLoading(true);
-    fetchHourlyCourseWeather(coords, paidApisEnabled)
-      .then((points) => {
-        setHourlyWeather(points);
+    fetchHourlyCourseWeather(coords, paidApisEnabled, (partial, ss) => {
+      setHourlyWeather(partial);
+      setSunriseSunset(ss);
+    })
+      .then(({ points, sunriseSunset: ss }) => {
+        setHourlyWeather(points.length > 0 ? points : null);
+        setSunriseSunset(ss);
         setWeatherLoading(false);
       })
       .catch(() => {
@@ -1530,6 +1537,46 @@ export default function CourseForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, gpxSurface, splitDistancesKey, form.unitSystem, form.mode]);
 
+  // When gpxProfiles are (re)computed or the course timezone changes, propagate
+  // the detected per-split endpoint timezones into the form. This mirrors the
+  // auto-detection effect in SplitForm but runs at the course level so it fires
+  // even when all segments are collapsed and SplitForm is not mounted.
+  useEffect(() => {
+    if (!gpxProfiles) return;
+    const courseTz = form.timezone;
+    setForm((prev) => {
+      let anythingChanged = false;
+      const nextSegments = prev.segments.map((seg, i) => {
+        const segProfiles = gpxProfiles[i];
+        if (!segProfiles) return seg;
+        let segChanged = false;
+        const nextSplits = seg.splits.map((split, j) => {
+          if (split.tzManuallySet) return split; // user-controlled — hands off
+          const detectedTz = segProfiles[j]?.endTimezone ?? null;
+          if (detectedTz && detectedTz !== courseTz) {
+            if (!split.differentTimezone || split.timezone !== detectedTz) {
+              segChanged = true;
+              return {
+                ...split,
+                differentTimezone: true,
+                timezone: detectedTz,
+              };
+            }
+          } else if (detectedTz === courseTz && split.differentTimezone) {
+            segChanged = true;
+            return { ...split, differentTimezone: false };
+          }
+          return split;
+        });
+        if (!segChanged) return seg;
+        anythingChanged = true;
+        return { ...seg, splits: nextSplits };
+      });
+      if (!anythingChanged) return prev;
+      return { ...prev, segments: nextSegments };
+    });
+  }, [gpxProfiles, form.timezone]);
+
   // Per-split [startKm, endKm] boundaries in the GPX track.
   // Used by the GPX export modal to slice the raw track for each split.
   const splitBoundariesKm = useMemo<[number, number][][] | null>(() => {
@@ -1688,7 +1735,7 @@ export default function CourseForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, splitBoundariesKm]);
 
-  // â”€â”€ Handlers â”€â”€
+  // ”€”€ Handlers ”€”€
   const splitHasDistanceValue = (distanceRaw: string): boolean => {
     const trimmed = distanceRaw.trim();
     if (!trimmed) return false;
@@ -1831,7 +1878,7 @@ export default function CourseForm() {
     });
   };
 
-  // â”€â”€ Field-level validation keyed by input element IDs â”€â”€
+  // ”€”€ Field-level validation keyed by input element IDs ”€”€
   const computeFieldErrors = useCallback(
     (f: CourseFormState): Record<string, string> => {
       const e: Record<string, string> = {};
@@ -2365,10 +2412,16 @@ export default function CourseForm() {
             <div className="gpx-file-meta">
               <span className="gpx-file-label">
                 <i className="fas fa-map" /> GPX route{" "}
-                {
-                  /* Display when loaded from RideWithGPS*/
-                  form.rwgpsRouteId ? "(Route Loaded from RideWithGPS)" : ""
-                }
+                {form.rwgpsRouteId && (
+                  <a
+                    href={`https://ridewithgps.com/routes/${form.rwgpsRouteId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#60a5fa", textDecoration: "none" }}
+                  >
+                    (RideWithGPS Route)
+                  </a>
+                )}
               </span>
               <span className="gpx-file-name">{gpxFileName}</span>
               <span className="gpx-file-stats">
@@ -2443,6 +2496,7 @@ export default function CourseForm() {
                   segmentBoundaryTimes={result?.segment_details.map(
                     (seg) => seg.end_time,
                   )}
+                  sunriseSunset={sunriseSunset}
                 />
               </Suspense>
             )}
@@ -2554,7 +2608,7 @@ export default function CourseForm() {
               !hourlyWeather && (
                 <button
                   type="button"
-                  className="segments-toggle-btn"
+                  className={`segments-toggle-btn${weatherLoading ? " segments-toggle-btn--loading" : ""}`}
                   onClick={handleFetchWeather}
                   disabled={weatherLoading}
                   title="Load weather forecast for each split (Open-Meteo, 16-day window)"

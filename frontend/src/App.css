@@ -6247,7 +6247,6 @@ dialog {
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.45rem 0.6rem;
-  background: #141420;
   border: 1px solid #2e2e3e;
   border-top: none;
   border-radius: 0 0 8px 8px;
@@ -6787,7 +6786,7 @@ dialog {
 .temp-chart-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-bottom: 0.2rem;
   padding: 0 0.2rem;
 }
@@ -6797,6 +6796,20 @@ dialog {
   color: #94a3b8;
   font-weight: 500;
   letter-spacing: 0.03em;
+}
+
+.temp-chart-zoom-badge {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0 0.4em;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 3px;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
 }
 
 .temp-chart-tooltip {
@@ -6864,6 +6877,11 @@ dialog {
   background: color-mix(in srgb, var(--toggle-color) 12%, transparent);
 }
 
+.temp-chart-toggle-btn--locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .temp-chart-toggle-swatch {
   display: inline-block;
   width: 14px;
@@ -6919,6 +6937,53 @@ dialog {
   border-radius: 2px;
   opacity: 0.6;
   flex-shrink: 0;
+}
+
+/* -- Temp chart sub-rows --------------------------------------------------- */
+
+.temp-chart-subrow {
+  border-top: 1px solid #1e293b;
+  margin-top: 0.1rem;
+  padding-top: 0.1rem;
+}
+
+.temp-chart-subrow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.15rem 0.2rem 0;
+  font-size: 0.67rem;
+  color: #64748b;
+}
+
+.temp-chart-toggle-btn--mini {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.64rem;
+}
+
+.temp-chart-subrow-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.64rem;
+}
+
+/* -- Forecast loading pulse ------------------------------------------------- */
+
+.segments-toggle-btn--loading {
+  animation: forecast-loading-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes forecast-loading-pulse {
+
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 /* -- Paid API Toggle ------------------------------------------------------- */
