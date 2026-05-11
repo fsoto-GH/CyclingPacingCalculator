@@ -49,6 +49,7 @@ import {
   fetchHourlyCourseWeather,
   deriveWeatherPairsFromHourly,
   type SplitWeatherPair,
+  type SunriseSunsetEntry,
 } from "../calculator/weather";
 import type { HourlyWeatherPoint } from "../types";
 import { useAppSettings } from "../AppSettingsContext";
@@ -1248,11 +1249,13 @@ export default function CourseForm() {
   const [hourlyWeather, setHourlyWeather] = useState<
     HourlyWeatherPoint[] | null
   >(null);
+  const [sunriseSunset, setSunriseSunset] = useState<SunriseSunsetEntry[]>([]);
   const [weatherLoading, setWeatherLoading] = useState(false);
 
   // Clear stale weather whenever the result or GPX profiles change.
   useEffect(() => {
     setHourlyWeather(null);
+    setSunriseSunset([]);
   }, [result, gpxProfiles]);
 
   // Derive the per-split SplitWeatherPair[][] from hourly data (no re-fetch).
@@ -1350,9 +1353,13 @@ export default function CourseForm() {
     if (coords.length === 0) return;
 
     setWeatherLoading(true);
-    fetchHourlyCourseWeather(coords, paidApisEnabled)
-      .then((points) => {
-        setHourlyWeather(points);
+    fetchHourlyCourseWeather(coords, paidApisEnabled, (partial, ss) => {
+      setHourlyWeather(partial);
+      setSunriseSunset(ss);
+    })
+      .then(({ points, sunriseSunset: ss }) => {
+        setHourlyWeather(points.length > 0 ? points : null);
+        setSunriseSunset(ss);
         setWeatherLoading(false);
       })
       .catch(() => {
@@ -1728,7 +1735,7 @@ export default function CourseForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, splitBoundariesKm]);
 
-  // â”€â”€ Handlers â”€â”€
+  // ”€”€ Handlers ”€”€
   const splitHasDistanceValue = (distanceRaw: string): boolean => {
     const trimmed = distanceRaw.trim();
     if (!trimmed) return false;
@@ -1871,7 +1878,7 @@ export default function CourseForm() {
     });
   };
 
-  // â”€â”€ Field-level validation keyed by input element IDs â”€â”€
+  // ”€”€ Field-level validation keyed by input element IDs ”€”€
   const computeFieldErrors = useCallback(
     (f: CourseFormState): Record<string, string> => {
       const e: Record<string, string> = {};
@@ -2357,20 +2364,22 @@ export default function CourseForm() {
                 style={{ display: "none" }}
                 onChange={handleGpxLoad}
               />
-              <button
-                type="button"
-                className="nav-btn"
-                onClick={() => {
-                  setRwgpsRestorePending(form.rwgpsRouteId ?? null);
-                  setGpxSearchOpen(true);
-                }}
-                title="Search and import routes from RideWithGPS"
-              >
-                <span className="nav-btn-icon">
-                  <i className="fas fa-search" />
-                </span>
-                <span className="nav-btn-label">Search RideWithGPS</span>
-              </button>
+              {PAID_APIS_ENABLED && (
+                <button
+                  type="button"
+                  className="nav-btn"
+                  onClick={() => {
+                    setRwgpsRestorePending(form.rwgpsRouteId ?? null);
+                    setGpxSearchOpen(true);
+                  }}
+                  title="Search and import routes from RideWithGPS"
+                >
+                  <span className="nav-btn-icon">
+                    <i className="fas fa-search" />
+                  </span>
+                  <span className="nav-btn-label">Search RideWithGPS</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2405,10 +2414,16 @@ export default function CourseForm() {
             <div className="gpx-file-meta">
               <span className="gpx-file-label">
                 <i className="fas fa-map" /> GPX route{" "}
-                {
-                  /* Display when loaded from RideWithGPS*/
-                  form.rwgpsRouteId ? "(Route Loaded from RideWithGPS)" : ""
-                }
+                {form.rwgpsRouteId && (
+                  <a
+                    href={`https://ridewithgps.com/routes/${form.rwgpsRouteId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#60a5fa", textDecoration: "none" }}
+                  >
+                    (RideWithGPS Route)
+                  </a>
+                )}
               </span>
               <span className="gpx-file-name">{gpxFileName}</span>
               <span className="gpx-file-stats">
@@ -2483,6 +2498,7 @@ export default function CourseForm() {
                   segmentBoundaryTimes={result?.segment_details.map(
                     (seg) => seg.end_time,
                   )}
+                  sunriseSunset={sunriseSunset}
                 />
               </Suspense>
             )}
@@ -2594,7 +2610,7 @@ export default function CourseForm() {
               !hourlyWeather && (
                 <button
                   type="button"
-                  className="segments-toggle-btn"
+                  className={`segments-toggle-btn${weatherLoading ? " segments-toggle-btn--loading" : ""}`}
                   onClick={handleFetchWeather}
                   disabled={weatherLoading}
                   title="Load weather forecast for each split (Open-Meteo, 16-day window)"
