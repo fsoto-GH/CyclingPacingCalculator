@@ -11,7 +11,14 @@
  *
  * The stored token is used by frontend RWGPS API calls via
  * Authorization: Bearer <token>.
+ *
+ * NOTE: The /start endpoint requires authentication.  Because this is a popup
+ * navigation (not a fetch), Authorization headers cannot be sent.  Instead, the
+ * current Supabase access token is appended as the `access_token` query param.
+ * The backend verifies it server-side and it is never stored or forwarded.
  */
+
+import { supabase } from "./supabaseClient";
 
 const TOKEN_KEY = "rwgps_access_token";
 const USER_ID_KEY = "rwgps_user_id";
@@ -51,13 +58,11 @@ interface RwgpsAuthResult {
  */
 export function startRwgpsOAuth(): Promise<RwgpsAuthResult> {
   return new Promise((resolve, reject) => {
-    // Pass the opener's origin through the OAuth state parameter so the
-    // backend callback can postMessage back to the correct origin.
-    const state = encodeURIComponent(window.location.origin);
-    const url = `/v1/cycling/rwgps/oauth/start?state=${state}`;
-
+    // Open immediately in the user-click call stack. If we await before
+    // window.open(), browsers may treat this as a non-user-initiated popup
+    // and block it.
     const popup = window.open(
-      url,
+      "about:blank",
       "rwgps-oauth",
       "width=560,height=680,resizable=yes,scrollbars=yes",
     );
@@ -70,8 +75,22 @@ export function startRwgpsOAuth(): Promise<RwgpsAuthResult> {
       );
       return;
     }
+    const popupWindow = popup;
 
     let settled = false;
+
+    function fail(err: Error) {
+      if (settled) return;
+      settled = true;
+      clearInterval(closedTimer);
+      window.removeEventListener("message", onMessage);
+      try {
+        popupWindow.close();
+      } catch {
+        // ignore close errors
+      }
+      reject(err);
+    }
 
     function onMessage(event: MessageEvent) {
       if (event.data?.type !== "rwgps-token") return;
@@ -88,13 +107,33 @@ export function startRwgpsOAuth(): Promise<RwgpsAuthResult> {
 
     window.addEventListener("message", onMessage);
 
+    // Resolve Supabase session after opening popup, then navigate popup to
+    // the authenticated backend start endpoint.
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        const accessToken = data.session?.access_token ?? "";
+        if (!accessToken) {
+          fail(new Error("You must be signed in to connect RideWithGPS."));
+          return;
+        }
+
+        const state = encodeURIComponent(window.location.origin);
+        const url = `/v1/cycling/rwgps/oauth/start?state=${state}&access_token=${encodeURIComponent(accessToken)}`;
+        try {
+          popupWindow.location.href = url;
+        } catch {
+          fail(new Error("Failed to launch authorization popup."));
+        }
+      })
+      .catch(() => {
+        fail(new Error("Failed to read auth session. Please try again."));
+      });
+
     // Detect if the user closes the popup without completing auth.
     const closedTimer = setInterval(() => {
-      if (popup.closed && !settled) {
-        settled = true;
-        clearInterval(closedTimer);
-        window.removeEventListener("message", onMessage);
-        reject(new Error("Authorization cancelled."));
+      if (popupWindow.closed && !settled) {
+        fail(new Error("Authorization cancelled."));
       }
     }, 500);
   });
