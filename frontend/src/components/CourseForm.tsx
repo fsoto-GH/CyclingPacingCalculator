@@ -2364,22 +2364,20 @@ export default function CourseForm() {
                 style={{ display: "none" }}
                 onChange={handleGpxLoad}
               />
-              {PAID_APIS_ENABLED && (
-                <button
-                  type="button"
-                  className="nav-btn"
-                  onClick={() => {
-                    setRwgpsRestorePending(form.rwgpsRouteId ?? null);
-                    setGpxSearchOpen(true);
-                  }}
-                  title="Search and import routes from RideWithGPS"
-                >
-                  <span className="nav-btn-icon">
-                    <i className="fas fa-search" />
-                  </span>
-                  <span className="nav-btn-label">Search RideWithGPS</span>
-                </button>
-              )}
+              <button
+                type="button"
+                className="nav-btn"
+                onClick={() => {
+                  setRwgpsRestorePending(form.rwgpsRouteId ?? null);
+                  setGpxSearchOpen(true);
+                }}
+                title="Search and import routes from RideWithGPS"
+              >
+                <span className="nav-btn-icon">
+                  <i className="fas fa-search" />
+                </span>
+                <span className="nav-btn-label">Search RideWithGPS</span>
+              </button>
             </div>
           </div>
         </div>
