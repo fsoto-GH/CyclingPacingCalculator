@@ -237,6 +237,7 @@ function forecastUrl(
       `?lat=${lats}&lon=${lons}&mode=forecast&forecast_days=${forecastDays}`
     );
   }
+  console.log("Using public Open-Meteo API for forecast");
   return (
     `https://api.open-meteo.com/v1/forecast` +
     `?latitude=${lats}&longitude=${lons}` +

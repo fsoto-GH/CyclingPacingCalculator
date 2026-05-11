@@ -1530,6 +1530,46 @@ export default function CourseForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, gpxSurface, splitDistancesKey, form.unitSystem, form.mode]);
 
+  // When gpxProfiles are (re)computed or the course timezone changes, propagate
+  // the detected per-split endpoint timezones into the form. This mirrors the
+  // auto-detection effect in SplitForm but runs at the course level so it fires
+  // even when all segments are collapsed and SplitForm is not mounted.
+  useEffect(() => {
+    if (!gpxProfiles) return;
+    const courseTz = form.timezone;
+    setForm((prev) => {
+      let anythingChanged = false;
+      const nextSegments = prev.segments.map((seg, i) => {
+        const segProfiles = gpxProfiles[i];
+        if (!segProfiles) return seg;
+        let segChanged = false;
+        const nextSplits = seg.splits.map((split, j) => {
+          if (split.tzManuallySet) return split; // user-controlled — hands off
+          const detectedTz = segProfiles[j]?.endTimezone ?? null;
+          if (detectedTz && detectedTz !== courseTz) {
+            if (!split.differentTimezone || split.timezone !== detectedTz) {
+              segChanged = true;
+              return {
+                ...split,
+                differentTimezone: true,
+                timezone: detectedTz,
+              };
+            }
+          } else if (detectedTz === courseTz && split.differentTimezone) {
+            segChanged = true;
+            return { ...split, differentTimezone: false };
+          }
+          return split;
+        });
+        if (!segChanged) return seg;
+        anythingChanged = true;
+        return { ...seg, splits: nextSplits };
+      });
+      if (!anythingChanged) return prev;
+      return { ...prev, segments: nextSegments };
+    });
+  }, [gpxProfiles, form.timezone]);
+
   // Per-split [startKm, endKm] boundaries in the GPX track.
   // Used by the GPX export modal to slice the raw track for each split.
   const splitBoundariesKm = useMemo<[number, number][][] | null>(() => {

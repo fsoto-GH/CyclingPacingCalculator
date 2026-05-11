@@ -111,7 +111,7 @@ export interface DayHoursEntry {
 }
 
 export function makeDefaultDayHours(): DayHoursEntry {
-  return { mode: "hours", opens: "06:00", closes: "22:00" };
+  return { mode: "closed", opens: "0:00", closes: "24:00" };
 }
 
 export interface RestStopForm {
