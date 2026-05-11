@@ -26,12 +26,11 @@ services:
     container_name: pacing-api
     ports:
       - "8000:8000"
-    # links pacing directory to the container, so that changes to the code will be reflected in the container without needing to rebuild it
-    # the anonymous volume for /pacing/static ensures the frontend built during `docker build` is not
-    # overwritten by the host mount (which would serve a stale or missing build)
+    # mount only backend source for live-reload; keep /pacing/static from the image
+    # so rebuilt frontend assets are always what gets served
     volumes:
-      - .:/pacing
-      - /pacing/static
+      - ./pacing:/pacing/pacing
+      - ./shared:/pacing/shared
     restart: always
     depends_on:
       postgres:
