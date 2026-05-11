@@ -148,7 +148,7 @@ export default function TimezoneSelect({
         type="text"
         role="combobox"
         aria-expanded={open}
-        aria-autocomplete="list"
+        // aria-autocomplete="list"
         aria-controls={`${id}-list`}
         aria-activedescendant={
           activeIdx >= 0 ? `${id}-opt-${activeIdx}` : undefined

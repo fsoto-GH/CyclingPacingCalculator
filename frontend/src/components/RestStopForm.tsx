@@ -1,36 +1,134 @@
+import { useEffect, useRef, useState } from "react";
 import type { RestStopForm, DayHoursEntry } from "../types";
 import { FieldError } from "./FieldError";
 import DayHoursInput from "./DayHoursInput";
+import { parseHighPrecisionCoordinateAddress } from "../calculator/geocode";
+
+interface EtaInfo {
+  status: "open" | "near-open" | "near-close" | "closed";
+  statusWord: string;
+  hoursLabel: string;
+  nearDetail: string | null;
+  arrivalTime: string;
+}
 
 interface RestStopFormProps {
   prefix: string;
   value: RestStopForm;
   onChange: (val: RestStopForm) => void;
   addressLoading?: boolean;
+  etaInfo?: EtaInfo | null;
 }
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function fmtCompact(time: string): string {
+  if (!time) return "";
+  const [h, m] = time.split(":").map(Number);
+  const ampm = h < 12 ? "a" : "p";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return m === 0
+    ? `${h12}${ampm}`
+    : `${h12}:${String(m).padStart(2, "0")}${ampm}`;
+}
+
+function entryCompactLabel(entry: DayHoursEntry): string {
+  if (entry.mode === "24h") return "24h";
+  if (entry.mode === "closed") return "Closed";
+  return `${fmtCompact(entry.opens)}-${fmtCompact(entry.closes)}`;
+}
+
+function hoursDetailSummary(rs: RestStopForm): string {
+  if (rs.sameHoursEveryDay) {
+    return `Daily: ${entryCompactLabel(rs.allDays)}`;
+  }
+  const groups: { start: number; end: number; label: string }[] = [];
+  rs.perDay.forEach((entry, i) => {
+    const label = entryCompactLabel(entry);
+    if (groups.length > 0 && groups[groups.length - 1].label === label) {
+      groups[groups.length - 1].end = i;
+    } else {
+      groups.push({ start: i, end: i, label });
+    }
+  });
+  return groups
+    .map(({ start, end, label }) => {
+      const dayStr =
+        start === end
+          ? DAY_LABELS[start]
+          : `${DAY_LABELS[start]}-${DAY_LABELS[end]}`;
+      return `${dayStr}: ${label}`;
+    })
+    .join(" · ");
+}
 
 export default function RestStopFormComponent({
   prefix,
   value,
   onChange,
   addressLoading,
+  etaInfo,
 }: RestStopFormProps) {
   const update = (patch: Partial<RestStopForm>) =>
     onChange({ ...value, ...patch });
 
-  const updatePerDay = (i: number, entry: DayHoursEntry) => {
-    const next = [...value.perDay] as RestStopForm["perDay"];
+  // Keep address typing local; commit to parent form on blur so
+  // forward-geocode triggers only after the user leaves the field.
+  const [addressDraft, setAddressDraft] = useState(value.address);
+  useEffect(() => {
+    setAddressDraft(value.address);
+  }, [value.address]);
+
+  // Hours modal state — draft is initialized from value when modal opens
+  const [modalOpen, setModalOpen] = useState(false);
+  const [draftSame, setDraftSame] = useState(value.sameHoursEveryDay);
+  const [draftAllDays, setDraftAllDays] = useState<DayHoursEntry>(
+    value.allDays,
+  );
+  const [draftPerDay, setDraftPerDay] = useState<RestStopForm["perDay"]>(
+    value.perDay,
+  );
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    if (modalOpen && !el.open) el.showModal();
+    else if (!modalOpen && el.open) el.close();
+  }, [modalOpen]);
+
+  const openModal = () => {
+    setDraftSame(value.sameHoursEveryDay);
+    setDraftAllDays(value.allDays);
+    setDraftPerDay(value.perDay);
+    setModalOpen(true);
+  };
+
+  const cancelModal = () => setModalOpen(false);
+
+  const commitModal = () => {
+    update({
+      sameHoursEveryDay: draftSame,
+      allDays: draftAllDays,
+      perDay: draftPerDay,
+    });
+    setModalOpen(false);
+  };
+
+  const updateDraftPerDay = (i: number, entry: DayHoursEntry) => {
+    const next = [...draftPerDay] as RestStopForm["perDay"];
     next[i] = entry;
-    update({ perDay: next });
+    setDraftPerDay(next);
   };
 
   return (
     <div className="rs-section">
       {/* Header row with toggle */}
       <div className={`rs-toggle-row${value.enabled ? " open" : ""}`}>
-        <span className="rs-toggle-label">Rest Stop</span>
+        <div className="rs-header-name">
+          <span className="rs-toggle-label">Rest Stop</span>
+        </div>
+
         <label className="toggle-switch">
           <input
             id={`${prefix}-enabled`}
@@ -45,6 +143,18 @@ export default function RestStopFormComponent({
 
       {value.enabled && (
         <div className="rs-section-body">
+          {/* Backup toggle */}
+          <label className="rs-backup-label">
+            <input
+              id={`${prefix}-backup`}
+              type="checkbox"
+              checked={value.backup}
+              onChange={(e) => update({ backup: e.target.checked })}
+            />
+            Backup stop
+          </label>
+          <FieldError fieldId={`${prefix}-backup`} />
+
           {/* Name + Alt URL on same row */}
           <div className="fields-grid fields-grid--2col">
             <div className="field">
@@ -66,6 +176,7 @@ export default function RestStopFormComponent({
                 onChange={(e) => update({ alt: e.target.value })}
                 placeholder="https://..."
               />
+              <FieldError fieldId={`${prefix}-alt`} />
             </div>
           </div>
 
@@ -75,8 +186,40 @@ export default function RestStopFormComponent({
             <input
               id={`${prefix}-address`}
               type="text"
-              value={value.address}
-              onChange={(e) => update({ address: e.target.value })}
+              value={addressDraft}
+              onChange={(e) => {
+                const next = e.target.value;
+                setAddressDraft(next);
+
+                // For precise coordinate input, commit immediately so the map
+                // marker appears without waiting for blur.
+                const parsed = parseHighPrecisionCoordinateAddress(next);
+                if (!parsed) return;
+                if (
+                  value.address === next &&
+                  value.lat === parsed.lat &&
+                  value.lon === parsed.lon
+                ) {
+                  return;
+                }
+                update({ address: next, lat: parsed.lat, lon: parsed.lon });
+              }}
+              onBlur={() => {
+                if (parseHighPrecisionCoordinateAddress(addressDraft)) return;
+                if (addressDraft !== value.address) {
+                  // Clear coords so map geocoding can refresh from the new address.
+                  update({
+                    address: addressDraft,
+                    lat: undefined,
+                    lon: undefined,
+                  });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
               placeholder={
                 addressLoading ? "Looking up address\u2026" : undefined
               }
@@ -104,47 +247,95 @@ export default function RestStopFormComponent({
             )}
           </div>
 
-          {/* Hours section */}
-          <div className="rs-hours-header">
-            <span className="rs-hours-header-label">Hours</span>
-            <span className="rs-hours-header-toggle-label">
-              Same Daily Hours
+          {/* Hours — summary + edit icon */}
+          <div className="rs-hours-row">
+            <span className="rs-hours-row-label">Hours</span>
+            <span className="rs-hours-detail-summary">
+              {hoursDetailSummary(value)}
             </span>
+            <button
+              type="button"
+              className="rs-hours-edit-icon-btn"
+              onClick={openModal}
+              aria-label="Edit rest stop hours"
+              title="Edit hours"
+            >
+              ✎
+            </button>
+          </div>
+          <FieldError fieldId={`${prefix}-hours`} />
+
+          {/* ETA status */}
+          {etaInfo && (
+            <div className={`rs-eta-row eta-${etaInfo.status}`}>
+              ETA {etaInfo.arrivalTime} — <strong>{etaInfo.statusWord}</strong>
+              {etaInfo.hoursLabel !== "24 hours" &&
+                etaInfo.hoursLabel !== "Closed" && <> ({etaInfo.hoursLabel})</>}
+              {etaInfo.nearDetail && (
+                <span className="rs-eta-detail"> · {etaInfo.nearDetail}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Hours modal */}
+      <dialog ref={dialogRef} className="rs-hours-modal" onClose={cancelModal}>
+        <div className="legend-header">
+          <h2>Rest Stop Hours</h2>
+          <button
+            type="button"
+            className="legend-close"
+            onClick={cancelModal}
+            aria-label="Close"
+          >
+            <i className="fas fa-times" />
+          </button>
+        </div>
+        <div className="legend-body rs-hours-modal-body">
+          <div className="rs-hours-header rs-hours-modal-same-row">
+            <span className="rs-hours-header-label">Same hours every day</span>
             <label className="toggle-switch">
               <input
-                id={`${prefix}-same-hours`}
                 type="checkbox"
-                checked={value.sameHoursEveryDay}
-                onChange={(e) =>
-                  update({ sameHoursEveryDay: e.target.checked })
-                }
+                checked={draftSame}
+                onChange={(e) => setDraftSame(e.target.checked)}
               />
               <span className="toggle-track" />
               <span className="toggle-thumb" />
             </label>
           </div>
 
-          {value.sameHoursEveryDay ? (
+          {draftSame ? (
             <DayHoursInput
-              id={`${prefix}-all`}
-              value={value.allDays}
-              onChange={(v) => update({ allDays: v })}
+              id={`${prefix}-modal-all`}
+              value={draftAllDays}
+              onChange={setDraftAllDays}
             />
           ) : (
             <div className="per-day-hours">
               {DAY_LABELS.map((day, i) => (
                 <DayHoursInput
                   key={i}
-                  id={`${prefix}-day-${i}`}
+                  id={`${prefix}-modal-day-${i}`}
                   label={day}
-                  value={value.perDay[i]}
-                  onChange={(v) => updatePerDay(i, v)}
+                  value={draftPerDay[i]}
+                  onChange={(v) => updateDraftPerDay(i, v)}
                 />
               ))}
             </div>
           )}
         </div>
-      )}
+        <div className="legend-footer">
+          <button
+            type="button"
+            className="action-btn action-btn-export"
+            onClick={commitModal}
+          >
+            Set Hours
+          </button>
+        </div>
+      </dialog>
     </div>
   );
 }

@@ -1,12 +1,36 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type {
   GpxTrackPoint,
+  GpxWaypoint,
   SplitGpxProfile,
   SplitForm as SplitFormType,
   UnitSystem,
+  RestStopForm,
 } from "../types";
-import { sliceTrackPoints, buildGpxString } from "../calculator/gpxParser";
+import {
+  sliceTrackPoints,
+  buildGpxString,
+  findNearestTrackPoint,
+} from "../calculator/gpxParser";
 import { distanceLabel } from "../utils";
+
+/** Build a human-readable hours description from a RestStopForm for GPX export. */
+function buildRestStopDescription(rs: RestStopForm): string {
+  if (rs.sameHoursEveryDay) {
+    const e = rs.allDays;
+    if (e.mode === "24h") return "Hours: Open 24h";
+    if (e.mode === "closed") return "Hours: Closed";
+    return `Hours: ${e.opens}-${e.closes}`;
+  }
+  const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return rs.perDay
+    .map((e, i) => {
+      if (e.mode === "24h") return `${DAY[i]}: 24h`;
+      if (e.mode === "closed") return `${DAY[i]}: Closed`;
+      return `${DAY[i]}: ${e.opens}-${e.closes}`;
+    })
+    .join(", ");
+}
 
 interface GpxExportModalProps {
   open: boolean;
@@ -117,6 +141,39 @@ export default function GpxExportModal({
     return { distKmTotal, gainMTotal, lossMTotal };
   })();
 
+  // Collect rest stops from selected splits as course points.
+  // Snap each waypoint to the nearest track point within its split boundary
+  // so Garmin devices (which require course points to lie on a track point)
+  // will render the marker correctly.
+  const waypoints: GpxWaypoint[] = (() => {
+    const result: GpxWaypoint[] = [];
+    splits.forEach((split, j) => {
+      if (!checked[j]) return;
+      const rs = split.rest_stop;
+      if (!rs.enabled || rs.lat == null || rs.lon == null) return;
+      const boundary = splitBoundariesKm[j];
+      const snapped =
+        boundary && gpxTrack.length > 0
+          ? findNearestTrackPoint(
+              gpxTrack,
+              rs.lat,
+              rs.lon,
+              boundary[0],
+              boundary[1],
+            )
+          : null;
+      const waypoint: GpxWaypoint = {
+        name: `${rs.name} (${split.name?.trim() || `Split ${j + 1}`})`,
+        lat: snapped?.lat ?? rs.lat,
+        lon: snapped?.lon ?? rs.lon,
+        description: buildRestStopDescription(rs),
+        symbol: "food",
+      };
+      result.push(waypoint);
+    });
+    return result;
+  })();
+
   const handleExport = useCallback(() => {
     if (exporting || !anyChecked) return;
     setExporting(true);
@@ -136,6 +193,7 @@ export default function GpxExportModal({
         const gpx = buildGpxString(
           [{ name: trackName, points: mergedPoints }],
           trackName,
+          waypoints,
         );
         const blob = new Blob([gpx], { type: "application/gpx+xml" });
         const url = URL.createObjectURL(blob);
@@ -157,8 +215,8 @@ export default function GpxExportModal({
     gpxTrack,
     fileName,
     defaultName,
+    waypoints,
   ]);
-
   return (
     <dialog ref={dialogRef} className="gpx-export-modal" onClose={onClose}>
       <div className="gpx-export-header">
@@ -175,9 +233,11 @@ export default function GpxExportModal({
 
       <div className="gpx-export-body">
         <p className="gpx-export-hint">
-          Select which splits to include. All selected splits will be merged
-          into a single continuous track, making them compatible with GPS
-          devices and route importers.
+          Select splits to include. Selected splits are merged into a single
+          continuous track for GPS and route importer compatibility. Rest stops
+          with valid coordinates are added as waypoints, with coordinates
+          snapped to the nearest track point within each split to ensure
+          compatibility.
         </p>
 
         <table className="gpx-export-table">

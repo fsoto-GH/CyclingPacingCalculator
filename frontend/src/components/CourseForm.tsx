@@ -14,6 +14,8 @@ import type {
   CourseDetail,
   GpxTrackPoint,
   SplitGpxProfile,
+  SubSplitMode,
+  UnitSystem,
 } from "../types";
 import { makeDefaultDayHours } from "../types";
 import type { RestStopForm as RestStopFormType } from "../types";
@@ -22,8 +24,15 @@ import {
   speedLabel,
   distanceLabel,
   minutesToHms,
+  formatHours,
   formatStartTimeHint,
 } from "../utils";
+import {
+  formatIsoInTzShort,
+  formatRawDualRatio,
+  formatRawRatio,
+  formatRatioPercent,
+} from "../timeMath";
 import { makeDefaultSplit } from "../defaults";
 import { serializeCourse } from "../serialization";
 import { calculateCourse } from "../api";
@@ -35,10 +44,21 @@ import {
   extractSurfaceFromXml,
   interpolateLatLon,
 } from "../calculator/gpxParser";
+import {
+  computeHourlyCoursePoints,
+  fetchHourlyCourseWeather,
+  deriveWeatherPairsFromHourly,
+  type SplitWeatherPair,
+  type SunriseSunsetEntry,
+} from "../calculator/weather";
+import type { HourlyWeatherPoint } from "../types";
+import { useAppSettings } from "../AppSettingsContext";
+import { PAID_APIS_ENABLED } from "../config";
 import tzlookup from "tz-lookup";
 import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
+import InsertZone from "./InsertZone";
 const CourseMap = lazy(() => import("./CourseMap"));
 
 /** Thin wrapper that defers the two props that change on every keystroke so
@@ -55,15 +75,19 @@ function CourseMapDeferred(props: React.ComponentProps<typeof CourseMap>) {
   );
 }
 
-const ResultsView = lazy(() => import("./ResultsView"));
 const LegendModal = lazy(() => import("./LegendModal"));
 const ExampleModal = lazy(() => import("./ExampleModal"));
 const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
 const ConfirmModal = lazy(() => import("./ConfirmModal"));
+const ProjectionsView = lazy(() => import("./ProjectionsView.tsx"));
+const GpxSearchModal = lazy(() => import("./GpxSearchModal"));
+const RacePlanModal = lazy(() => import("./RacePlanModal"));
 import { EXAMPLES } from "../examples";
 import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
 import { FieldErrorContext, FieldError, AllErrorsContext } from "./FieldError";
 import NumberInput from "./NumberInput";
+import PaidApiToggle from "./PaidApiToggle";
+import { getRwgpsToken } from "../rwgpsAuth";
 
 function makeDefaultSegment(): SegmentFormState {
   return {
@@ -76,6 +100,8 @@ function makeDefaultSegment(): SegmentFormState {
     min_moving_speed: "",
     splitCount: "1",
     splits: [makeDefaultSplit()],
+    nullified: false,
+    fixed_elapsed_time: "",
   };
 }
 
@@ -86,6 +112,11 @@ const INITIAL_FORM: CourseFormState = {
   unitSystem: "imperial",
   mode: "distance",
   timezone: browserTimezone,
+  sub_split_mode: "hour",
+  sub_split_count: "1",
+  sub_split_distance: "",
+  last_sub_split_threshold: "20",
+  sub_split_distances: "",
   init_moving_speed: "",
   min_moving_speed: "",
   down_time_ratio: "0",
@@ -110,6 +141,7 @@ function migrateRestStop(rs: any): RestStopFormType {
   })) as RestStopFormType["perDay"];
 
   return {
+    backup: rs.backup ?? false,
     enabled: rs.enabled ?? false,
     name: rs.name ?? "",
     address: rs.address ?? "",
@@ -157,6 +189,15 @@ function loadSavedForm(): CourseFormState {
     if (!parsed.down_time_ratio?.trim()) parsed.down_time_ratio = "0";
     if (!parsed.split_delta?.trim()) parsed.split_delta = "0";
 
+    // Migrate: add course-level sub_split_mode if missing (old forms had it per-split only)
+    if (!parsed.sub_split_mode) parsed.sub_split_mode = "hour";
+    if (!parsed.sub_split_count) parsed.sub_split_count = "1";
+    if (parsed.sub_split_distance === undefined) parsed.sub_split_distance = "";
+    if (parsed.last_sub_split_threshold === undefined)
+      parsed.last_sub_split_threshold = "20";
+    if (parsed.sub_split_distances === undefined)
+      parsed.sub_split_distances = "";
+
     // Migrate rest stops and splits
     for (const seg of parsed.segments ?? []) {
       for (const split of seg.splits ?? []) {
@@ -180,6 +221,12 @@ function loadSavedForm(): CourseFormState {
       }
     }
 
+    if (parsed.rwgpsRouteId !== undefined && parsed.rwgpsRouteId !== null) {
+      const routeId = Number(parsed.rwgpsRouteId);
+      parsed.rwgpsRouteId =
+        Number.isFinite(routeId) && routeId > 0 ? routeId : null;
+    }
+
     return parsed as CourseFormState;
   } catch {
     /* ignore corrupt data */
@@ -187,21 +234,220 @@ function loadSavedForm(): CourseFormState {
   return INITIAL_FORM;
 }
 
+const KM_PER_MI = 1.60934;
+const RWGPS_BASE = "https://ridewithgps.com";
+
+interface RwgpsTrackPoint {
+  x: number;
+  y: number;
+  e: number;
+  d: number;
+}
+
+async function fetchRwgpsRouteById(
+  token: string,
+  routeId: number,
+): Promise<{
+  id: number;
+  name: string;
+  track: GpxTrackPoint[];
+}> {
+  const resp = await fetch(`${RWGPS_BASE}/api/v1/routes/${routeId}.json`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    throw new Error(`RWGPS error ${resp.status}`);
+  }
+  const data = (await resp.json()) as {
+    route: {
+      id: number;
+      name: string;
+      track_points: RwgpsTrackPoint[];
+    };
+  };
+  return {
+    id: data.route.id,
+    name: data.route.name,
+    track: data.route.track_points.map((p) => ({
+      lat: p.y,
+      lon: p.x,
+      ele: p.e,
+      cumDist: p.d / 1000,
+    })),
+  };
+}
+
+function unitConversionFactor(from: UnitSystem, to: UnitSystem): number {
+  if (from === to) return 1;
+  return from === "imperial" ? KM_PER_MI : 1 / KM_PER_MI;
+}
+
+function formatConvertedNumber(value: number): string {
+  const normalized = Number(value.toFixed(4));
+  if (Object.is(normalized, -0)) return "0";
+  return String(normalized);
+}
+
+function hasAnyPositiveSplitDistance(form: CourseFormState): boolean {
+  return form.segments.some((seg) =>
+    seg.splits.some((split) => {
+      const d = Number(split.distance);
+      return Number.isFinite(d) && d > 0;
+    }),
+  );
+}
+
+function hydrateDistancesFromTrackIfEmpty(
+  form: CourseFormState,
+  totalDistUserUnits: number,
+): CourseFormState {
+  if (!(Number.isFinite(totalDistUserUnits) && totalDistUserUnits > 0)) {
+    return form;
+  }
+  if (hasAnyPositiveSplitDistance(form)) return form;
+
+  const splitCount = form.segments.reduce(
+    (sum, seg) => sum + seg.splits.length,
+    0,
+  );
+  if (splitCount <= 0) return form;
+
+  const perSplit = totalDistUserUnits / splitCount;
+  let marker = 0;
+
+  return {
+    ...form,
+    segments: form.segments.map((seg) => ({
+      ...seg,
+      splits: seg.splits.map((split) => {
+        if (form.mode === "target_distance") {
+          marker += perSplit;
+          return { ...split, distance: formatConvertedNumber(marker) };
+        }
+        return { ...split, distance: formatConvertedNumber(perSplit) };
+      }),
+    })),
+  };
+}
+
+function convertNumericString(raw: string, factor: number): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  const parsed = Number(trimmed);
+  if (Number.isNaN(parsed)) return raw;
+  return formatConvertedNumber(parsed * factor);
+}
+
+function convertCommaSeparatedNumbers(raw: string, factor: number): string {
+  if (!raw.trim()) return raw;
+  return raw
+    .split(",")
+    .map((token) => {
+      const trimmed = token.trim();
+      if (!trimmed) return token;
+      const parsed = Number(trimmed);
+      if (Number.isNaN(parsed)) return token;
+      return formatConvertedNumber(parsed * factor);
+    })
+    .join(", ");
+}
+
+function convertCourseUnitValues(
+  form: CourseFormState,
+  toUnitSystem: UnitSystem,
+): CourseFormState {
+  const factor = unitConversionFactor(form.unitSystem, toUnitSystem);
+  if (factor === 1) return { ...form, unitSystem: toUnitSystem };
+
+  return {
+    ...form,
+    unitSystem: toUnitSystem,
+    sub_split_distance: convertNumericString(
+      form.sub_split_distance ?? "",
+      factor,
+    ),
+    last_sub_split_threshold: convertNumericString(
+      form.last_sub_split_threshold ?? "",
+      factor,
+    ),
+    sub_split_distances: convertCommaSeparatedNumbers(
+      form.sub_split_distances ?? "",
+      factor,
+    ),
+    init_moving_speed: convertNumericString(form.init_moving_speed, factor),
+    min_moving_speed: convertNumericString(form.min_moving_speed, factor),
+    split_delta: convertNumericString(form.split_delta, factor),
+    segments: form.segments.map((seg) => ({
+      ...seg,
+      split_delta: convertNumericString(seg.split_delta, factor),
+      moving_speed: convertNumericString(seg.moving_speed, factor),
+      min_moving_speed: convertNumericString(seg.min_moving_speed, factor),
+      splits: seg.splits.map((split) => ({
+        ...split,
+        distance: convertNumericString(split.distance, factor),
+        sub_split_distance: convertNumericString(
+          split.sub_split_distance,
+          factor,
+        ),
+        last_sub_split_threshold: convertNumericString(
+          split.last_sub_split_threshold,
+          factor,
+        ),
+        sub_split_distances: convertCommaSeparatedNumbers(
+          split.sub_split_distances,
+          factor,
+        ),
+        moving_speed: convertNumericString(split.moving_speed, factor),
+      })),
+    })),
+  };
+}
+
 export default function CourseForm() {
   const [form, setForm] = useState<CourseFormState>(loadSavedForm);
   const [result, setResult] = useState<CourseDetail | null>(null);
+  const [activeTab, setActiveTab] = useState<"planning" | "projections">(
+    "planning",
+  );
   const [apiError, setApiError] = useState<string | null>(null);
   const [, setLoading] = useState(false); // used by API engine path
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [gpxSearchOpen, setGpxSearchOpen] = useState(false);
+  const [racePlanOpen, setRacePlanOpen] = useState(false);
   const [confirmExampleOpen, setConfirmExampleOpen] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [validationDialogOpen, setValidationDialogOpen] = useState(false);
+  const validationDialogRef = useRef<HTMLDialogElement>(null);
+  const [confirmReduceSegmentsOpen, setConfirmReduceSegmentsOpen] =
+    useState(false);
+  const [pendingSegmentCountRaw, setPendingSegmentCountRaw] = useState<
+    string | null
+  >(null);
+  const [
+    pendingDeletedSplitDistanceCount,
+    setPendingDeletedSplitDistanceCount,
+  ] = useState(0);
   const [pendingExampleLoad, setPendingExampleLoad] = useState<{
     form: CourseFormState;
     gpxUrl?: string;
     urlName?: string;
   } | null>(null);
   const [criteriaModalOpen, setCriteriaModalOpen] = useState(false);
+  const [etaMargins, setEtaMargins] = useState({ open: "15", close: "7" });
+  const [etaMarginsOpen, setEtaMarginsOpen] = useState(false);
+  const [showCourseResultsGrid, setShowCourseResultsGrid] = useState(false);
+  const [pendingUnitSystem, setPendingUnitSystem] = useState<UnitSystem | null>(
+    null,
+  );
+  const etaMarginsRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const el = etaMarginsRef.current;
+    if (!el) return;
+    if (etaMarginsOpen && !el.open) el.showModal();
+    else if (!etaMarginsOpen && el.open) el.close();
+  }, [etaMarginsOpen]);
   const [autoNameDialog, setAutoNameDialog] = useState<{
     open: boolean;
     namedItems: string[];
@@ -247,6 +493,10 @@ export default function CourseForm() {
   const [gpxSurface, setGpxSurface] = useState<string | null>(null);
   const [gpxFileName, setGpxFileName] = useState<string | null>(null);
   const [gpxLoading, setGpxLoading] = useState(false);
+  const [rwgpsRestorePending, setRwgpsRestorePending] = useState<number | null>(
+    null,
+  );
+  const rwgpsRestoreInFlightRef = useRef<number | null>(null);
   const gpxFileRef = useRef<HTMLInputElement>(null);
 
   // City of the GPX track's very first point (start of the whole course).
@@ -299,6 +549,47 @@ export default function CourseForm() {
     [],
   );
 
+  // Clear mapNavTarget after children have consumed the signal so stale
+  // values don't re-fire when components remount (collapse → expand).
+  useEffect(() => {
+    if (mapNavTarget) setMapNavTarget(null);
+  }, [mapNavTarget]);
+
+  // Zoom-to-segment/split from form buttons — drives CourseMap's zoomTarget prop.
+  const [mapZoomTarget, setMapZoomTarget] = useState<{
+    segIdx: number;
+    splitIdx?: number;
+    rev: number;
+  } | null>(null);
+  const courseMapContainerRef = useRef<HTMLDivElement | null>(null);
+  const handleZoomToSegment = useCallback((segIdx: number) => {
+    setMapCollapsed(false);
+    setMapZoomTarget((prev) => ({
+      segIdx,
+      rev: (prev?.rev ?? 0) + 1,
+    }));
+    requestAnimationFrame(() => {
+      courseMapContainerRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, []);
+  const handleZoomToSplit = useCallback((segIdx: number, splitIdx: number) => {
+    setMapCollapsed(false);
+    setMapZoomTarget((prev) => ({
+      segIdx,
+      splitIdx,
+      rev: (prev?.rev ?? 0) + 1,
+    }));
+    requestAnimationFrame(() => {
+      courseMapContainerRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, []);
+
   // Collapse/expand all segments and splits
   const [collapseAllSignal, setCollapseAllSignal] = useState(0);
   const [expandAllSignal, setExpandAllSignal] = useState(0);
@@ -311,19 +602,33 @@ export default function CourseForm() {
   const totalSegPages = Math.ceil(form.segments.length / segPageSize);
   const clampedSegPage = Math.min(segPage, Math.max(0, totalSegPages - 1));
   if (clampedSegPage !== segPage) setSegPage(clampedSegPage);
+  const pagedSegmentIndexes = useMemo(
+    () =>
+      form.segments
+        .slice(clampedSegPage * segPageSize, (clampedSegPage + 1) * segPageSize)
+        .map((_, localIdx) => clampedSegPage * segPageSize + localIdx),
+    [clampedSegPage, form.segments, segPageSize],
+  );
 
-  // Course settings card — collapsible + inline name editing
-  const [courseCollapsed, setCourseCollapsed] = useState(false);
+  // Course settings card — inline name editing
   const [mapCollapsed, setMapCollapsed] = useState(false);
-  const [resultsCollapsed, setResultsCollapsed] = useState(false);
   const [isEditingCourseName, setIsEditingCourseName] = useState(false);
   const courseNameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Validation dialog
+  useEffect(() => {
+    const el = validationDialogRef.current;
+    if (!el) return;
+    if (validationDialogOpen && !el.open) el.showModal();
+    else if (!validationDialogOpen && el.open) el.close();
+  }, [validationDialogOpen]);
 
   // Restore GPX from IndexedDB on mount (large files don't fit in localStorage).
   // Skip when ?example is present — the example loader will supply the track,
   // and letting IDB restore race against it would overwrite the correct GPX.
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("example")) return;
+    if (form.rwgpsRouteId) return;
     loadGpx()
       .then((record) => {
         if (!record) return;
@@ -353,6 +658,8 @@ export default function CourseForm() {
       ? "api"
       : "client";
 
+  const { paidApisEnabled, user } = useAppSettings();
+
   // Persist form to localStorage on every change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
@@ -361,11 +668,45 @@ export default function CourseForm() {
   const update = (patch: Partial<CourseFormState>) =>
     setForm((prev) => ({ ...prev, ...patch }));
 
+  const requestUnitSystemChange = useCallback(
+    (next: UnitSystem) => {
+      if (next === form.unitSystem) return;
+      setPendingUnitSystem(next);
+    },
+    [form.unitSystem],
+  );
+
+  const handleConvertUnitSystem = useCallback(() => {
+    if (!pendingUnitSystem) return;
+    const factor = unitConversionFactor(form.unitSystem, pendingUnitSystem);
+    setForm((prev) => convertCourseUnitValues(prev, pendingUnitSystem));
+    setQuickSetup((prev) => ({
+      ...prev,
+      distance: convertNumericString(prev.distance, factor),
+    }));
+    setPendingUnitSystem(null);
+  }, [form.unitSystem, pendingUnitSystem]);
+
+  const handleKeepUnitSystemValues = useCallback(() => {
+    if (!pendingUnitSystem) return;
+    setForm((prev) => ({ ...prev, unitSystem: pendingUnitSystem }));
+    setPendingUnitSystem(null);
+  }, [pendingUnitSystem]);
+
   const handleReset = useCallback(() => {
     setForm(INITIAL_FORM);
     setResult(null);
     setApiError(null);
     setTouched(new Set());
+  }, []);
+
+  const handleConfirmReset = useCallback(() => {
+    handleReset();
+    setConfirmResetOpen(false);
+  }, [handleReset]);
+
+  const handleCancelReset = useCallback(() => {
+    setConfirmResetOpen(false);
   }, []);
 
   const applyAutoName = useCallback(
@@ -488,6 +829,7 @@ export default function CourseForm() {
       setTouched(new Set());
 
       if (!gpxUrl) {
+        setRwgpsRestorePending(example.rwgpsRouteId ?? null);
         setGpxTrack(null);
         setGpxFileName(null);
         setGpxSurface(null);
@@ -505,6 +847,7 @@ export default function CourseForm() {
           ?.replace(/\.gpx$/i, "") ?? "example";
       setGpxFileName(displayName);
       setGpxLoading(true);
+      setRwgpsRestorePending(null);
       setGpxTrack(null);
       setGpxSurface(null);
       setGpxMissingWarning(null);
@@ -519,6 +862,7 @@ export default function CourseForm() {
             try {
               setGpxTrack(parseGpx(xml));
               setGpxSurface(extractSurfaceFromXml(xml));
+              setForm((prev) => ({ ...prev, rwgpsRouteId: null }));
               saveGpx(displayName, xml).catch(() => {});
             } catch (err: unknown) {
               const msg =
@@ -627,7 +971,7 @@ export default function CourseForm() {
     setPendingExampleLoad(null);
   }, []);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     // Embed the current GPX filename so an import on the same browser can
     // attempt to restore the file from IndexedDB.
     const exportData = gpxFileName
@@ -635,6 +979,30 @@ export default function CourseForm() {
       : { ...form, gpxFileName: undefined };
     const json = JSON.stringify(exportData, null, 2);
     const blob = new Blob([json], { type: "application/json" });
+
+    if ("showOpenFilePicker" in self) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: `pacing-${new Date().toISOString().slice(0, 10)}.json`,
+          startIn: "downloads",
+          types: [
+            {
+              description: "JSON File",
+              accept: { "application/json": [".json"] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (err) {
+        // User cancelled the save dialog — do nothing.
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        // Unexpected API error — fall through to legacy download.
+      }
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -654,6 +1022,11 @@ export default function CourseForm() {
           handleLoadExample(parsed);
           setGpxMissingWarning(null);
 
+          if (parsed.rwgpsRouteId) {
+            setRwgpsRestorePending(parsed.rwgpsRouteId);
+            return;
+          }
+
           const embeddedName = parsed.gpxFileName;
           if (!embeddedName) return;
 
@@ -668,6 +1041,8 @@ export default function CourseForm() {
                   try {
                     setGpxTrack(parseGpx(record.xml));
                     setGpxSurface(extractSurfaceFromXml(record.xml));
+                    // Update the "current" key so the GPX survives a page refresh.
+                    saveGpx(record.fileName, record.xml).catch(() => {});
                   } catch {
                     setGpxFileName(null);
                     setGpxMissingWarning(
@@ -720,6 +1095,8 @@ export default function CourseForm() {
             setGpxTrack(track);
             setGpxSurface(extractSurfaceFromXml(xml));
             setGpxMissingWarning(null);
+            setRwgpsRestorePending(null);
+            setForm((prev) => ({ ...prev, rwgpsRouteId: null }));
             // Auto-detect timezone from the track's first point.
             const detectedTz = tzlookup(track[0].lat, track[0].lon);
             if (detectedTz) update({ timezone: detectedTz });
@@ -747,14 +1124,111 @@ export default function CourseForm() {
     setGpxSurface(null);
     setGpxFileName(null);
     setGpxLoading(false);
+    setRwgpsRestorePending(null);
     setGpxMissingWarning(null);
+    setForm((prev) => ({ ...prev, rwgpsRouteId: null }));
     if (gpxFileRef.current) gpxFileRef.current.value = "";
     clearGpx().catch(() => {
       /* IDB unavailable */
     });
   }, []);
 
+  /** Load GPX track points directly (from RideWithGPS API) without a file. */
+  const handleGpxLoadDirect = useCallback(
+    (
+      track: import("../types").GpxTrackPoint[],
+      routeName: string,
+      routeId: number,
+    ) => {
+      if (track.length === 0) {
+        setGpxLoading(false);
+        setApiError(
+          `RideWithGPS route ${routeId} did not include track points, so it cannot be mapped.`,
+        );
+        setGpxMissingWarning(
+          `RideWithGPS route ${routeId} has no track points available. Try another route or export/import as GPX.`,
+        );
+        return;
+      }
+      setGpxFileName(routeName);
+      setGpxTrack(track);
+      setGpxSurface("unknown");
+      setGpxLoading(false);
+      setApiError(null);
+      setGpxMissingWarning(null);
+      setRwgpsRestorePending(null);
+      setForm((prev) => {
+        const totalKm = track[track.length - 1]?.cumDist ?? 0;
+        const totalUserDist =
+          prev.unitSystem === "imperial" ? totalKm / 1.60934 : totalKm;
+        const withRouteId = { ...prev, rwgpsRouteId: routeId };
+        return hydrateDistancesFromTrackIfEmpty(withRouteId, totalUserDist);
+      });
+      clearGpx().catch(() => {
+        /* IDB unavailable */
+      });
+      if (track.length > 0) {
+        const detectedTz = tzlookup(track[0].lat, track[0].lon);
+        if (detectedTz) update({ timezone: detectedTz });
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const routeId = form.rwgpsRouteId;
+    if (!routeId || gpxTrack) return;
+    if (rwgpsRestoreInFlightRef.current === routeId) return;
+
+    const token = getRwgpsToken();
+    if (!token) {
+      setGpxLoading(false);
+      setRwgpsRestorePending(routeId);
+      setGpxMissingWarning(
+        `This course references RideWithGPS route ${routeId}. Connect RideWithGPS and select the route to load it.`,
+      );
+      setGpxSearchOpen(true);
+      return;
+    }
+
+    let cancelled = false;
+    rwgpsRestoreInFlightRef.current = routeId;
+    setGpxLoading(true);
+    fetchRwgpsRouteById(token, routeId)
+      .then((detail) => {
+        if (cancelled) return;
+        handleGpxLoadDirect(detail.track, detail.name, detail.id);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRwgpsRestorePending(routeId);
+        setGpxMissingWarning(
+          `Could not auto-load RideWithGPS route ${routeId}. Reconnect RideWithGPS and select the route to continue.`,
+        );
+        setGpxSearchOpen(true);
+      })
+      .finally(() => {
+        rwgpsRestoreInFlightRef.current = null;
+        if (!cancelled) {
+          setGpxLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      rwgpsRestoreInFlightRef.current = null;
+    };
+  }, [form.rwgpsRouteId, gpxTrack, handleGpxLoadDirect]);
+
   const sLabel = speedLabel(form.unitSystem);
+  const dLabel = distanceLabel(form.unitSystem);
+  const fmtInTz = formatIsoInTzShort;
+  const courseEndTz = useMemo(() => {
+    if (!result || result.segment_details.length === 0) return null;
+    const lastSeg = result.segment_details[result.segment_details.length - 1];
+    if (!lastSeg || lastSeg.split_details.length === 0) return null;
+    return lastSeg.split_details[lastSeg.split_details.length - 1].end_timezone;
+  }, [result]);
 
   // Stable string key from split distances only — doesn't change when unrelated
   // fields (rest stop, speed, etc.) are edited, so profiles aren't recomputed
@@ -770,6 +1244,128 @@ export default function CourseForm() {
   const [gpxProfiles, setGpxProfiles] = useState<SplitGpxProfile[][] | null>(
     null,
   );
+
+  // ── Weather forecast state (lives here so it survives tab changes) ──
+  const [hourlyWeather, setHourlyWeather] = useState<
+    HourlyWeatherPoint[] | null
+  >(null);
+  const [sunriseSunset, setSunriseSunset] = useState<SunriseSunsetEntry[]>([]);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+
+  // Clear stale weather whenever the result or GPX profiles change.
+  useEffect(() => {
+    setHourlyWeather(null);
+    setSunriseSunset([]);
+  }, [result, gpxProfiles]);
+
+  // Derive the per-split SplitWeatherPair[][] from hourly data (no re-fetch).
+  const splitWeather = useMemo<(SplitWeatherPair | null)[][] | null>(() => {
+    if (!hourlyWeather || !result) return null;
+    const splitCounts = result.segment_details.map(
+      (seg) => seg.split_details.length,
+    );
+    return deriveWeatherPairsFromHourly(
+      hourlyWeather,
+      result.segment_details.length,
+      splitCounts,
+    );
+  }, [hourlyWeather, result]);
+
+  // Whole-course wind direction + impact stats derived from all hourly samples.
+  const courseWindStats = useMemo(() => {
+    if (!hourlyWeather || hourlyWeather.length === 0) return null;
+    const dirCounts = { N: 0, E: 0, S: 0, W: 0 };
+    let headCount = 0,
+      tailCount = 0,
+      crossCount = 0,
+      windBearingCount = 0;
+    for (const pt of hourlyWeather) {
+      const w = pt.weather;
+      const dir = w.windDirection;
+      if (dir >= 315 || dir < 45) dirCounts.N++;
+      else if (dir < 135) dirCounts.E++;
+      else if (dir < 225) dirCounts.S++;
+      else dirCounts.W++;
+      const profile = gpxProfiles?.[pt.segIdx]?.[pt.splitIdx];
+      if (
+        profile &&
+        !(
+          profile.startLat === profile.endLat &&
+          profile.startLon === profile.endLon
+        )
+      ) {
+        const φ1 = (profile.startLat * Math.PI) / 180;
+        const φ2 = (profile.endLat * Math.PI) / 180;
+        const Δλ = ((profile.endLon - profile.startLon) * Math.PI) / 180;
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x =
+          Math.cos(φ1) * Math.sin(φ2) -
+          Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        const bearing = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+        const diff = (w.windDirection - bearing + 360) % 360;
+        const angle = diff > 180 ? 360 - diff : diff;
+        if (angle <= 45) headCount++;
+        else if (angle >= 135) tailCount++;
+        else crossCount++;
+        windBearingCount++;
+      }
+    }
+    const windTotal = dirCounts.N + dirCounts.E + dirCounts.S + dirCounts.W;
+    return {
+      windDir:
+        windTotal > 0
+          ? {
+              N: Math.round((dirCounts.N / windTotal) * 100),
+              E: Math.round((dirCounts.E / windTotal) * 100),
+              S: Math.round((dirCounts.S / windTotal) * 100),
+              W: Math.round((dirCounts.W / windTotal) * 100),
+            }
+          : null,
+      windImpact:
+        windBearingCount > 0
+          ? {
+              head: Math.round((headCount / windBearingCount) * 100),
+              tail: Math.round((tailCount / windBearingCount) * 100),
+              cross: Math.round((crossCount / windBearingCount) * 100),
+            }
+          : null,
+    };
+  }, [hourlyWeather, gpxProfiles]);
+
+  const weatherAvailable = useMemo(() => {
+    if (!gpxProfiles || !result) return false;
+    const maxForecast = new Date();
+    maxForecast.setDate(maxForecast.getDate() + 16);
+    // Show for past courses (historical API) and near-future courses (forecast API).
+    // Only hide when the entire course starts beyond the 16-day forecast window.
+    return new Date(result.start_time) <= maxForecast;
+  }, [gpxProfiles, result]);
+
+  const handleFetchWeather = useCallback(() => {
+    if (!gpxProfiles || !result || !gpxTrack) return;
+
+    const coords = computeHourlyCoursePoints(
+      result,
+      gpxProfiles,
+      gpxTrack,
+      interpolateLatLon,
+    );
+    if (coords.length === 0) return;
+
+    setWeatherLoading(true);
+    fetchHourlyCourseWeather(coords, paidApisEnabled, (partial, ss) => {
+      setHourlyWeather(partial);
+      setSunriseSunset(ss);
+    })
+      .then(({ points, sunriseSunset: ss }) => {
+        setHourlyWeather(points.length > 0 ? points : null);
+        setSunriseSunset(ss);
+        setWeatherLoading(false);
+      })
+      .catch(() => {
+        setWeatherLoading(false);
+      });
+  }, [result, gpxProfiles, gpxTrack]);
 
   // Memoized — avoids re-running the 30k-point RDP on every render.
   const bannerGainM = useMemo(
@@ -872,11 +1468,11 @@ export default function CourseForm() {
       return form.segments.map((seg, i) =>
         seg.splits.map((_, j): "over" | "under-last" | null => {
           const cum = cumDists[i]?.[j] ?? 0;
-          if (cum > gpxTotal + 1e-9) return "over";
+          if (cum > gpxTotal + 0.05) return "over";
           if (
             i === lastSegIdx &&
             j === lastSplitIdx &&
-            totalConfigured < gpxTotal - 1e-9
+            totalConfigured < gpxTotal - 0.05
           )
             return "under-last";
           return null;
@@ -940,6 +1536,46 @@ export default function CourseForm() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, gpxSurface, splitDistancesKey, form.unitSystem, form.mode]);
+
+  // When gpxProfiles are (re)computed or the course timezone changes, propagate
+  // the detected per-split endpoint timezones into the form. This mirrors the
+  // auto-detection effect in SplitForm but runs at the course level so it fires
+  // even when all segments are collapsed and SplitForm is not mounted.
+  useEffect(() => {
+    if (!gpxProfiles) return;
+    const courseTz = form.timezone;
+    setForm((prev) => {
+      let anythingChanged = false;
+      const nextSegments = prev.segments.map((seg, i) => {
+        const segProfiles = gpxProfiles[i];
+        if (!segProfiles) return seg;
+        let segChanged = false;
+        const nextSplits = seg.splits.map((split, j) => {
+          if (split.tzManuallySet) return split; // user-controlled — hands off
+          const detectedTz = segProfiles[j]?.endTimezone ?? null;
+          if (detectedTz && detectedTz !== courseTz) {
+            if (!split.differentTimezone || split.timezone !== detectedTz) {
+              segChanged = true;
+              return {
+                ...split,
+                differentTimezone: true,
+                timezone: detectedTz,
+              };
+            }
+          } else if (detectedTz === courseTz && split.differentTimezone) {
+            segChanged = true;
+            return { ...split, differentTimezone: false };
+          }
+          return split;
+        });
+        if (!segChanged) return seg;
+        anythingChanged = true;
+        return { ...seg, splits: nextSplits };
+      });
+      if (!anythingChanged) return prev;
+      return { ...prev, segments: nextSegments };
+    });
+  }, [gpxProfiles, form.timezone]);
 
   // Per-split [startKm, endKm] boundaries in the GPX track.
   // Used by the GPX export modal to slice the raw track for each split.
@@ -1099,8 +1735,14 @@ export default function CourseForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxTrack, splitBoundariesKm]);
 
-  // â”€â”€ Handlers â”€â”€
-  const handleSegmentCountChange = (raw: string) => {
+  // ”€”€ Handlers ”€”€
+  const splitHasDistanceValue = (distanceRaw: string): boolean => {
+    const trimmed = distanceRaw.trim();
+    if (!trimmed) return false;
+    return !Number.isNaN(Number(trimmed));
+  };
+
+  const applySegmentCountChange = (raw: string) => {
     update({ segmentCount: raw });
     const n = parseInt(raw, 10);
     if (!isNaN(n) && n > 0) {
@@ -1125,6 +1767,23 @@ export default function CourseForm() {
     }
   };
 
+  const handleSegmentCountChange = (raw: string) => {
+    const n = parseInt(raw, 10);
+    if (!isNaN(n) && n > 0 && n < form.segments.length) {
+      const removedSegments = form.segments.slice(n);
+      const removedWithDistance = removedSegments
+        .flatMap((seg) => seg.splits)
+        .filter((split) => splitHasDistanceValue(split.distance)).length;
+      if (removedWithDistance > 0) {
+        setPendingSegmentCountRaw(raw);
+        setPendingDeletedSplitDistanceCount(removedWithDistance);
+        setConfirmReduceSegmentsOpen(true);
+        return;
+      }
+    }
+    applySegmentCountChange(raw);
+  };
+
   const updateSegment = (i: number, seg: SegmentFormState) => {
     setForm((prev) => {
       const next = [...prev.segments];
@@ -1133,10 +1792,115 @@ export default function CourseForm() {
     });
   };
 
-  // â”€â”€ Field-level validation keyed by input element IDs â”€â”€
+  const moveSplitToPrevSeg = (segIdx: number, splitIdx: number) => {
+    setForm((prev) => {
+      if (segIdx === 0) return prev;
+      const segs = prev.segments.map((s) => ({ ...s, splits: [...s.splits] }));
+      const [split] = segs[segIdx].splits.splice(splitIdx, 1);
+      segs[segIdx - 1].splits.push(split);
+      segs[segIdx - 1].splitCount = String(segs[segIdx - 1].splits.length);
+      // Remove source segment if now empty
+      const filtered =
+        segs[segIdx].splits.length === 0
+          ? segs.filter((_, i) => i !== segIdx)
+          : segs.map((s) => ({ ...s, splitCount: String(s.splits.length) }));
+      return {
+        ...prev,
+        segments: filtered,
+        segmentCount: String(filtered.length),
+      };
+    });
+  };
+
+  const moveSplitToNextSeg = (segIdx: number, splitIdx: number) => {
+    setForm((prev) => {
+      if (segIdx >= prev.segments.length - 1) return prev;
+      const segs = prev.segments.map((s) => ({ ...s, splits: [...s.splits] }));
+      const [split] = segs[segIdx].splits.splice(splitIdx, 1);
+      segs[segIdx + 1].splits.unshift(split);
+      segs[segIdx + 1].splitCount = String(segs[segIdx + 1].splits.length);
+      // Remove source segment if now empty
+      const filtered =
+        segs[segIdx].splits.length === 0
+          ? segs.filter((_, i) => i !== segIdx)
+          : segs.map((s) => ({ ...s, splitCount: String(s.splits.length) }));
+      return {
+        ...prev,
+        segments: filtered,
+        segmentCount: String(filtered.length),
+      };
+    });
+  };
+
+  const deleteSplit = (segIdx: number, splitIdx: number) => {
+    setForm((prev) => {
+      const segs = prev.segments.map((s) => ({ ...s, splits: [...s.splits] }));
+      segs[segIdx].splits.splice(splitIdx, 1);
+      // Remove segment if now empty
+      const filtered =
+        segs[segIdx].splits.length === 0
+          ? segs.filter((_, i) => i !== segIdx)
+          : segs.map((s) => ({ ...s, splitCount: String(s.splits.length) }));
+      return {
+        ...prev,
+        segments: filtered,
+        segmentCount: String(filtered.length),
+      };
+    });
+  };
+
+  const deleteSegment = (segIdx: number) => {
+    setForm((prev) => {
+      if (prev.segments.length <= 1) return prev;
+      const filtered = prev.segments.filter((_, i) => i !== segIdx);
+      return {
+        ...prev,
+        segments: filtered,
+        segmentCount: String(filtered.length),
+      };
+    });
+  };
+
+  const insertSegment = (afterIndex: number) => {
+    setForm((prev) => {
+      const next = [...prev.segments];
+      next.splice(afterIndex + 1, 0, makeDefaultSegment());
+      return { ...prev, segments: next, segmentCount: String(next.length) };
+    });
+  };
+
+  const insertSplitAfter = (segIdx: number, splitIdx: number) => {
+    setForm((prev) => {
+      const segs = prev.segments.map((s) => ({ ...s, splits: [...s.splits] }));
+      segs[segIdx].splits.splice(splitIdx + 1, 0, makeDefaultSplit());
+      segs[segIdx].splitCount = String(segs[segIdx].splits.length);
+      return { ...prev, segments: segs };
+    });
+  };
+
+  // ”€”€ Field-level validation keyed by input element IDs ”€”€
   const computeFieldErrors = useCallback(
     (f: CourseFormState): Record<string, string> => {
       const e: Record<string, string> = {};
+      const isValidHttpUrl = (value: string): boolean => {
+        try {
+          const parsed = new URL(value);
+          return parsed.protocol === "http:" || parsed.protocol === "https:";
+        } catch {
+          return false;
+        }
+      };
+      const isValidDayHoursEntry = (
+        entry:
+          | { mode: "hours" | "24h" | "closed"; opens: string; closes: string }
+          | undefined,
+      ): boolean => {
+        if (!entry) return false;
+        if (entry.mode === "24h" || entry.mode === "closed") return true;
+        if (entry.mode !== "hours") return false;
+        const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+        return timeRe.test(entry.opens) && timeRe.test(entry.closes);
+      };
       const initSpeed = parseFloat(f.init_moving_speed);
       const minSpeed = parseFloat(f.min_moving_speed);
       const dtr = parseFloat(f.down_time_ratio);
@@ -1172,14 +1936,69 @@ export default function CourseForm() {
           const prevSeg = f.segments[i - 1];
           const prevLastSplit = prevSeg.splits[prevSeg.splits.length - 1];
           const prevLastDist = parseFloat(prevLastSplit?.distance ?? "");
-          const firstDist = parseFloat(seg.splits[0]?.distance ?? "");
+          if (seg.nullified) {
+            // Transit segment: validate the transit distance input
+            const transitDist = parseFloat(seg.splits[0]?.distance ?? "");
+            if (
+              !isNaN(prevLastDist) &&
+              !isNaN(transitDist) &&
+              transitDist <= prevLastDist
+            )
+              e[`${sp}-transit-dist`] =
+                `Must be > ${prevLastDist} (previous segment's last split)`;
+          } else {
+            const firstDist = parseFloat(seg.splits[0]?.distance ?? "");
+            if (
+              !isNaN(prevLastDist) &&
+              !isNaN(firstDist) &&
+              firstDist <= prevLastDist
+            )
+              e[`${sp}-split0-distance`] =
+                `Must be > ${prevLastDist} (previous segment's last split)`;
+          }
+        }
+
+        if (seg.nullified) {
+          const transitSplit = seg.splits[0];
+          const transitTime = parseFloat(seg.fixed_elapsed_time ?? "");
           if (
-            !isNaN(prevLastDist) &&
-            !isNaN(firstDist) &&
-            firstDist <= prevLastDist
-          )
-            e[`${sp}-split0-distance`] =
-              `Must be > ${prevLastDist} (previous segment's last split)`;
+            (seg.fixed_elapsed_time ?? "").trim() === "" ||
+            isNaN(transitTime) ||
+            transitTime <= 0
+          ) {
+            e[`${sp}-transit-time`] = "Must be > 0";
+          }
+
+          const transitDist = parseFloat(transitSplit?.distance ?? "");
+          if (isNaN(transitDist) || transitDist <= 0) {
+            e[`${sp}-transit-dist`] = "Must be > 0";
+          }
+
+          if (seg.splits.length !== 1) {
+            e[`${sp}-transit-dist`] =
+              "Transit segment must contain exactly one split";
+          }
+
+          const rs = transitSplit?.rest_stop;
+          if (rs?.enabled) {
+            const rp = `${sp}-transit-rs`;
+            if (!rs.name.trim()) e[`${rp}-name`] = "Required";
+            if (!rs.address.trim()) e[`${rp}-address`] = "Required";
+            if (rs.alt.trim() && !isValidHttpUrl(rs.alt.trim())) {
+              e[`${rp}-alt`] = "Must be a valid http/https URL";
+            }
+            if (typeof rs.backup !== "boolean") {
+              e[`${rp}-backup`] = "Must be true or false";
+            }
+            const hoursValid = rs.sameHoursEveryDay
+              ? isValidDayHoursEntry(rs.allDays)
+              : rs.perDay.every((day) => isValidDayHoursEntry(day));
+            if (!hoursValid) {
+              e[`${rp}-hours`] = "Provide valid open hours";
+            }
+          }
+
+          return;
         }
 
         if (seg.down_time_ratio.trim() !== "") {
@@ -1271,6 +2090,105 @@ export default function CourseForm() {
   const allErrors = useMemo(
     () => computeFieldErrors(form),
     [computeFieldErrors, form],
+  );
+
+  const gpxDistanceWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    splitGpxStatuses.forEach((seg, si) => {
+      const segmentName = form.segments[si]?.name?.trim();
+      seg.forEach((status, sj) => {
+        const splitName = form.segments[si]?.splits[sj]?.name?.trim();
+        const segmentLabel = segmentName || `Segment ${si + 1}`;
+        const splitLabel = splitName || `Split ${sj + 1}`;
+        const locationLabel = `${segmentLabel}, ${splitLabel}`;
+        if (status === "over") {
+          warnings.push(
+            `${locationLabel}: cumulative distance exceeds GPX total.`,
+          );
+        } else if (status === "under-last") {
+          warnings.push(
+            `${locationLabel}: course distance has not yet reached GPX total.`,
+          );
+        }
+      });
+    });
+    return warnings;
+  }, [form.segments, splitGpxStatuses]);
+
+  const describeFieldId = useCallback(
+    (id: string): string => {
+      const courseMap: Record<string, string> = {
+        "init-speed": "Course speed",
+        "min-speed": "Course minimum speed",
+        dtr: "Course down time ratio",
+        "split-delta": "Course speed delta",
+        "seg-count": "Course segment count",
+        "start-time": "Course start time",
+        "ss-mode": "Course sub-split mode",
+        "ss-count": "Course sub-split count",
+        "ss-distance": "Course sub-split distance",
+        "ss-threshold": "Course last sub-split threshold",
+        "ss-distances": "Course sub-split distances",
+      };
+      const segmentMap: Record<string, string> = {
+        "sleep-time": "Sleep time",
+        "split-count": "Split count",
+        dtr: "Down time ratio",
+        "moving-speed": "Segment speed",
+        "min-speed": "Segment minimum speed",
+        "transit-time": "Transit elapsed time",
+        "transit-dist": "Transit distance",
+      };
+      const splitMap: Record<string, string> = {
+        distance: "Split distance",
+        "moving-speed": "Split speed",
+        "ss-count": "Sub-split count",
+        "ss-distance": "Sub-split distance",
+        "ss-threshold": "Sub-split threshold",
+        "ss-distances": "Sub-split distances",
+      };
+
+      const segLabel = (si: number) =>
+        form.segments[si]?.name?.trim() || `Segment ${si + 1}`;
+      const splitLabel = (si: number, sj: number) =>
+        form.segments[si]?.splits[sj]?.name?.trim() || `Split ${sj + 1}`;
+
+      if (id.startsWith("course-")) {
+        const key = id.slice("course-".length);
+        return courseMap[key] ?? `Course field (${key})`;
+      }
+
+      const transitRs = id.match(/^seg(\d+)-transit-rs-(.+)$/);
+      if (transitRs) {
+        const si = Number(transitRs[1]);
+        return `${segLabel(si)} transit rest stop ${transitRs[2]}`;
+      }
+
+      const splitRs = id.match(/^seg(\d+)-split(\d+)-rs-(.+)$/);
+      if (splitRs) {
+        const si = Number(splitRs[1]);
+        const sj = Number(splitRs[2]);
+        return `${segLabel(si)}, ${splitLabel(si, sj)} rest stop ${splitRs[3]}`;
+      }
+
+      const split = id.match(/^seg(\d+)-split(\d+)-(.+)$/);
+      if (split) {
+        const si = Number(split[1]);
+        const sj = Number(split[2]);
+        const key = split[3];
+        return `${segLabel(si)}, ${splitLabel(si, sj)} ${splitMap[key] ?? key}`;
+      }
+
+      const segment = id.match(/^seg(\d+)-(.+)$/);
+      if (segment) {
+        const si = Number(segment[1]);
+        const key = segment[2];
+        return `${segLabel(si)} ${segmentMap[key] ?? key}`;
+      }
+
+      return id;
+    },
+    [form.segments],
   );
 
   const visibleErrors = useMemo(() => {
@@ -1373,83 +2291,449 @@ export default function CourseForm() {
   return (
     <AllErrorsContext.Provider value={allErrors}>
       <FieldErrorContext.Provider value={visibleErrors}>
-        <div className="course-form" onBlur={handleBlur}>
-          <div className="title-row">
-            <h1>
-              Ultra Cycling Planner{" "}
-              <span className="app-version">v{__APP_VERSION__}</span>
-            </h1>
-            <div className="title-nav-buttons">
+        <div className="title-row">
+          <h1>
+            Ultra Cycling Planner{" "}
+            <span className="app-version">v{__APP_VERSION__}</span>
+          </h1>
+          <div className="title-nav-buttons">
+            <div className="nav-btn-group title-nav-btn-group-left">
               <button
                 type="button"
                 className="nav-btn nav-btn-legend"
                 onClick={() => setLegendOpen(true)}
                 title="Open the guide"
               >
-                <span className="nav-btn-icon">📘</span>
+                <i className="fa-solid fa-book-atlas"></i>
                 <span className="nav-btn-label">Guide</span>
               </button>
-              <div className="nav-btn-group">
+              <button
+                type="button"
+                className="nav-btn"
+                onClick={() => setExamplesOpen(true)}
+                title="Load a pre-built example course"
+              >
+                <i className="fa-solid fa-vial"></i>
+                <span className="nav-btn-label">Examples</span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                style={{ display: "none" }}
+                onChange={handleImport}
+              />
+              {PAID_APIS_ENABLED && user && (
                 <button
                   type="button"
                   className="nav-btn"
-                  onClick={() => setExamplesOpen(true)}
-                  title="Load a pre-built example course"
+                  onClick={() => setRacePlanOpen(true)}
+                  title="Save or load race plans"
                 >
-                  <span className="nav-btn-icon">🧪</span>
-                  <span className="nav-btn-label">Examples</span>
+                  <i className="fa-solid fa-cloud" />
+                  <span className="nav-btn-label">My Plans</span>
                 </button>
-                <button
-                  type="button"
-                  className="nav-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Import a previously exported JSON course"
-                >
-                  <span className="nav-btn-icon">📥</span>
-                  <span className="nav-btn-label">Import JSON</span>
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".json"
-                  style={{ display: "none" }}
-                  onChange={handleImport}
+              )}
+            </div>
+
+            <div className="nav-btn-group title-nav-btn-group-right">
+              <button
+                type="button"
+                className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
+                onClick={() => !gpxLoading && gpxFileRef.current?.click()}
+                disabled={gpxLoading}
+                title="Load a GPX track file for elevation profiles and nearby stops"
+              >
+                {gpxLoading ? (
+                  <>
+                    <span className="btn-spinner btn-spinner-sm" /> Parsing…
+                  </>
+                ) : (
+                  <>
+                    <span className="nav-btn-icon">
+                      <i className="fas fa-map" />
+                    </span>
+                    <span className="nav-btn-label">Load GPX</span>
+                  </>
+                )}
+              </button>
+              <input
+                ref={gpxFileRef}
+                type="file"
+                accept=".gpx"
+                style={{ display: "none" }}
+                onChange={handleGpxLoad}
+              />
+              <button
+                type="button"
+                className="nav-btn"
+                onClick={() => {
+                  setRwgpsRestorePending(form.rwgpsRouteId ?? null);
+                  setGpxSearchOpen(true);
+                }}
+                title="Search and import routes from RideWithGPS"
+              >
+                <span className="nav-btn-icon">
+                  <i className="fas fa-search" />
+                </span>
+                <span className="nav-btn-label">Search RideWithGPS</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Paid-API toggle — only rendered when built with VITE_ENABLE_PAID_APIS=true */}
+        {PAID_APIS_ENABLED && <PaidApiToggle />}
+
+        <p className="app-description">
+          Plan multi-day cycling events with detailed pacing, rest stops, and
+          time estimates. Define segments and splits with custom speeds, decay
+          rates, sub-split strategies, and rest stop open hours. The calculator
+          projects arrival times, checks them against business hours, and
+          supports timezone-aware scheduling across regions.
+        </p>
+
+        {/* GPX banner — independent of tab state */}
+        {gpxFileName && gpxLoading && (
+          <div className="gpx-file-field gpx-file-field-loading">
+            <div className="gpx-file-meta">
+              <span className="gpx-file-label gpx-label-loading">
+                <span className="btn-spinner btn-spinner-sm" /> Parsing GPX
+              </span>
+              <span className="gpx-file-name">{gpxFileName}</span>
+              <span className="gpx-file-stats gpx-stats-loading">
+                Reading track points…
+              </span>
+            </div>
+          </div>
+        )}
+        {gpxFileName && gpxTrack && !gpxLoading && (
+          <div className="gpx-file-field">
+            <div className="gpx-file-meta">
+              <span className="gpx-file-label">
+                <i className="fas fa-map" /> GPX route{" "}
+                {form.rwgpsRouteId && (
+                  <a
+                    href={`https://ridewithgps.com/routes/${form.rwgpsRouteId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#60a5fa", textDecoration: "none" }}
+                  >
+                    (RideWithGPS Route)
+                  </a>
+                )}
+              </span>
+              <span className="gpx-file-name">{gpxFileName}</span>
+              <span className="gpx-file-stats">
+                {form.unitSystem === "imperial"
+                  ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
+                  : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
+                {" · "}
+                {form.unitSystem === "imperial"
+                  ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
+                  : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
+                {" · "}
+                {gpxTrack.length.toLocaleString()} pts
+              </span>
+            </div>
+            <button
+              type="button"
+              className="gpx-file-remove"
+              onClick={handleGpxClear}
+              aria-label="Remove GPX route"
+            >
+              Remove
+            </button>
+          </div>
+        )}
+        {gpxMissingWarning && (
+          <div className="gpx-missing-warning">
+            <span>
+              <i className="fas fa-exclamation-triangle" /> {gpxMissingWarning}
+            </span>
+            <button
+              type="button"
+              className="gpx-missing-dismiss"
+              onClick={() => setGpxMissingWarning(null)}
+              aria-label="Dismiss warning"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Course map — independent of tab state */}
+        {gpxTrack && splitBoundariesKm && (
+          <div className="course-map-collapsible" ref={courseMapContainerRef}>
+            <div
+              className="course-map-collapse-header"
+              onClick={() => setMapCollapsed((c) => !c)}
+            >
+              <span className="collapse-icon">
+                {mapCollapsed ? (
+                  <i className="fas fa-chevron-right" />
+                ) : (
+                  <i className="fas fa-chevron-down" />
+                )}
+              </span>
+              <span>Course Map</span>
+            </div>
+            {!mapCollapsed && (
+              <Suspense
+                fallback={<div className="map-loading">Loading map…</div>}
+              >
+                <CourseMapDeferred
+                  gpxTrack={gpxTrack}
+                  splitBoundariesKm={splitBoundariesKm}
+                  formSegments={form.segments}
+                  unitSystem={form.unitSystem}
+                  gpxProfiles={gpxProfiles}
+                  onMarkerClick={handleMapMarkerClick}
+                  courseName={form.name?.trim() || undefined}
+                  zoomTarget={mapZoomTarget}
+                  hourlyWeather={hourlyWeather}
+                  courseTz={form.timezone}
+                  segmentBoundaryTimes={result?.segment_details.map(
+                    (seg) => seg.end_time,
+                  )}
+                  sunriseSunset={sunriseSunset}
                 />
+              </Suspense>
+            )}
+          </div>
+        )}
+
+        <div className="course-settings-header course-persist-header">
+          <div className="split-header-left">
+            <div className="split-header-titlerow">
+              <button
+                type="button"
+                className={`course-validation-btn${Object.keys(allErrors).length > 0 || apiError || gpxDistanceWarnings.length > 0 ? " course-validation-btn--error" : " course-validation-btn--ok"}`}
+                title={
+                  Object.keys(allErrors).length > 0
+                    ? `${Object.keys(allErrors).length} validation error${Object.keys(allErrors).length === 1 ? "" : "s"} — click to view`
+                    : gpxDistanceWarnings.length > 0
+                      ? `${gpxDistanceWarnings.length} GPX distance warning${gpxDistanceWarnings.length === 1 ? "" : "s"} — click to view`
+                      : apiError
+                        ? "Calculation error — click to view"
+                        : "No validation errors"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setValidationDialogOpen(true);
+                }}
+                aria-label={
+                  Object.keys(allErrors).length > 0 ||
+                  apiError ||
+                  gpxDistanceWarnings.length > 0
+                    ? "View validation errors"
+                    : "Form is valid"
+                }
+              >
+                <i
+                  className={
+                    Object.keys(allErrors).length > 0 ||
+                    apiError ||
+                    gpxDistanceWarnings.length > 0
+                      ? "fa-solid fa-circle-exclamation"
+                      : "fa-regular fa-circle-check"
+                  }
+                />
+              </button>
+              {activeTab === "planning" && isEditingCourseName ? (
+                <input
+                  ref={courseNameInputRef}
+                  className="split-header-name-input"
+                  type="text"
+                  value={form.name ?? ""}
+                  placeholder="Course name (e.g. Mishigami 2025)"
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => update({ name: e.target.value })}
+                  onBlur={() => setIsEditingCourseName(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") {
+                      setIsEditingCourseName(false);
+                      e.preventDefault();
+                    }
+                  }}
+                />
+              ) : (
+                <span
+                  className={
+                    activeTab === "planning"
+                      ? "split-header-title split-header-title--editable"
+                      : "split-header-title"
+                  }
+                  title={
+                    activeTab === "planning" ? "Click to rename" : undefined
+                  }
+                  onClick={(e) => {
+                    if (activeTab !== "planning") return;
+                    e.stopPropagation();
+                    setIsEditingCourseName(true);
+                    setTimeout(() => courseNameInputRef.current?.focus(), 0);
+                  }}
+                >
+                  {form.name?.trim() || "Course"}
+                </span>
+              )}
+            </div>
+          </div>
+          <div
+            className="course-header-actions"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {activeTab === "planning" && (
+              <button
+                className="segments-toggle-btn segments-toggle-btn--reset"
+                type="button"
+                onClick={() => setConfirmResetOpen(true)}
+                title="Reset all form fields to defaults"
+              >
+                ↺ Reset
+              </button>
+            )}
+            {activeTab === "planning" && (
+              <button
+                type="button"
+                className="segments-toggle-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Import a previously exported JSON course"
+              >
+                <i className="fas fa-download"></i> Import JSON
+              </button>
+            )}
+            {activeTab === "projections" &&
+              weatherAvailable &&
+              !hourlyWeather && (
                 <button
                   type="button"
-                  className={`nav-btn nav-btn-gpx${gpxLoading ? " nav-btn-loading" : ""}`}
-                  onClick={() => !gpxLoading && gpxFileRef.current?.click()}
-                  disabled={gpxLoading}
-                  title="Load a GPX track file for elevation profiles and nearby stops"
+                  className={`segments-toggle-btn${weatherLoading ? " segments-toggle-btn--loading" : ""}`}
+                  onClick={handleFetchWeather}
+                  disabled={weatherLoading}
+                  title="Load weather forecast for each split (Open-Meteo, 16-day window)"
                 >
-                  {gpxLoading ? (
-                    <>
-                      <span className="btn-spinner btn-spinner-sm" /> Parsing…
-                    </>
+                  {weatherLoading ? (
+                    "Loading forecast…"
                   ) : (
                     <>
-                      <span className="nav-btn-icon">🗺️</span>
-                      <span className="nav-btn-label">Load GPX</span>
+                      <i className="fa-solid fa-cloud-sun" /> Forecast
                     </>
                   )}
                 </button>
-                <input
-                  ref={gpxFileRef}
-                  type="file"
-                  accept=".gpx"
-                  style={{ display: "none" }}
-                  onChange={handleGpxLoad}
-                />
-              </div>
-            </div>
+              )}
+            <button
+              type="button"
+              className="segments-toggle-btn segments-toggle-btn--export"
+              onClick={handleExport}
+              disabled={Object.keys(allErrors).length > 0}
+              title={
+                Object.keys(allErrors).length > 0
+                  ? "Fix validation errors before exporting"
+                  : "Export course configuration as JSON"
+              }
+            >
+              <i className="fa-solid fa-file-export"></i> Export
+            </button>
           </div>
-          <p className="app-description">
-            Plan multi-day cycling events with detailed pacing, rest stops, and
-            time estimates. Define segments and splits with custom speeds, decay
-            rates, sub-split strategies, and rest stop open hours. The
-            calculator projects arrival times, checks them against business
-            hours, and supports timezone-aware scheduling across regions.
-          </p>
+        </div>
+
+        {/* Validation status dialog */}
+        <dialog
+          ref={validationDialogRef}
+          className="legend-modal"
+          onClose={() => setValidationDialogOpen(false)}
+        >
+          {(() => {
+            const hasValidationIssues =
+              Object.keys(allErrors).length > 0 ||
+              Boolean(apiError) ||
+              gpxDistanceWarnings.length > 0;
+            return (
+              <>
+                <div className="legend-header">
+                  <h2>
+                    {hasValidationIssues ? (
+                      <>
+                        <i className="fa-solid fa-circle-exclamation validation-dialog__icon--error" />{" "}
+                        Validation Issues
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-regular fa-circle-check validation-dialog__icon--ok" />{" "}
+                        Form Valid
+                      </>
+                    )}
+                  </h2>
+                  <button
+                    className="legend-close"
+                    onClick={() => setValidationDialogOpen(false)}
+                    aria-label="Close"
+                  >
+                    <i className="fas fa-times" />
+                  </button>
+                </div>
+                <div className="legend-body">
+                  {!hasValidationIssues ? (
+                    <p className="validation-dialog__ok-msg">
+                      No validation errors — the form is ready to calculate.
+                    </p>
+                  ) : (
+                    <>
+                      {gpxDistanceWarnings.length > 0 && (
+                        <ul className="validation-dialog__list">
+                          {gpxDistanceWarnings.map((msg, idx) => (
+                            <li key={`gpx-warning-${idx}`}>{msg}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {Object.keys(allErrors).length > 0 && (
+                        <ul className="validation-dialog__list">
+                          {Object.entries(allErrors).map(([id, msg], idx) => (
+                            <li key={`${id}-${idx}`}>
+                              {describeFieldId(id)}: {msg}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {apiError && (
+                        <div className="validation-dialog__api-error">
+                          <strong>
+                            {useEngine === "client"
+                              ? "Calc Error"
+                              : "Server Error"}
+                            :
+                          </strong>
+                          <pre>{apiError}</pre>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </dialog>
+
+        <div className="app-tab-bar" role="tablist">
+          <button
+            role="tab"
+            type="button"
+            className={`app-tab-btn${activeTab === "planning" ? " active" : ""}`}
+            onClick={() => setActiveTab("planning")}
+          >
+            <i className="fas fa-pencil-alt" /> Planning
+          </button>
+          <button
+            role="tab"
+            type="button"
+            className={`app-tab-btn${activeTab === "projections" ? " active" : ""}`}
+            onClick={() => setActiveTab("projections")}
+          >
+            <i className="fas fa-chart-line" /> Projections
+          </button>
+        </div>
+        <div className="course-form" onBlur={handleBlur}>
           <Suspense fallback={null}>
             <LegendModal
               open={legendOpen}
@@ -1476,141 +2760,77 @@ export default function CourseForm() {
               onConfirm={handleConfirmLoadExample}
               onCancel={handleCancelLoadExample}
             />
+            <ConfirmModal
+              open={confirmResetOpen}
+              title="Reset course?"
+              message="This will clear your current course data and restore defaults. Continue?"
+              confirmLabel="Reset"
+              cancelLabel="Cancel"
+              onConfirm={handleConfirmReset}
+              onCancel={handleCancelReset}
+            />
+            <ConfirmModal
+              open={confirmReduceSegmentsOpen}
+              title="Reduce segment count?"
+              message={`Reducing segment count will delete ${pendingDeletedSplitDistanceCount} split${pendingDeletedSplitDistanceCount === 1 ? "" : "s"} with distance values. Continue?`}
+              confirmLabel="Reduce"
+              cancelLabel="Cancel"
+              onConfirm={() => {
+                if (pendingSegmentCountRaw != null) {
+                  applySegmentCountChange(pendingSegmentCountRaw);
+                }
+                setConfirmReduceSegmentsOpen(false);
+                setPendingSegmentCountRaw(null);
+                setPendingDeletedSplitDistanceCount(0);
+              }}
+              onCancel={() => {
+                setConfirmReduceSegmentsOpen(false);
+                setPendingSegmentCountRaw(null);
+                setPendingDeletedSplitDistanceCount(0);
+              }}
+            />
+            <ConfirmModal
+              open={pendingUnitSystem !== null}
+              title="Switch unit system?"
+              message={`Switching from ${form.unitSystem === "imperial" ? "Imperial" : "Metric"} to ${pendingUnitSystem === "imperial" ? "Imperial" : "Metric"}. Convert existing distance and speed values to the new system, or keep the current numbers as-is?`}
+              confirmLabel="Convert values"
+              cancelLabel="Keep values"
+              onConfirm={handleConvertUnitSystem}
+              onCancel={handleKeepUnitSystemValues}
+            />
+
+            <GpxSearchModal
+              open={gpxSearchOpen}
+              onClose={() => setGpxSearchOpen(false)}
+              unitSystem={form.unitSystem}
+              initialMode={rwgpsRestorePending ? "route-id" : "collections"}
+              initialRouteId={rwgpsRestorePending}
+              onSelect={(track, routeName, routeId) => {
+                handleGpxLoadDirect(track, routeName, routeId);
+                setRwgpsRestorePending(null);
+                setGpxSearchOpen(false);
+              }}
+            />
+            {PAID_APIS_ENABLED && user && (
+              <RacePlanModal
+                open={racePlanOpen}
+                onClose={() => setRacePlanOpen(false)}
+                currentForm={form}
+                onLoad={(loadedForm) => {
+                  setForm(loadedForm);
+                  setRacePlanOpen(false);
+                }}
+              />
+            )}
           </Suspense>
 
-          {/* GPX banner */}
-          {gpxFileName && gpxLoading && (
-            <div className="gpx-file-field gpx-file-field-loading">
-              <div className="gpx-file-meta">
-                <span className="gpx-file-label gpx-label-loading">
-                  <span className="btn-spinner btn-spinner-sm" /> Parsing GPX
-                </span>
-                <span className="gpx-file-name">{gpxFileName}</span>
-                <span className="gpx-file-stats gpx-stats-loading">
-                  Reading track points…
-                </span>
-              </div>
-            </div>
-          )}
-          {gpxFileName && gpxTrack && !gpxLoading && (
-            <div className="gpx-file-field">
-              <div className="gpx-file-meta">
-                <span className="gpx-file-label">🗺 GPX route</span>
-                <span className="gpx-file-name">{gpxFileName}</span>
-                <span className="gpx-file-stats">
-                  {form.unitSystem === "imperial"
-                    ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
-                    : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
-                  {" · "}
-                  {form.unitSystem === "imperial"
-                    ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
-                    : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
-                  {" · "}
-                  {gpxTrack.length.toLocaleString()} pts
-                </span>
-              </div>
-              <button
-                type="button"
-                className="gpx-file-remove"
-                onClick={handleGpxClear}
-                aria-label="Remove GPX route"
-              >
-                Remove
-              </button>
-            </div>
-          )}
-
-          {gpxMissingWarning && (
-            <div className="gpx-missing-warning">
-              <span>⚠ {gpxMissingWarning}</span>
-              <button
-                type="button"
-                className="gpx-missing-dismiss"
-                onClick={() => setGpxMissingWarning(null)}
-                aria-label="Dismiss warning"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-          <h2>Course Settings</h2>
-          {/* Course Settings Card */}
-          <div className="segment-form course-settings-card">
-            <div
-              className="segment-header"
-              onClick={() => {
-                if (!isEditingCourseName) setCourseCollapsed((c) => !c);
-              }}
-            >
-              <span className="collapse-icon">
-                {courseCollapsed ? "▶" : "▼"}
-              </span>
-              <div className="split-header-left">
-                <div className="split-header-titlerow">
-                  {isEditingCourseName ? (
-                    <input
-                      ref={courseNameInputRef}
-                      className="split-header-name-input"
-                      type="text"
-                      value={form.name ?? ""}
-                      placeholder="Course name (e.g. Mishigami 2025)"
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => update({ name: e.target.value })}
-                      onBlur={() => setIsEditingCourseName(false)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === "Escape") {
-                          setIsEditingCourseName(false);
-                          e.preventDefault();
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span
-                      className="split-header-title split-header-title--editable"
-                      title="Click to rename"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsEditingCourseName(true);
-                        setTimeout(
-                          () => courseNameInputRef.current?.focus(),
-                          0,
-                        );
-                      }}
-                    >
-                      {form.name?.trim() || "Course"}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div
-                className="course-header-actions"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  className="segments-toggle-btn segments-toggle-btn--export"
-                  onClick={handleExport}
-                  disabled={Object.keys(allErrors).length > 0}
-                  title={
-                    Object.keys(allErrors).length > 0
-                      ? "Fix validation errors before exporting"
-                      : "Export course configuration as JSON"
-                  }
-                >
-                  📁 Export
-                </button>
-                <button
-                  className="segments-toggle-btn segments-toggle-btn--reset"
-                  type="button"
-                  onClick={handleReset}
-                  title="Reset all form fields to defaults"
-                >
-                  ↺ Reset
-                </button>
-              </div>
-            </div>
-
-            {!courseCollapsed && (
+          <div
+            className={
+              activeTab !== "planning" ? "tab-panel--hidden" : undefined
+            }
+          >
+            {/* Course Settings Card */}
+            <div className="course-settings-card">
               <div className="segment-body">
                 {/* Unit & Mode Toggles */}
                 <div className="toggle-row--inline">
@@ -1625,14 +2845,14 @@ export default function CourseForm() {
                     <button
                       type="button"
                       className={form.unitSystem === "imperial" ? "active" : ""}
-                      onClick={() => update({ unitSystem: "imperial" })}
+                      onClick={() => requestUnitSystemChange("imperial")}
                     >
                       Imperial
                     </button>
                     <button
                       type="button"
                       className={form.unitSystem === "metric" ? "active" : ""}
-                      onClick={() => update({ unitSystem: "metric" })}
+                      onClick={() => requestUnitSystemChange("metric")}
                     >
                       Metric
                     </button>
@@ -1781,6 +3001,90 @@ export default function CourseForm() {
                     />
                   </div>
                   <div className="field">
+                    <label htmlFor="course-ss-mode">Sub-Split Mode</label>
+                    <select
+                      id="course-ss-mode"
+                      value={form.sub_split_mode}
+                      onChange={(e) =>
+                        update({
+                          sub_split_mode: e.target.value as SubSplitMode,
+                        })
+                      }
+                    >
+                      <option value="hour">Hourly</option>
+                      <option value="even">Even</option>
+                      <option value="fixed">Fixed Size</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+
+                  {form.sub_split_mode === "even" && (
+                    <div className="field">
+                      <label htmlFor="course-ss-count">Count *</label>
+                      <NumberInput
+                        id="course-ss-count"
+                        min="1"
+                        step="1"
+                        value={form.sub_split_count ?? ""}
+                        onChange={(v) => update({ sub_split_count: v })}
+                        placeholder="1"
+                      />
+                      <FieldError fieldId="course-ss-count" />
+                    </div>
+                  )}
+
+                  {form.sub_split_mode === "fixed" && (
+                    <>
+                      <div className="field">
+                        <label htmlFor="course-ss-distance">
+                          Size ({distanceLabel(form.unitSystem)}) *
+                        </label>
+                        <NumberInput
+                          id="course-ss-distance"
+                          step="any"
+                          value={form.sub_split_distance ?? ""}
+                          onChange={(v) => update({ sub_split_distance: v })}
+                          placeholder="e.g. 20"
+                        />
+                        <FieldError fieldId="course-ss-distance" />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="course-ss-threshold">
+                          Last Threshold ({distanceLabel(form.unitSystem)}) *
+                        </label>
+                        <NumberInput
+                          id="course-ss-threshold"
+                          step="any"
+                          value={form.last_sub_split_threshold ?? ""}
+                          onChange={(v) =>
+                            update({ last_sub_split_threshold: v })
+                          }
+                          placeholder="e.g. 10"
+                        />
+                        <FieldError fieldId="course-ss-threshold" />
+                      </div>
+                    </>
+                  )}
+
+                  {form.sub_split_mode === "custom" && (
+                    <div className="field field--full-width">
+                      <label htmlFor="course-ss-distances">
+                        Distances (comma-sep.) *
+                      </label>
+                      <input
+                        id="course-ss-distances"
+                        type="text"
+                        value={form.sub_split_distances ?? ""}
+                        onChange={(e) =>
+                          update({ sub_split_distances: e.target.value })
+                        }
+                        placeholder="e.g. 10, 20, 30"
+                      />
+                      <FieldError fieldId="course-ss-distances" />
+                    </div>
+                  )}
+
+                  <div className="field">
                     <label htmlFor="course-seg-count"># of Segments</label>
                     <NumberInput
                       id="course-seg-count"
@@ -1821,7 +3125,7 @@ export default function CourseForm() {
                       }
                       title="Quickly build or append segments with uniform split distances"
                     >
-                      ⚡ Quick Setup
+                      <i className="fa-solid fa-bolt"></i> Quick Setup
                     </button>
                     {gpxStartCity && (
                       <button
@@ -1830,7 +3134,7 @@ export default function CourseForm() {
                         onClick={handleAutoName}
                         title="Name all splits and segments using their nearest cities"
                       >
-                        🏷️ Auto-Name
+                        <i className="fa-solid fa-tags"></i> Auto-Name
                       </button>
                     )}
                     <span className="segments-toolbar-sep" />
@@ -1840,7 +3144,17 @@ export default function CourseForm() {
                       onClick={() => setCriteriaModalOpen(true)}
                       title="Configure stop types and search radius used by all split nearby-stop searches"
                     >
-                      🔍 Stop Criteria
+                      <i className="fa-solid fa-magnifying-glass-location"></i>{" "}
+                      Stop Criteria
+                    </button>
+                    <button
+                      type="button"
+                      className="segments-toggle-btn"
+                      onClick={() => setEtaMarginsOpen(true)}
+                      title="Configure the time windows used for 'near open' and 'near close' ETA badges"
+                    >
+                      <i className="fa-regular fa-hourglass-half"></i> ETA
+                      Margins
                     </button>
                   </div>
                 </div>
@@ -1866,7 +3180,7 @@ export default function CourseForm() {
                   </button>
                   <span className="seg-page-label">
                     {totalSegPages > 1
-                      ? `Segments ${clampedSegPage * segPageSize + 1}–${Math.min(
+                      ? `Segments ${clampedSegPage * segPageSize + 1}-${Math.min(
                           (clampedSegPage + 1) * segPageSize,
                           form.segments.length,
                         )} of ${form.segments.length}`
@@ -1915,9 +3229,14 @@ export default function CourseForm() {
                       clampedSegPage * segPageSize,
                       (clampedSegPage + 1) * segPageSize,
                     )
-                    .map((seg, localIdx) => {
+                    .flatMap((seg, localIdx) => {
                       const i = clampedSegPage * segPageSize + localIdx;
-                      return (
+                      const totalOnPage = Math.min(
+                        segPageSize,
+                        form.segments.length - clampedSegPage * segPageSize,
+                      );
+                      const isLastOnPage = localIdx === totalOnPage - 1;
+                      const segEl = (
                         <SegmentFormComponent
                           key={i}
                           segIndex={i}
@@ -1925,10 +3244,32 @@ export default function CourseForm() {
                           onChange={(s) => updateSegment(i, s)}
                           unitSystem={form.unitSystem}
                           mode={form.mode}
+                          isLastSeg={i === form.segments.length - 1}
+                          totalSegments={form.segments.length}
+                          onMoveSplitToPrevSeg={(splitIdx) =>
+                            moveSplitToPrevSeg(i, splitIdx)
+                          }
+                          onMoveSplitToNextSeg={(splitIdx) =>
+                            moveSplitToNextSeg(i, splitIdx)
+                          }
+                          onDeleteSplit={(splitIdx) => deleteSplit(i, splitIdx)}
+                          onInsertSplitAfter={(splitIdx) =>
+                            insertSplitAfter(i, splitIdx)
+                          }
+                          canDeleteSegment={form.segments.length > 1}
+                          onDeleteSegment={() => deleteSegment(i)}
+                          prevSegNullified={
+                            i > 0 ? !!form.segments[i - 1].nullified : false
+                          }
+                          nextSegNullified={
+                            i < form.segments.length - 1
+                              ? !!form.segments[i + 1].nullified
+                              : false
+                          }
                           gpxProfiles={gpxProfiles?.[i] ?? null}
                           gpxTrack={gpxTrack}
                           courseTz={form.timezone}
-                          isLastSeg={i === form.segments.length - 1}
+                          courseSplitMode={form.sub_split_mode}
                           splitStatuses={splitGpxStatuses[i]}
                           cityLabels={cityLabels[i]}
                           cityFetching={cityFetching[i]}
@@ -1962,24 +3303,613 @@ export default function CourseForm() {
                           }
                           collapseSignal={collapseAllSignal || undefined}
                           expandAllSignal={expandAllSignal || undefined}
+                          splitResults={
+                            result?.segment_details[i]?.split_details ??
+                            undefined
+                          }
+                          segmentResult={result?.segment_details[i] ?? null}
+                          etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
+                          etaMarginClose={parseInt(etaMargins.close, 10) || 7}
+                          onZoomToSegment={
+                            gpxTrack ? () => handleZoomToSegment(i) : undefined
+                          }
+                          onZoomToSplit={
+                            gpxTrack
+                              ? (splitIdx: number) =>
+                                  handleZoomToSplit(i, splitIdx)
+                              : undefined
+                          }
+                          splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
                         />
                       );
+                      if (isLastOnPage) return [segEl];
+                      return [
+                        segEl,
+                        <InsertZone
+                          key={`insert-seg-${i}`}
+                          onInsert={() => insertSegment(i)}
+                          label={`Insert segment after segment ${i + 1}`}
+                        />,
+                      ];
                     })}
                 </div>
               </div>
+            </div>
+
+            {/* API error */}
+            {apiError && (
+              <div className="error-banner">
+                <strong>
+                  {useEngine === "client" ? "Calc Error" : "Server Error"}:
+                </strong>
+                <pre>{apiError}</pre>
+              </div>
             )}
           </div>
+          {activeTab === "projections" && (
+            <div className="projections-tab">
+              {result && (
+                <div className="course-proj-summary">
+                  <div className="split-results-panel">
+                    <dl className="split-results-grid">
+                      <div>
+                        <dt title="Course start time">Start</dt>
+                        <dd>{fmtInTz(result.start_time, form.timezone)}</dd>
+                      </div>
+                      <div>
+                        <dt title="Course end time">End</dt>
+                        <dd>
+                          {fmtInTz(
+                            result.end_time,
+                            courseEndTz ?? form.timezone,
+                          )}
+                          {courseEndTz && courseEndTz !== form.timezone && (
+                            <span className="split-end-tz">
+                              {fmtInTz(result.end_time, form.timezone)}
+                            </span>
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Total course distance">Distance</dt>
+                        <dd>
+                          {result.distance.toLocaleString(undefined, {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })}{" "}
+                          {dLabel}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Total elapsed time">Elapsed</dt>
+                        <dd
+                          title={formatHours(result.elapsed_time_hours, "full")}
+                        >
+                          {formatHours(result.elapsed_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time spent actively riding or moving">
+                          Active
+                        </dt>
+                        <dd
+                          title={formatHours(
+                            Math.max(
+                              0,
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                            ),
+                            "full",
+                          )}
+                        >
+                          {formatHours(
+                            Math.max(
+                              0,
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                            ),
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time spent moving (excludes down time)">
+                          Moving
+                        </dt>
+                        <dd
+                          title={formatHours(result.moving_time_hours, "full")}
+                        >
+                          {formatHours(result.moving_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time stopped or inactive">Down</dt>
+                        <dd title={formatHours(result.down_time_hours, "full")}>
+                          {formatHours(result.down_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Sleep time across the course">Sleep</dt>
+                        <dd
+                          title={formatHours(result.sleep_time_hours, "full")}
+                        >
+                          {formatHours(result.sleep_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time spent on adjustments (rest stops, etc.)">
+                          Adj Time
+                        </dt>
+                        <dd
+                          title={formatHours(
+                            result.adjustment_time_hours,
+                            "full",
+                          )}
+                        >
+                          {formatHours(result.adjustment_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Time spent on transit segments">Transit</dt>
+                        <dd
+                          title={formatHours(result.transit_time_hours, "full")}
+                        >
+                          {formatHours(result.transit_time_hours)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Average moving speed across the course">
+                          Speed
+                        </dt>
+                        <dd>
+                          {result.moving_time_hours > 0
+                            ? (
+                                result.distance / result.moving_time_hours
+                              ).toFixed(2)
+                            : "0.00"}{" "}
+                          {sLabel}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Average pace for the course">Pace</dt>
+                        <dd>
+                          {(Math.max(
+                            0,
+                            result.elapsed_time_hours - result.sleep_time_hours,
+                          ) > 0
+                            ? result.distance /
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              )
+                            : 0
+                          ).toFixed(2)}{" "}
+                          {sLabel}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
 
-          {/* API error */}
-          {apiError && (
-            <div className="error-banner">
-              <strong>
-                {useEngine === "client" ? "Calc Error" : "Server Error"}:
-              </strong>
-              <pre>{apiError}</pre>
+                  <button
+                    type="button"
+                    className="optional-toggle"
+                    onClick={() => setShowCourseResultsGrid((v) => !v)}
+                  >
+                    <span
+                      className={`chevron${showCourseResultsGrid ? " open" : ""}`}
+                    >
+                      ▶
+                    </span>
+                    More details
+                  </button>
+
+                  {showCourseResultsGrid && (
+                    <div className="split-results-panel">
+                      <dl className="split-results-grid">
+                        <div>
+                          <dt title="Moving-time ratio: active first, course elapsed in parentheses">
+                            Moving Ratio
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={formatRawDualRatio(
+                              result.moving_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {formatRatioPercent(
+                              result.moving_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                            )}{" "}
+                            (
+                            {formatRatioPercent(
+                              result.moving_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                            )
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Down-time ratio: active first, course elapsed in parentheses">
+                            Down Ratio
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={formatRawDualRatio(
+                              result.down_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {formatRatioPercent(
+                              result.down_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                            )}{" "}
+                            (
+                            {formatRatioPercent(
+                              result.down_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                            )
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Sleep-time ratio: active first, course elapsed in parentheses">
+                            Sleep Ratio
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={formatRawDualRatio(
+                              result.sleep_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {formatRatioPercent(
+                              result.sleep_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                            )}{" "}
+                            (
+                            {formatRatioPercent(
+                              result.sleep_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                            )
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Adjustment ratio: active first, course elapsed in parentheses">
+                            Adj Ratio
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={formatRawDualRatio(
+                              result.adjustment_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {formatRatioPercent(
+                              result.adjustment_time_hours,
+                              Math.max(
+                                0,
+                                result.elapsed_time_hours -
+                                  result.sleep_time_hours,
+                              ),
+                            )}{" "}
+                            (
+                            {formatRatioPercent(
+                              result.adjustment_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                            )
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Down time divided by moving time, with course elapsed time in parentheses">
+                            Down / Moving
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={formatRawRatio(
+                              result.down_time_hours,
+                              result.moving_time_hours,
+                            )}
+                          >
+                            {formatRatioPercent(
+                              result.down_time_hours,
+                              result.moving_time_hours,
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title="Active time divided by elapsed time, with course elapsed time in parentheses">
+                            Active / Elapsed
+                          </dt>
+                          <dd
+                            className="proj-segment-ratio-value"
+                            title={formatRawRatio(
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                          >
+                            {formatRatioPercent(
+                              result.elapsed_time_hours -
+                                result.sleep_time_hours,
+                              result.elapsed_time_hours,
+                            )}
+                          </dd>
+                        </div>
+                        {courseWindStats?.windDir && (
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <dt title="Proportion of hourly forecast samples with wind from each cardinal direction">
+                              Wind Direction
+                            </dt>
+                            <dd>
+                              <i className="fa-solid fa-arrow-up" />{" "}
+                              {courseWindStats.windDir.N}%{" · "}
+                              <i className="fa-solid fa-arrow-right" />{" "}
+                              {courseWindStats.windDir.E}%{" · "}
+                              <i className="fa-solid fa-arrow-down" />{" "}
+                              {courseWindStats.windDir.S}%{" · "}
+                              <i className="fa-solid fa-arrow-left" />{" "}
+                              {courseWindStats.windDir.W}%
+                            </dd>
+                          </div>
+                        )}
+                        {courseWindStats?.windImpact && (
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <dt title="Proportion of hourly samples by wind angle relative to route bearing: headwind (≤45° ahead), crosswind (45-135°), tailwind (≥135° behind)">
+                              Wind Impact
+                            </dt>
+                            <dd>
+                              <i className="fa-solid fa-arrow-up" />{" "}
+                              {courseWindStats.windImpact.head}% head{" · "}
+                              <i className="fa-solid fa-arrows-left-right" />{" "}
+                              {courseWindStats.windImpact.cross}% cross{" · "}
+                              <i className="fa-solid fa-arrow-down" />{" "}
+                              {courseWindStats.windImpact.tail}% tail
+                            </dd>
+                          </div>
+                        )}
+                      </dl>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="segments-toolbar">
+                <div className="segments-toolbar-left">
+                  <button
+                    className="segments-toggle-btn"
+                    onClick={() => setCollapseAllSignal((s) => s + 1)}
+                    title="Collapse all segments and their splits"
+                  >
+                    ▶ Collapse
+                  </button>
+                  <button
+                    className="segments-toggle-btn"
+                    onClick={() => setExpandAllSignal((s) => s + 1)}
+                    title="Expand all segments"
+                  >
+                    ▼ Expand
+                  </button>
+                </div>
+              </div>
+
+              <div className="seg-pagination">
+                <button
+                  type="button"
+                  className="seg-page-btn seg-page-btn--first"
+                  disabled={clampedSegPage === 0}
+                  onClick={() => setSegPage(0)}
+                  title="First page"
+                >
+                  «
+                </button>
+                <button
+                  type="button"
+                  className="seg-page-btn"
+                  disabled={clampedSegPage === 0}
+                  onClick={() => setSegPage((p) => Math.max(0, p - 1))}
+                  title="Previous page"
+                >
+                  ‹ Prev
+                </button>
+                <span className="seg-page-label">
+                  {totalSegPages > 1
+                    ? `Segments ${clampedSegPage * segPageSize + 1}-${Math.min(
+                        (clampedSegPage + 1) * segPageSize,
+                        form.segments.length,
+                      )} of ${form.segments.length}`
+                    : `${form.segments.length} segment${form.segments.length !== 1 ? "s" : ""}`}
+                </span>
+                <button
+                  type="button"
+                  className="seg-page-btn"
+                  disabled={clampedSegPage >= totalSegPages - 1}
+                  onClick={() =>
+                    setSegPage((p) => Math.min(totalSegPages - 1, p + 1))
+                  }
+                  title="Next page"
+                >
+                  Next ›
+                </button>
+                <button
+                  type="button"
+                  className="seg-page-btn seg-page-btn--last"
+                  disabled={clampedSegPage >= totalSegPages - 1}
+                  onClick={() => setSegPage(Math.max(0, totalSegPages - 1))}
+                  title="Last page"
+                >
+                  »
+                </button>
+                <select
+                  className="seg-page-size"
+                  value={segPageSize}
+                  onChange={(e) => {
+                    const newSize = Number(e.target.value);
+                    const firstVisible = clampedSegPage * segPageSize;
+                    setSegPageSize(newSize);
+                    setSegPage(Math.floor(firstVisible / newSize));
+                  }}
+                  title="Segments per page"
+                >
+                  <option value={5}>5 / page</option>
+                  <option value={10}>10 / page</option>
+                  <option value={20}>20 / page</option>
+                </select>
+              </div>
+
+              <Suspense fallback={<div className="map-loading">Loading…</div>}>
+                <ProjectionsView
+                  result={result}
+                  form={form}
+                  unitSystem={form.unitSystem}
+                  courseTz={form.timezone}
+                  courseStartCity={gpxStartCity}
+                  segmentIndexes={pagedSegmentIndexes}
+                  mapNavTarget={mapNavTarget}
+                  collapseSignal={collapseAllSignal}
+                  expandAllSignal={expandAllSignal}
+                  gpxTrack={gpxTrack}
+                  cityLabels={cityLabels}
+                  cityFetching={cityFetching}
+                  gpxProfiles={gpxProfiles}
+                  splitCumulativeDists={splitCumulativeDists}
+                  gpxTotalDist={gpxTotalDistUser}
+                  etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
+                  etaMarginClose={parseInt(etaMargins.close, 10) || 7}
+                  splitWeather={splitWeather}
+                  hourlyWeather={hourlyWeather}
+                  onZoomToSegment={handleZoomToSegment}
+                  onZoomToSplit={handleZoomToSplit}
+                />
+              </Suspense>
             </div>
           )}
         </div>
+
+        {/* ETA Margins dialog */}
+        <dialog
+          ref={etaMarginsRef}
+          className="legend-modal"
+          onClose={() => setEtaMarginsOpen(false)}
+        >
+          <div className="legend-header">
+            <h2>ETA Margins</h2>
+            <button
+              className="legend-close"
+              onClick={() => setEtaMarginsOpen(false)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="legend-body">
+            <p style={{ marginTop: 0, marginBottom: "1rem" }}>
+              Time windows (in minutes) for the &ldquo;Near open&rdquo; and
+              &ldquo;Near close&rdquo; ETA badges on rest stops.
+            </p>
+            <div className="fields-grid">
+              <div className="field">
+                <label htmlFor="eta-margin-open">Near Open (min)</label>
+                <input
+                  id="eta-margin-open"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={etaMargins.open}
+                  onChange={(e) =>
+                    setEtaMargins((m) => ({ ...m, open: e.target.value }))
+                  }
+                />
+                {(() => {
+                  const v = parseInt(etaMargins.open, 10);
+                  if (
+                    etaMargins.open.trim() === "" ||
+                    isNaN(v) ||
+                    v < 0 ||
+                    !Number.isInteger(v)
+                  )
+                    return (
+                      <span className="field-error">
+                        Must be a non-negative integer
+                      </span>
+                    );
+                  return null;
+                })()}
+              </div>
+              <div className="field">
+                <label htmlFor="eta-margin-close">Near Close (min)</label>
+                <input
+                  id="eta-margin-close"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={etaMargins.close}
+                  onChange={(e) =>
+                    setEtaMargins((m) => ({ ...m, close: e.target.value }))
+                  }
+                />
+                {(() => {
+                  const v = parseInt(etaMargins.close, 10);
+                  if (
+                    etaMargins.close.trim() === "" ||
+                    isNaN(v) ||
+                    v < 0 ||
+                    !Number.isInteger(v)
+                  )
+                    return (
+                      <span className="field-error">
+                        Must be a non-negative integer
+                      </span>
+                    );
+                  return null;
+                })()}
+              </div>
+            </div>
+          </div>
+          <div className="legend-footer">
+            <button
+              type="button"
+              className="action-btn action-btn-export"
+              onClick={() => setEtaMarginsOpen(false)}
+            >
+              Done
+            </button>
+          </div>
+        </dialog>
 
         {/* Quick-setup dialog */}
         <dialog
@@ -1999,8 +3929,10 @@ export default function CourseForm() {
           </div>
           <div className="legend-body">
             <p style={{ marginTop: 0, marginBottom: "1rem" }}>
-              Create segments with uniform splits in{" "}
-              <strong>Split Distance</strong> mode.
+              Create segments with uniform splits. In{" "}
+              <strong>Split Distance</strong> mode each split gets the distance
+              value directly; in <strong>Target Distance</strong> mode the
+              values are rolled up into cumulative course markers.
             </p>
             <div className="fields-grid qs-fields-grid">
               <div className="field">
@@ -2058,13 +3990,6 @@ export default function CourseForm() {
             </div>
           </div>
           <div className="legend-footer">
-            <button
-              type="button"
-              className="action-btn"
-              onClick={() => setQuickSetup((q) => ({ ...q, open: false }))}
-            >
-              Cancel
-            </button>
             {form.segments.length > 0 &&
               (() => {
                 const nSeg = parseInt(quickSetup.segments, 10);
@@ -2082,28 +4007,40 @@ export default function CourseForm() {
                 return (
                   <button
                     type="button"
-                    className="action-btn"
+                    className="action-btn action-btn-export"
                     disabled={!valid}
                     title={valid ? undefined : "Fill in all fields to continue"}
                     onClick={() => {
-                      const newSegs: SegmentFormState[] = Array.from(
-                        { length: nSeg },
-                        () => ({
-                          ...makeDefaultSegment(),
-                          sleep_time: sleepVal,
-                          splits: Array.from({ length: nSpl }, () => ({
-                            ...makeDefaultSplit(),
-                            distance: String(dist),
-                          })),
-                          splitCount: String(nSpl),
-                        }),
-                      );
-                      setForm((prev) => ({
-                        ...prev,
-                        mode: "distance",
-                        segmentCount: String(prev.segments.length + nSeg),
-                        segments: [...prev.segments, ...newSegs],
-                      }));
+                      setForm((prev) => {
+                        const isTarget = prev.mode === "target_distance";
+                        const lastSeg = prev.segments[prev.segments.length - 1];
+                        const lastSplit =
+                          lastSeg?.splits[lastSeg.splits.length - 1];
+                        const lastDist = parseFloat(lastSplit?.distance ?? "0");
+                        const startOffset =
+                          isTarget && !isNaN(lastDist) ? lastDist : 0;
+                        const newSegs: SegmentFormState[] = Array.from(
+                          { length: nSeg },
+                          (_, si) => ({
+                            ...makeDefaultSegment(),
+                            sleep_time: sleepVal,
+                            splits: Array.from({ length: nSpl }, (_, sj) => ({
+                              ...makeDefaultSplit(),
+                              distance: isTarget
+                                ? String(
+                                    startOffset + (si * nSpl + sj + 1) * dist,
+                                  )
+                                : String(dist),
+                            })),
+                            splitCount: String(nSpl),
+                          }),
+                        );
+                        return {
+                          ...prev,
+                          segmentCount: String(prev.segments.length + nSeg),
+                          segments: [...prev.segments, ...newSegs],
+                        };
+                      });
                       setQuickSetup((q) => ({ ...q, open: false }));
                     }}
                   >
@@ -2131,24 +4068,28 @@ export default function CourseForm() {
                   disabled={!valid}
                   title={valid ? undefined : "Fill in all fields to continue"}
                   onClick={() => {
-                    const newSegs: SegmentFormState[] = Array.from(
-                      { length: nSeg },
-                      () => ({
-                        ...makeDefaultSegment(),
-                        sleep_time: sleepVal,
-                        splits: Array.from({ length: nSpl }, () => ({
-                          ...makeDefaultSplit(),
-                          distance: String(dist),
-                        })),
-                        splitCount: String(nSpl),
-                      }),
-                    );
-                    setForm((prev) => ({
-                      ...prev,
-                      mode: "distance",
-                      segmentCount: String(nSeg),
-                      segments: newSegs,
-                    }));
+                    setForm((prev) => {
+                      const isTarget = prev.mode === "target_distance";
+                      const newSegs: SegmentFormState[] = Array.from(
+                        { length: nSeg },
+                        (_, si) => ({
+                          ...makeDefaultSegment(),
+                          sleep_time: sleepVal,
+                          splits: Array.from({ length: nSpl }, (_, sj) => ({
+                            ...makeDefaultSplit(),
+                            distance: isTarget
+                              ? String((si * nSpl + sj + 1) * dist)
+                              : String(dist),
+                          })),
+                          splitCount: String(nSpl),
+                        }),
+                      );
+                      return {
+                        ...prev,
+                        segmentCount: String(nSeg),
+                        segments: newSegs,
+                      };
+                    });
                     setQuickSetup((q) => ({ ...q, open: false }));
                   }}
                 >
@@ -2303,17 +4244,10 @@ export default function CourseForm() {
             )}
           </div>
           <div className="legend-footer">
-            <button
-              type="button"
-              className="action-btn"
-              onClick={() => setAutoNameDialog((d) => ({ ...d, open: false }))}
-            >
-              Cancel
-            </button>
             {autoNameDialog.namedItems.length > 0 && (
               <button
                 type="button"
-                className="action-btn"
+                className="action-btn action-btn-export"
                 onClick={() => {
                   const { segmentPrefix, splitPrefix, includeCityRoute } =
                     autoNameDialog;
@@ -2348,70 +4282,6 @@ export default function CourseForm() {
             </button>
           </div>
         </dialog>
-
-        {/* Live course map — shown as soon as a GPX and at least one distance are set */}
-        {gpxTrack && splitBoundariesKm && (
-          <div className="course-map-collapsible">
-            <div
-              className="course-map-collapse-header"
-              onClick={() => setMapCollapsed((c) => !c)}
-            >
-              <span className="collapse-icon">{mapCollapsed ? "▶" : "▼"}</span>
-              <span>Course Map</span>
-            </div>
-            {!mapCollapsed && (
-              <Suspense
-                fallback={<div className="map-loading">Loading map…</div>}
-              >
-                {/* Use deferred values for the two props that change on every
-                     keystroke. React renders the map at low priority — input
-                     fields stay responsive and the map catches up after the
-                     user pauses. */}
-                <CourseMapDeferred
-                  gpxTrack={gpxTrack}
-                  splitBoundariesKm={splitBoundariesKm}
-                  formSegments={form.segments}
-                  unitSystem={form.unitSystem}
-                  gpxProfiles={gpxProfiles}
-                  onMarkerClick={handleMapMarkerClick}
-                  courseName={form.name?.trim() || undefined}
-                />
-              </Suspense>
-            )}
-          </div>
-        )}
-
-        {/* Results — outside course-form to avoid re-layout on form state changes */}
-        {result && (
-          <div className="results-collapsible">
-            <div
-              className="results-collapse-header"
-              onClick={() => setResultsCollapsed((c) => !c)}
-            >
-              <span className="collapse-icon">
-                {resultsCollapsed ? "▶" : "▼"}
-              </span>
-              <span>Results</span>
-            </div>
-            {!resultsCollapsed && (
-              <Suspense
-                fallback={<div className="map-loading">Loading results…</div>}
-              >
-                <ResultsView
-                  result={result}
-                  unitSystem={form.unitSystem}
-                  formSegments={form.segments}
-                  courseTz={form.timezone}
-                  courseName={form.name?.trim() || undefined}
-                  cityLabels={cityLabels}
-                  gpxTrack={gpxTrack}
-                  splitBoundariesKm={splitBoundariesKm}
-                  gpxProfiles={gpxProfiles}
-                />
-              </Suspense>
-            )}
-          </div>
-        )}
       </FieldErrorContext.Provider>
     </AllErrorsContext.Provider>
   );

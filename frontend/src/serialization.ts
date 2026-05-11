@@ -7,6 +7,7 @@ import type {
   SplitForm,
   SegmentForm,
   DayHoursEntry,
+  SubSplitMode,
 } from "./types";
 import { tzLocalStringToUtcIso } from "./utils";
 import { minutesToSeconds, parseOptionalFloat } from "./utils";
@@ -49,23 +50,48 @@ function serializeRestStop(split: SplitForm): RestStopPayload | null {
   };
 }
 
-function serializeSplit(split: SplitForm): SplitPayload {
+interface CourseSubSplitDefaults {
+  sub_split_mode: SubSplitMode;
+  sub_split_count?: string;
+  sub_split_distance?: string;
+  last_sub_split_threshold?: string;
+  sub_split_distances?: string;
+}
+
+function serializeSplit(
+  split: SplitForm,
+  courseDefaults: CourseSubSplitDefaults,
+): SplitPayload {
+  const effectiveMode: SubSplitMode = split.sub_split_override
+    ? split.sub_split_mode
+    : courseDefaults.sub_split_mode;
+  const effectiveCount = split.sub_split_override
+    ? split.sub_split_count
+    : (courseDefaults.sub_split_count ?? "1");
+  const effectiveDistance = split.sub_split_override
+    ? split.sub_split_distance
+    : (courseDefaults.sub_split_distance ?? "");
+  const effectiveThreshold = split.sub_split_override
+    ? split.last_sub_split_threshold
+    : (courseDefaults.last_sub_split_threshold ?? "20");
+  const effectiveDistances = split.sub_split_override
+    ? split.sub_split_distances
+    : (courseDefaults.sub_split_distances ?? "");
+
   const payload: SplitPayload = {
     name: split.name?.trim() || null,
     distance: parseFloat(split.distance),
-    sub_split_mode: split.sub_split_mode,
+    sub_split_mode: effectiveMode,
     adjustment_time: minutesToSeconds(split.adjustment_time) ?? 0,
   };
 
-  if (split.sub_split_mode === "even") {
-    payload.sub_split_count = parseInt(split.sub_split_count, 10);
-  } else if (split.sub_split_mode === "fixed") {
-    payload.sub_split_distance = parseFloat(split.sub_split_distance);
-    payload.last_sub_split_threshold = parseFloat(
-      split.last_sub_split_threshold,
-    );
-  } else if (split.sub_split_mode === "custom") {
-    payload.sub_split_distances = split.sub_split_distances
+  if (effectiveMode === "even") {
+    payload.sub_split_count = parseInt(effectiveCount, 10);
+  } else if (effectiveMode === "fixed") {
+    payload.sub_split_distance = parseFloat(effectiveDistance);
+    payload.last_sub_split_threshold = parseFloat(effectiveThreshold);
+  } else if (effectiveMode === "custom") {
+    payload.sub_split_distances = effectiveDistances
       .split(",")
       .map((s) => parseFloat(s.trim()));
   }
@@ -79,13 +105,51 @@ function serializeSplit(split: SplitForm): SplitPayload {
   const speed = parseOptionalFloat(split.moving_speed);
   if (speed !== null) payload.moving_speed = speed;
 
+  if (split.differentTimezone && split.timezone) {
+    payload.end_timezone = split.timezone;
+  }
+
   return payload;
 }
 
-function serializeSegment(seg: SegmentForm): SegmentPayload {
+function serializeSegment(
+  seg: SegmentForm,
+  courseDefaults: CourseSubSplitDefaults,
+): SegmentPayload {
+  if (seg.nullified) {
+    const transitFormSplit = seg.splits[0];
+    const transitSplit: SplitPayload = {
+      name: transitFormSplit?.name?.trim() || null,
+      distance: parseFloat(transitFormSplit?.distance ?? ""),
+      sub_split_mode: "hour",
+      adjustment_time: 0,
+    };
+
+    if (transitFormSplit?.differentTimezone && transitFormSplit.timezone) {
+      transitSplit.end_timezone = transitFormSplit.timezone;
+    }
+
+    const restStop = transitFormSplit
+      ? serializeRestStop(transitFormSplit)
+      : null;
+    if (restStop) transitSplit.rest_stop = restStop;
+
+    const payload: SegmentPayload = {
+      name: seg.name?.trim() || null,
+      splits: [transitSplit],
+      sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
+      no_end_down_time: true,
+      nullified: true,
+    };
+
+    const fixedSecs = minutesToSeconds(seg.fixed_elapsed_time ?? "");
+    if (fixedSecs !== undefined) payload.fixed_elapsed_time_seconds = fixedSecs;
+    return payload;
+  }
+
   const payload: SegmentPayload = {
     name: seg.name?.trim() || null,
-    splits: seg.splits.map(serializeSplit),
+    splits: seg.splits.map((s) => serializeSplit(s, courseDefaults)),
     sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
     no_end_down_time: !seg.include_end_down_time,
   };
@@ -106,13 +170,21 @@ function serializeSegment(seg: SegmentForm): SegmentPayload {
 }
 
 export function serializeCourse(form: CourseForm): CoursePayload {
+  const courseDefaults: CourseSubSplitDefaults = {
+    sub_split_mode: form.sub_split_mode ?? "hour",
+    sub_split_count: form.sub_split_count ?? "1",
+    sub_split_distance: form.sub_split_distance ?? "",
+    last_sub_split_threshold: form.last_sub_split_threshold ?? "20",
+    sub_split_distances: form.sub_split_distances ?? "",
+  };
   return {
-    segments: form.segments.map(serializeSegment),
+    segments: form.segments.map((s) => serializeSegment(s, courseDefaults)),
     mode: form.mode,
     init_moving_speed: parseFloat(form.init_moving_speed),
     min_moving_speed: parseFloat(form.min_moving_speed),
     down_time_ratio: parseFloat(form.down_time_ratio),
     split_delta: parseFloat(form.split_delta),
     start_time: tzLocalStringToUtcIso(form.start_time, form.timezone),
+    course_timezone: form.timezone,
   };
 }

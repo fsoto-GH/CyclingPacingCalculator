@@ -56,6 +56,15 @@ export class CalcError extends Error {
 function validatePayload(payload: CoursePayload): string[] {
   const errors: string[] = [];
 
+  const isValidHttpUrl = (value: string): boolean => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+
   if (payload.down_time_ratio < 0 || payload.down_time_ratio > 1) {
     errors.push(
       `Invalid down_time_ratio '${payload.down_time_ratio}'. Must be between 0 and 1.`,
@@ -77,9 +86,112 @@ function validatePayload(payload: CoursePayload): string[] {
     );
   }
 
-  for (const seg of payload.segments) {
+  for (let i = 0; i < payload.segments.length; i++) {
+    const seg = payload.segments[i];
     if (seg.splits.length === 0) {
       errors.push("Each segment must have at least one split.");
+    }
+
+    if (seg.nullified) {
+      if (seg.down_time_ratio != null) {
+        errors.push(
+          `Segment ${i} is nullified (transit): down_time_ratio is not used.`,
+        );
+      }
+      if (seg.split_delta != null) {
+        errors.push(
+          `Segment ${i} is nullified (transit): split_delta is not used.`,
+        );
+      }
+      if (seg.moving_speed != null) {
+        errors.push(
+          `Segment ${i} is nullified (transit): moving_speed override is not used.`,
+        );
+      }
+      if (seg.min_moving_speed != null) {
+        errors.push(
+          `Segment ${i} is nullified (transit): min_moving_speed override is not used.`,
+        );
+      }
+
+      if (
+        seg.fixed_elapsed_time_seconds == null ||
+        seg.fixed_elapsed_time_seconds <= 0
+      ) {
+        errors.push(
+          `Segment ${i} is marked as nullified (transit) but has no valid fixed_elapsed_time_seconds set.`,
+        );
+      }
+
+      if (seg.splits.length !== 1) {
+        errors.push(
+          `Segment ${i} is marked as nullified (transit) and must contain exactly one split.`,
+        );
+        continue;
+      }
+
+      const split = seg.splits[0];
+      if (split.distance <= 0) {
+        errors.push(
+          `Segment ${i} transit split distance must be greater than 0.`,
+        );
+      }
+      if (split.down_time != null) {
+        errors.push(`Segment ${i} transit split cannot set down_time.`);
+      }
+      if (split.moving_speed != null) {
+        errors.push(`Segment ${i} transit split cannot set moving_speed.`);
+      }
+      if (split.adjustment_time != null && split.adjustment_time !== 0) {
+        errors.push(
+          `Segment ${i} transit split cannot set non-zero adjustment_time.`,
+        );
+      }
+      if (
+        split.sub_split_count != null ||
+        split.sub_split_distance != null ||
+        split.last_sub_split_threshold != null ||
+        split.sub_split_distances != null
+      ) {
+        errors.push(
+          `Segment ${i} transit split cannot set sub-split overrides.`,
+        );
+      }
+
+      if (split.rest_stop != null) {
+        if (!split.rest_stop.name?.trim()) {
+          errors.push(`Rest stop (segment ${i}, split 0) must include a name.`);
+        }
+        if (!split.rest_stop.address?.trim()) {
+          errors.push(
+            `Rest stop (segment ${i}, split 0) must include an address.`,
+          );
+        }
+        if (
+          split.rest_stop.alt != null &&
+          split.rest_stop.alt.trim() !== "" &&
+          !isValidHttpUrl(split.rest_stop.alt)
+        ) {
+          errors.push(
+            `Rest stop (segment ${i}, split 0) alt must be a valid http/https URL when provided.`,
+          );
+        }
+
+        const openHours = split.rest_stop.open_hours ?? {};
+        const hasFixed = Object.prototype.hasOwnProperty.call(
+          openHours,
+          "fixed",
+        );
+        if (hasFixed && Object.keys(openHours).length > 1) {
+          errors.push(
+            `Rest stop (segment ${i}, split 0) has 'fixed' open hours plus other keys, which is invalid.`,
+          );
+        } else if (!hasFixed && Object.keys(openHours).length !== 7) {
+          errors.push(
+            `Rest stop (segment ${i}, split 0) open hours must have keys 0-6 or only 'fixed'.`,
+          );
+        }
+      }
     }
   }
 
@@ -135,16 +247,41 @@ function computeSubSplitDetails(
   movingSpeed: number,
   startDistance: number,
 ): SubSplitDetail[] {
-  const subDistances = computeSubSplitDistances(split);
-  const downPerSubMs =
+  // Compute pace (dist/elapsed-hour) for the "hour" sub-split mode so that
+  // boundaries fall on wall-clock hour marks, not pure moving-time hours.
+  const _movingMs = (split.distance / movingSpeed) * 3_600_000;
+  const _effectiveDtr = _movingMs > 0 ? splitDownTimeMs / _movingMs : 0;
+  const subDistances = computeSubSplitDistances(
+    split,
+    movingSpeed,
+    _effectiveDtr,
+  );
+  let downPerSubMs =
     splitDownTimeMs !== 0 ? splitDownTimeMs / subDistances.length : 0;
 
   const result: SubSplitDetail[] = [];
   let currTimeMs = startTimeMs;
   let currDist = startDistance;
+  let remainingDownTimeMs = splitDownTimeMs;
 
   for (const subDist of subDistances) {
     const movingMs = (subDist / movingSpeed) * 3_600_000;
+
+    if (split.sub_split_mode === "hour") {
+      // each sub-split's moving and down time should sum to exactly one elapsed hour by definition, so override any floating-point imprecision
+      downPerSubMs = 3_600_000 - movingMs;
+
+      // Case 1: we have less down time allotted to complete the hour
+      if (remainingDownTimeMs > 0 && remainingDownTimeMs - downPerSubMs < 0) {
+        downPerSubMs = remainingDownTimeMs;
+      }
+      // if remaining is negative we are in case 2 territory and just set downPerSubMs to 0, but we also need to make sure to not add negative down time if we had some leftover from the previous sub-split
+      if (remainingDownTimeMs <= 0) {
+        downPerSubMs = 0;
+        remainingDownTimeMs = 0;
+      }
+      remainingDownTimeMs -= downPerSubMs;
+    }
     const activeMs = movingMs + downPerSubMs;
 
     result.push({
@@ -190,6 +327,7 @@ function computeSplitDetail(
   downTimeRatio: number,
   noEndDownTime: boolean,
   startDistance: number,
+  startTz: string | null,
 ): SplitResult {
   const movingMs = (split.distance / movingSpeed) * 3_600_000;
 
@@ -220,6 +358,8 @@ function computeSplitDetail(
 
   const detail: SplitDetail = {
     name: split.name ?? null,
+    start_timezone: startTz,
+    end_timezone: split.end_timezone ?? null,
     distance: split.distance,
     start_time: new Date(startTimeMs).toISOString(),
     end_time: new Date(endTimeMs).toISOString(),
@@ -243,7 +383,6 @@ function computeSplitDetail(
           name: split.rest_stop.name,
           address: split.rest_stop.address,
           alt: split.rest_stop.alt ?? null,
-          arrival_date: new Date(endTimeMs).toISOString(),
         }
       : null,
   };
@@ -261,18 +400,90 @@ function computeSegmentDetail(
   downTimeRatio: number,
   splitDelta: number,
   startDistance: number,
-): SegmentDetail {
+  startTz: string | null,
+): { segDetail: SegmentDetail; endTz: string | null } {
+  // ── Nullified (transit) segment: fixed elapsed time, no pace calculation ──
+  if (seg.nullified && seg.fixed_elapsed_time_seconds != null) {
+    const activeMs = seg.fixed_elapsed_time_seconds * 1000;
+    const split = seg.splits[0];
+    const splitDist = split?.distance ?? 0;
+    const endTimeMs = startTimeMs + activeMs;
+    const sleepMs = (seg.sleep_time ?? 0) * 1000;
+    const elapsedMs = activeMs + sleepMs;
+    const paceVal =
+      splitDist > 0 && activeMs > 0 ? splitDist / msToHours(activeMs) : 0;
+    const endTz = split?.end_timezone ?? startTz;
+
+    const splitDetail: SplitDetail = {
+      name: split?.name ?? null,
+      start_timezone: startTz,
+      end_timezone: endTz,
+      distance: splitDist,
+      start_time: new Date(startTimeMs).toISOString(),
+      end_time: new Date(endTimeMs).toISOString(),
+      moving_speed: movingSpeed,
+      moving_time: secondsToString(0),
+      down_time: secondsToString(0),
+      split_time: secondsToString(0),
+      active_time: secondsToString(activeMs / 1000),
+      pace: paceVal,
+      start_distance: startDistance,
+      span: [startDistance, startDistance + splitDist],
+      moving_time_hours: 0,
+      down_time_hours: 0,
+      active_time_hours: msToHours(activeMs),
+      sub_splits: [],
+      adjustment_start: new Date(startTimeMs).toISOString(),
+      adjustment_time: secondsToString(0),
+      adjustment_time_hours: 0,
+      rest_stop: null,
+    };
+
+    return {
+      segDetail: {
+        split_details: [splitDetail],
+        start_time: new Date(startTimeMs).toISOString(),
+        end_time: new Date(endTimeMs).toISOString(),
+        end_moving_speed: movingSpeed,
+        distance: splitDist,
+        start_distance: startDistance,
+        moving_time: secondsToString(0),
+        down_time: secondsToString(0),
+        sleep_time: secondsToString(sleepMs / 1000),
+        adjustment_time: secondsToString(0),
+        elapsed_time: secondsToString(elapsedMs / 1000),
+        active_time: secondsToString(activeMs / 1000),
+        span: [startDistance, startDistance + splitDist],
+        pace: paceVal,
+        moving_time_hours: 0,
+        down_time_hours: 0,
+        adjustment_time_hours: 0,
+        elapsed_time_hours: msToHours(elapsedMs),
+        active_time_hours: msToHours(activeMs),
+        sleep_time_hours: msToHours(sleepMs),
+        moving_speed: null,
+        adjustment_start: null,
+        name: seg.name ?? null,
+        nullified: true,
+      },
+      endTz,
+    };
+  }
+
   // Apply segment-level overrides
   let currSpeed = seg.moving_speed ?? movingSpeed;
   const currMin = seg.min_moving_speed ?? minMovingSpeed;
   const currDtr = seg.down_time_ratio ?? downTimeRatio;
   const currDelta = seg.split_delta ?? splitDelta;
 
-  if (currSpeed < currMin) {
+  // Only error if the segment explicitly sets a moving speed below its minimum.
+  // When speed is inherited from a previous segment's decay, clamp it up instead.
+  if (seg.moving_speed != null && currSpeed < currMin) {
     throw new CalcError(
       `Segment moving speed (${currSpeed}) is less than minimum moving speed (${currMin}).`,
     );
   }
+  currSpeed = Math.max(currSpeed, currMin);
 
   const splitDetails: SplitDetail[] = [];
   let currTimeMs = startTimeMs;
@@ -280,6 +491,7 @@ function computeSegmentDetail(
   let totalMovingMs = 0;
   let totalDownMs = 0;
   let totalAdjustMs = 0;
+  let currTz = startTz;
 
   for (let i = 0; i < seg.splits.length; i++) {
     const split = seg.splits[i];
@@ -298,6 +510,7 @@ function computeSegmentDetail(
       currDtr,
       seg.no_end_down_time,
       currDist,
+      currTz,
     );
 
     splitDetails.push(detail);
@@ -306,6 +519,8 @@ function computeSegmentDetail(
     totalAdjustMs += adjustMs;
     currDist += split.distance;
     currTimeMs += activeMs;
+    // Advance current tz: if this split defines an endpoint tz, use it going forward
+    if (split.end_timezone) currTz = split.end_timezone;
 
     // Apply speed delta for the next split, clamped to min
     currSpeed = Math.max(currSpeed + currDelta, currMin);
@@ -317,29 +532,32 @@ function computeSegmentDetail(
   const segDist = currDist - startDistance;
 
   return {
-    split_details: splitDetails,
-    start_time: new Date(startTimeMs).toISOString(),
-    end_time: new Date(currTimeMs).toISOString(),
-    end_moving_speed: currSpeed,
-    distance: segDist,
-    start_distance: startDistance,
-    moving_time: secondsToString(totalMovingMs / 1000),
-    down_time: secondsToString(totalDownMs / 1000),
-    sleep_time: secondsToString(sleepMs / 1000),
-    adjustment_time: secondsToString(totalAdjustMs / 1000),
-    elapsed_time: secondsToString(elapsedMs / 1000),
-    active_time: secondsToString(activeMs / 1000),
-    span: [startDistance, currDist],
-    pace: segDist / msToHours(activeMs),
-    moving_time_hours: msToHours(totalMovingMs),
-    down_time_hours: msToHours(totalDownMs),
-    adjustment_time_hours: msToHours(totalAdjustMs),
-    elapsed_time_hours: msToHours(elapsedMs),
-    active_time_hours: msToHours(activeMs),
-    sleep_time_hours: msToHours(sleepMs),
-    moving_speed: null,
-    adjustment_start: null,
-    name: seg.name ?? null,
+    segDetail: {
+      split_details: splitDetails,
+      start_time: new Date(startTimeMs).toISOString(),
+      end_time: new Date(currTimeMs).toISOString(),
+      end_moving_speed: currSpeed,
+      distance: segDist,
+      start_distance: startDistance,
+      moving_time: secondsToString(totalMovingMs / 1000),
+      down_time: secondsToString(totalDownMs / 1000),
+      sleep_time: secondsToString(sleepMs / 1000),
+      adjustment_time: secondsToString(totalAdjustMs / 1000),
+      elapsed_time: secondsToString(elapsedMs / 1000),
+      active_time: secondsToString(activeMs / 1000),
+      span: [startDistance, currDist],
+      pace: segDist / msToHours(activeMs),
+      moving_time_hours: msToHours(totalMovingMs),
+      down_time_hours: msToHours(totalDownMs),
+      adjustment_time_hours: msToHours(totalAdjustMs),
+      elapsed_time_hours: msToHours(elapsedMs),
+      active_time_hours: msToHours(activeMs),
+      sleep_time_hours: msToHours(sleepMs),
+      moving_speed: null,
+      adjustment_start: null,
+      name: seg.name ?? null,
+    },
+    endTz: currTz,
   };
 }
 
@@ -371,9 +589,11 @@ export function processCourse(payload: CoursePayload): CourseDetail {
   let totalDownMs = 0;
   let totalAdjustMs = 0;
   let totalSleepMs = 0;
+  let totalTransitMs = 0;
+  let currTz: string | null = normalized.course_timezone ?? null;
 
   for (const seg of normalized.segments) {
-    const segDetail = computeSegmentDetail(
+    const { segDetail, endTz } = computeSegmentDetail(
       seg,
       currTimeMs,
       currSpeed,
@@ -381,6 +601,7 @@ export function processCourse(payload: CoursePayload): CourseDetail {
       normalized.down_time_ratio,
       normalized.split_delta,
       currDist,
+      currTz,
     );
 
     segmentDetails.push(segDetail);
@@ -388,12 +609,16 @@ export function processCourse(payload: CoursePayload): CourseDetail {
     totalMovingMs += segDetail.moving_time_hours * 3_600_000;
     totalDownMs += segDetail.down_time_hours * 3_600_000;
     totalAdjustMs += (segDetail.adjustment_time_hours ?? 0) * 3_600_000;
+    if (seg.nullified && seg.fixed_elapsed_time_seconds != null) {
+      totalTransitMs += seg.fixed_elapsed_time_seconds * 1000;
+    }
 
     const sleepMs = (seg.sleep_time ?? 0) * 1000;
     totalSleepMs += sleepMs;
 
     currSpeed = segDetail.end_moving_speed;
     currDist += segDetail.distance;
+    currTz = endTz;
     // Advance time past the segment, then add sleep before next segment starts
     currTimeMs = new Date(segDetail.end_time).getTime() + sleepMs;
   }
@@ -417,5 +642,6 @@ export function processCourse(payload: CoursePayload): CourseDetail {
     down_time_hours: msToHours(totalDownMs),
     moving_time_hours: msToHours(totalMovingMs),
     sleep_time_hours: msToHours(totalSleepMs),
+    transit_time_hours: msToHours(totalTransitMs),
   };
 }

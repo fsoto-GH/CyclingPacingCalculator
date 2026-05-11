@@ -23,7 +23,12 @@ import type {
   LatLngExpression,
   Map as LeafletMap,
 } from "leaflet";
-import type { GpxTrackPoint, UnitSystem, RestStopForm } from "../types";
+import type {
+  GpxTrackPoint,
+  HourlyWeatherPoint,
+  UnitSystem,
+  RestStopForm,
+} from "../types";
 import { sliceTrackPoints, interpolateLatLon } from "../calculator/gpxParser";
 import {
   AMENITY_ICONS,
@@ -32,20 +37,16 @@ import {
   queryNearbyAmenities,
 } from "../calculator/overpass";
 import { reverseGeocode } from "../calculator/geocode";
+import { useRestStopGeocode } from "../calculator/mapUtils";
 import type { NearbyAmenity } from "../calculator/overpass";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
+import { useAppSettings } from "../AppSettingsContext";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** ±10 mi expressed in km */
 const SLICE_KM = 16.0934;
-
-// Module-level cache — persists across remounts so the same address is never re-fetched
-const geocodeCache = new Map<
-  string,
-  { lat: number; lon: number; type?: string; placeClass?: string } | null
->();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +118,16 @@ function makeUndefinedEndpointIcon() {
   });
 }
 
+function makeRestStopIcon() {
+  return divIcon({
+    html: '<div class="split-rest-stop-pin"><i class="fa-solid fa-location-dot"></i></div>',
+    className: "",
+    iconSize: [20, 28],
+    iconAnchor: [10, 27],
+    popupAnchor: [0, -24],
+  });
+}
+
 /** Small distance label pinned to the route. */
 function makeTickIcon(label: string) {
   return divIcon({
@@ -173,27 +184,47 @@ function ZoomableMarkers({
 }) {
   const map = useMap();
   const [zoom, setZoom] = useState(() => map.getZoom());
-  const [viewport, setViewport] = useState(() => {
-    const b = map.getBounds();
-    return { s: b.getSouth(), n: b.getNorth(), w: b.getWest(), e: b.getEast() };
+  const [viewport, setViewport] = useState({
+    s: -90,
+    n: 90,
+    w: -180,
+    e: 180,
   });
+
+  const readViewport = useCallback(() => {
+    try {
+      const b = map.getBounds();
+      const s = b.getSouth();
+      const n = b.getNorth();
+      const w = b.getWest();
+      const e = b.getEast();
+      if (
+        !Number.isFinite(s) ||
+        !Number.isFinite(n) ||
+        !Number.isFinite(w) ||
+        !Number.isFinite(e)
+      ) {
+        return null;
+      }
+      return { s, n, w, e };
+    } catch {
+      return null;
+    }
+  }, [map]);
 
   useEffect(() => {
     const update = () => {
       setZoom(map.getZoom());
-      const b = map.getBounds();
-      setViewport({
-        s: b.getSouth(),
-        n: b.getNorth(),
-        w: b.getWest(),
-        e: b.getEast(),
-      });
+      const nextViewport = readViewport();
+      if (nextViewport) setViewport(nextViewport);
     };
-    map.on("zoomend moveend", update);
+
+    update();
+    map.on("zoomend moveend resize load", update);
     return () => {
-      map.off("zoomend moveend", update);
+      map.off("zoomend moveend resize load", update);
     };
-  }, [map]);
+  }, [map, readViewport]);
 
   // Stage 1: precompute all positions within ±SLICE_KM — reruns on zoom/unit/endpoint change
   const allMarkers = useMemo(() => {
@@ -333,6 +364,8 @@ interface SplitEndpointMapProps {
   restStop?: RestStopForm | null;
   onSelectStop: (patch: Partial<RestStopForm>) => void;
   onAddressLoading?: (loading: boolean) => void;
+  /** Hourly weather points for this split's wind overlay. */
+  splitHourlyWeather?: HourlyWeatherPoint[] | null;
 }
 
 export default function SplitEndpointMap({
@@ -344,9 +377,11 @@ export default function SplitEndpointMap({
   unitSystem,
   restStop,
   onSelectStop,
+  splitHourlyWeather,
 }: SplitEndpointMapProps) {
   const [showNearby, setShowNearby] = useState(false);
   const { radiusM, selectedTypes, customTypes } = useContext(AmenityContext);
+  const { paidApisEnabled } = useAppSettings();
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -357,16 +392,26 @@ export default function SplitEndpointMap({
   const [usedStopId, setUsedStopId] = useState<number | null>(null);
   const usedStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showWindOverlay, setShowWindOverlay] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
-  const [restStopCoords, setRestStopCoords] = useState<{
-    lat: number;
-    lon: number;
-    type?: string;
-    placeClass?: string;
-  } | null>(null);
-  const geocodeAbortRef = useRef<AbortController | null>(null);
-  const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Rest stop coordinates come from form state (set by Overpass selection or
+  // the forward-geocode effect below). Reads are passive — writes happen via
+  // onSelectStop so state stays in the parent.
+  const restStopCoords = useMemo(() => {
+    if (restStop?.enabled && restStop?.lat != null && restStop?.lon != null) {
+      return { lat: restStop.lat, lon: restStop.lon };
+    }
+    return null;
+  }, [restStop?.enabled, restStop?.lat, restStop?.lon]);
+  const restStopIcon = useMemo(() => makeRestStopIcon(), []);
+
+  // Geocode the rest stop address when the map mounts or the address changes,
+  // but only when coords are not already set. This keeps the logic local to the
+  // map so it only runs when the user actually opens the split's map panel.
+  useRestStopGeocode(restStop, onSelectStop);
+
   const isFirstEndpointRender = useRef(true);
 
   useEffect(() => {
@@ -383,12 +428,9 @@ export default function SplitEndpointMap({
     }
   }
 
-  // Abort geocode requests, pending timers, and any in-flight search on unmount
+  // Abort any in-flight search on unmount
   useEffect(
     () => () => {
-      geocodeAbortRef.current?.abort();
-      if (geocodeTimerRef.current !== null)
-        clearTimeout(geocodeTimerRef.current);
       searchAbortRef.current?.abort();
       if (usedStopTimerRef.current !== null)
         clearTimeout(usedStopTimerRef.current);
@@ -407,56 +449,6 @@ export default function SplitEndpointMap({
     setSearchError(null);
     searchAbortRef.current?.abort();
   }, [endLat, endLon]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Geocode the rest stop address via Nominatim — debounced 600 ms, cached by address
-  useEffect(() => {
-    const addr = restStop?.address?.trim() ?? "";
-    if (!addr) {
-      setRestStopCoords(null);
-      return;
-    }
-    // Hit the cache first — avoids re-fetching across remounts or unchanged values
-    if (geocodeCache.has(addr)) {
-      setRestStopCoords(geocodeCache.get(addr) ?? null);
-      return;
-    }
-    // Debounce: coalesce rapid keystrokes into a single request
-    if (geocodeTimerRef.current !== null) clearTimeout(geocodeTimerRef.current);
-    geocodeTimerRef.current = setTimeout(() => {
-      geocodeAbortRef.current?.abort();
-      const ctrl = new AbortController();
-      geocodeAbortRef.current = ctrl;
-      fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=json&limit=1`,
-        { signal: ctrl.signal, headers: { "Accept-Language": "en" } },
-      )
-        .then((r) => r.json())
-        .then(
-          (
-            res: Array<{
-              lat: string;
-              lon: string;
-              type?: string;
-              class?: string;
-            }>,
-          ) => {
-            if (ctrl.signal.aborted) return;
-            const coords =
-              res.length > 0
-                ? {
-                    lat: +res[0].lat,
-                    lon: +res[0].lon,
-                    type: res[0].type,
-                    placeClass: res[0].class,
-                  }
-                : null;
-            geocodeCache.set(addr, coords);
-            setRestStopCoords(coords);
-          },
-        )
-        .catch(() => {});
-    }, 600);
-  }, [restStop?.address]);
 
   // Track slice: ±SLICE_KM around the endpoint
   const polyline = useMemo(() => {
@@ -515,7 +507,7 @@ export default function SplitEndpointMap({
         .filter(Boolean);
       const all = [...searchTypes, ...custom];
       if (all.length === 0) {
-        setSearchError("No stop types selected. Configure criteria first.");
+        setSearchError("NO_TYPES");
         return;
       }
 
@@ -532,6 +524,7 @@ export default function SplitEndpointMap({
           searchRadius,
           ctrl.signal,
           all,
+          paidApisEnabled,
         );
         if (ctrl.signal.aborted) return;
         const byDistThenName = (a: NearbyAmenity, b: NearbyAmenity) =>
@@ -573,7 +566,12 @@ export default function SplitEndpointMap({
   }
 
   function doSelect(a: NearbyAmenity) {
-    const patch: Partial<RestStopForm> = { enabled: true, name: a.name };
+    const patch: Partial<RestStopForm> = {
+      enabled: true,
+      name: a.name,
+      lat: a.lat,
+      lon: a.lon,
+    };
     if (a.hours) {
       patch.sameHoursEveryDay = false;
       patch.perDay = a.hours;
@@ -685,31 +683,17 @@ export default function SplitEndpointMap({
           )}
 
           {/* Rest stop marker — purple, geocoded from address */}
-          {restStopCoords && (
-            <CircleMarker
-              center={[restStopCoords.lat, restStopCoords.lon]}
-              radius={9}
-              pathOptions={{
-                color: "#1a1a2e",
-                weight: 2,
-                fillColor: "#a855f7",
-                fillOpacity: 1,
-              }}
+          {restStop?.enabled && restStopCoords && (
+            <Marker
+              position={[restStopCoords.lat, restStopCoords.lon]}
+              icon={restStopIcon}
             >
               <Popup>
                 <strong>Rest Stop</strong>
-                {restStopCoords?.type && (
-                  <span
-                    className="split-map-place-badge"
-                    title={restStopCoords.placeClass}
-                  >
-                    {restStopCoords.type}
-                  </span>
-                )}
                 <br />
                 {restStop?.name || restStop?.address}
               </Popup>
-            </CircleMarker>
+            </Marker>
           )}
 
           {/* Nearby amenity pins — only shown after user requests them */}
@@ -753,9 +737,103 @@ export default function SplitEndpointMap({
                 </Popup>
               </CircleMarker>
             ))}
+          {/* Wind overlay — one arrow per hourly sample */}
+          {showWindOverlay &&
+            splitHourlyWeather &&
+            splitHourlyWeather.map((pt, i) => {
+              // ── Scale constants — adjust these to taste ──────────────────
+              /** px at 0 km/h wind */
+              const ARROW_MIN = 12;
+              /** px at max wind */
+              const ARROW_MAX = 32;
+              /** wind speed (km/h) that maps to ARROW_MAX */
+              const SPEED_AT_MAX = 60;
+              // ─────────────────────────────────────────────────────────────
+              const sz = Math.round(
+                ARROW_MIN +
+                  (ARROW_MAX - ARROW_MIN) *
+                    Math.min(pt.weather.windSpeed / SPEED_AT_MAX, 1),
+              );
+              const half = sz / 2;
+              const arrowSvg = `<svg viewBox="0 0 10 20" width="${sz}" height="${sz}" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${
+                (pt.weather.windDirection + 180) % 360
+              }deg);transform-origin:50% 50%;display:block;overflow:visible"><line x1="5" y1="18" x2="5" y2="9" stroke="rgba(255,255,255,0.9)" stroke-width="2.5" stroke-linecap="round"/><line x1="5" y1="18" x2="5" y2="9" stroke="#111827" stroke-width="1" stroke-linecap="round"/><polygon points="5,1 9,10 5,7 1,10" fill="#111827" stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+              return (
+                <Marker
+                  key={i}
+                  position={[pt.lat, pt.lon]}
+                  icon={divIcon({
+                    html: arrowSvg,
+                    className: "",
+                    iconSize: [sz, sz],
+                    iconAnchor: [half, half],
+                  })}
+                >
+                  <Popup>
+                    <div style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
+                      <strong>
+                        {new Date(pt.timeIso).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </strong>
+                      <br />
+                      Wind:{" "}
+                      {unitSystem === "imperial"
+                        ? Math.round(pt.weather.windSpeed / 1.60934)
+                        : Math.round(pt.weather.windSpeed)}{" "}
+                      {unitSystem === "imperial" ? "mph" : "km/h"} from{" "}
+                      {
+                        [
+                          "N",
+                          "NNE",
+                          "NE",
+                          "ENE",
+                          "E",
+                          "ESE",
+                          "SE",
+                          "SSE",
+                          "S",
+                          "SSW",
+                          "SW",
+                          "WSW",
+                          "W",
+                          "WNW",
+                          "NW",
+                          "NNW",
+                        ][Math.round(pt.weather.windDirection / 22.5) % 16]
+                      }
+                      {pt.weather.windGusts > pt.weather.windSpeed
+                        ? ` (gusts ${unitSystem === "imperial" ? Math.round(pt.weather.windGusts / 1.60934) : Math.round(pt.weather.windGusts)} ${unitSystem === "imperial" ? "mph" : "km/h"})`
+                        : ""}
+                      <br />
+                      Temp:{" "}
+                      {unitSystem === "imperial"
+                        ? Math.round((pt.weather.temperature * 9) / 5 + 32)
+                        : Math.round(pt.weather.temperature)}
+                      {unitSystem === "imperial" ? "°F" : "°C"}
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
         </MapContainer>
 
-        {/* Fullscreen button — only shown when the Fullscreen API is available */}
+        {/* Wind overlay toggle button */}
+        {splitHourlyWeather && splitHourlyWeather.length > 0 && (
+          <button
+            type="button"
+            className="split-map-wind-btn"
+            onClick={() => setShowWindOverlay((v) => !v)}
+            title={showWindOverlay ? "Hide wind overlay" : "Show wind overlay"}
+            aria-label={
+              showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
+            }
+            style={{ opacity: showWindOverlay ? 1 : 0.5 }}
+          >
+            <i className="fa-solid fa-wind" />
+          </button>
+        )}
         {document.fullscreenEnabled && (
           <button
             type="button"
@@ -855,7 +933,23 @@ export default function SplitEndpointMap({
       {/* Search error — shown when a search fails */}
       {searchError && (
         <div className="split-map-search-error">
-          {searchError}
+          {searchError === "NO_TYPES" ? (
+            <>
+              No stop types selected.{" "}
+              <button
+                type="button"
+                className="split-map-configure-link"
+                onClick={() => {
+                  setSearchError(null);
+                  setModalOpen(true);
+                }}
+              >
+                Configure criteria first.
+              </button>
+            </>
+          ) : (
+            searchError
+          )}
           <button
             type="button"
             className="split-map-search-error-close"
@@ -1005,17 +1099,7 @@ export default function SplitEndpointMap({
           <div className="legend-footer">
             <button
               type="button"
-              className="ghost-btn"
-              onClick={() => {
-                confirmDialogRef.current?.close();
-                setConfirmStop(null);
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="ghost-btn no-hours-confirm__use-btn"
+              className="action-btn action-btn-export"
               onClick={() => {
                 const stop = confirmStop;
                 confirmDialogRef.current?.close();

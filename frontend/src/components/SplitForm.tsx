@@ -5,13 +5,33 @@ import type {
   UnitSystem,
   SplitGpxProfile,
   GpxTrackPoint,
+  SplitDetail,
+  SubSplitDetail,
 } from "../types";
-import { speedLabel, distanceLabel } from "../utils";
+import { speedLabel, distanceLabel, formatHours } from "../utils";
+import {
+  buildDetailedNearDetail,
+  checkArrivalVsHoursDetailed,
+  dayIndexInTimezone,
+  formatArrivalTimeWithTz,
+  hoursLabelForEntry,
+  timezoneAbbreviationAt,
+} from "../timeMath";
+
+interface EtaInfo {
+  status: "open" | "near-open" | "near-close" | "closed";
+  statusWord: string; // e.g. "Open", "Near open", "Near close", "Closed"
+  hoursLabel: string; // e.g. "6:00 AM - 10:00 PM" or "24 hours" or "Closed"
+  nearDetail: string | null; // e.g. "5 min before opening" or "10 min after closing"
+  arrivalTime: string; // e.g. "1:31 PM EDT"
+}
+
 import TimeInput from "./TimeInput";
 import RestStopFormComponent from "./RestStopForm";
 import TimezoneSelect from "./TimezoneSelect";
 import { FieldError } from "./FieldError";
 import NumberInput from "./NumberInput";
+import ConfirmModal from "./ConfirmModal";
 const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
 
 interface SplitFormProps {
@@ -45,6 +65,27 @@ interface SplitFormProps {
   collapseSignal?: number;
   /** Increment to expand this split without scrolling (from expand-all). */
   expandAllSignal?: number;
+  /** Calculated split result from the current course calculation, for inline display. */
+  splitResult?: SplitDetail | null;
+  /** Controlled by SegmentForm: when true, show inline split results panel. */
+  showResults?: boolean;
+  /** Segment color for the collapse icon (matches segment header). */
+  segColor?: string;
+  /** Course-level sub-split mode default; splits may override. */
+  courseSplitMode: SubSplitMode;
+  canShiftUp?: boolean;
+  canShiftDown?: boolean;
+  canMoveToPrevSeg?: boolean;
+  canMoveToNextSeg?: boolean;
+  canDelete?: boolean;
+  onShiftUp?: () => void;
+  onShiftDown?: () => void;
+  onMoveToPrevSeg?: () => void;
+  onMoveToNextSeg?: () => void;
+  onDelete?: () => void;
+  etaMarginOpen?: number;
+  etaMarginClose?: number;
+  onZoomToSplit?: () => void;
 }
 
 export default function SplitFormComponent({
@@ -68,6 +109,23 @@ export default function SplitFormComponent({
   expandSignal,
   collapseSignal,
   expandAllSignal,
+  splitResult,
+  showResults = false,
+  segColor,
+  courseSplitMode,
+  canShiftUp,
+  canShiftDown,
+  canMoveToPrevSeg,
+  canMoveToNextSeg,
+  canDelete,
+  onShiftUp,
+  onShiftDown,
+  onMoveToPrevSeg,
+  onMoveToNextSeg,
+  onDelete,
+  etaMarginOpen = 15,
+  etaMarginClose = 7,
+  onZoomToSplit,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
@@ -98,9 +156,19 @@ export default function SplitFormComponent({
     !!value.moving_speed ||
     !!value.down_time ||
     !!value.adjustment_time ||
-    value.differentTimezone;
+    value.differentTimezone ||
+    !!value.sub_split_override;
   const [showOptional, setShowOptional] = useState(hasOptionalValues);
   const [collapsed, setCollapsed] = useState(true);
+  const [confirmDeleteSplitOpen, setConfirmDeleteSplitOpen] = useState(false);
+  const [jumpHighlight, setJumpHighlight] = useState(false);
+  const [showForm, setShowForm] = useState(true);
+  const [showMap, setShowMap] = useState(false);
+  const prevCollapseSignalRef = useRef(collapseSignal);
+  const prevExpandAllSignalRef = useRef(expandAllSignal);
+  const jumpHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Expand + scroll when CourseMap popup navigates here.
   // lastFiredExpandRef guards against re-firing on remount (e.g. page change)
@@ -110,56 +178,70 @@ export default function SplitFormComponent({
     if (!expandSignal || expandSignal === lastFiredExpandRef.current) return;
     lastFiredExpandRef.current = expandSignal;
     setCollapsed(false);
+    setJumpHighlight(true);
+    if (jumpHighlightTimerRef.current !== null) {
+      clearTimeout(jumpHighlightTimerRef.current);
+    }
+    jumpHighlightTimerRef.current = setTimeout(() => {
+      setJumpHighlight(false);
+      jumpHighlightTimerRef.current = null;
+    }, 2200);
     requestAnimationFrame(() => {
       splitFormRef.current?.scrollIntoView({
         behavior: "smooth",
         block: "start",
       });
     });
+    return () => {
+      lastFiredExpandRef.current = undefined;
+    };
   }, [expandSignal]);
 
   useEffect(() => {
+    return () => {
+      if (jumpHighlightTimerRef.current !== null) {
+        clearTimeout(jumpHighlightTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (collapseSignal === prevCollapseSignalRef.current) return;
+    prevCollapseSignalRef.current = collapseSignal;
     if (!collapseSignal) return;
     setCollapsed(true);
   }, [collapseSignal]);
 
   useEffect(() => {
+    if (expandAllSignal === prevExpandAllSignalRef.current) return;
+    prevExpandAllSignalRef.current = expandAllSignal;
     if (!expandAllSignal) return;
     setCollapsed(false);
   }, [expandAllSignal]);
 
-  // ── Three-state layout slider (Form | Both | Map) ──────────────────────────
-  // Only active when GPX is loaded + endpoint coords are available + distance set.
-  type LayoutState = "form" | "both" | "map";
-  const [layoutState, setLayoutState] = useState<LayoutState>("form");
-  const [formColWidth, setFormColWidth] = useState(500);
+  const [formColWidth, setFormColWidth] = useState(350);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
   const resizeHandleRef = useRef<HTMLDivElement | null>(null);
   const splitFormRef = useRef<HTMLDivElement | null>(null);
   // Seed from actual window width so mobile first-render is already stacked
-  // (prevents Leaflet from initialising into a 0-height container)
   const [isNarrow, setIsNarrow] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < 520,
+    () => typeof window !== "undefined" && window.innerWidth < 900,
   );
 
-  // Track container width to auto-stack the "both" layout when narrow.
-  // Skip the update while fullscreen is active — the page reflows when an
-  // element enters/exits fullscreen which can flip isNarrow, tear down the
-  // layout tree, unmount the fullscreen canvas, and immediately abort fullscreen.
+  // Track container width to auto-stack layout when narrow.
   useEffect(() => {
     const el = splitFormRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       if (document.fullscreenElement) return;
-      setIsNarrow(entry.contentRect.width < 520);
+      setIsNarrow(entry.contentRect.width < 700);
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  // Condition that unlocks the slider UI
   // Keep the last valid profile so the map stays mounted while distance is being edited
   const lastValidProfileRef = useRef<SplitGpxProfile | null>(null);
   if (gpxProfile != null) lastValidProfileRef.current = gpxProfile;
@@ -175,8 +257,10 @@ export default function SplitFormComponent({
           avgGradePct: 0,
           steepPct: 0,
           surface: "unknown",
-          endLat: gpxTrack[0].lat,
-          endLon: gpxTrack[0].lon,
+          startLat: gpxTrack[0].lat,
+          startLon: gpxTrack[0].lon,
+          endLat: gpxTrack[gpxTrack.length - 1].lat,
+          endLon: gpxTrack[gpxTrack.length - 1].lon,
           endTimezone: "",
           startKm: 0,
           endKm: 0,
@@ -187,12 +271,13 @@ export default function SplitFormComponent({
   // Whether the endpoint coords reflect a real defined distance
   const endpointDefined = gpxProfile != null;
 
-  // Reset to "form" when the map becomes unavailable mid-session
+  // Hide map panel when map becomes unavailable
   useEffect(() => {
-    if (!mapAvailable && layoutState !== "form") {
-      setLayoutState("form");
+    if (!mapAvailable && showMap) {
+      setShowMap(false);
+      if (!showForm) setShowForm(true);
     }
-  }, [mapAvailable, layoutState]);
+  }, [mapAvailable, showMap, showForm]);
 
   // Mouse drag — attach to document so the handle doesn't need to be held
   useEffect(() => {
@@ -200,7 +285,7 @@ export default function SplitFormComponent({
       if (!isDragging.current) return;
       const delta = e.clientX - dragStartX.current;
       setFormColWidth(
-        Math.min(700, Math.max(350, dragStartWidth.current + delta)),
+        Math.min(539, Math.max(350, dragStartWidth.current + delta)),
       );
     }
     function onMouseUp() {
@@ -214,22 +299,6 @@ export default function SplitFormComponent({
       document.removeEventListener("mouseup", onMouseUp);
     };
   }, []);
-
-  // Thumb pixel positions for the three slider states
-  const THUMB_POS: Record<LayoutState, number> = {
-    form: 2,
-    both: 53,
-    map: 104,
-  };
-
-  function handleSliderClick(e: React.MouseEvent<HTMLDivElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const third = rect.width / 3;
-    const idx: LayoutState =
-      x < third ? "form" : x < 2 * third ? "both" : "map";
-    setLayoutState(idx);
-  }
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
   const prefix = `seg${segIndex}-split${splitIndex}`;
@@ -246,6 +315,68 @@ export default function SplitFormComponent({
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
 
+  // ETA and timezone derived values (used for results panel and rest-stop badge)
+  const splitEndTz =
+    splitResult?.end_timezone ||
+    (value.differentTimezone && value.timezone ? value.timezone : null);
+  const splitStartTz = splitResult?.start_timezone || null;
+
+  const dateOpts: Intl.DateTimeFormatOptions = {
+    weekday: "short",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  };
+
+  function fmtInTz(iso: string, tz: string) {
+    return new Date(iso).toLocaleString(undefined, {
+      ...dateOpts,
+      timeZone: tz,
+      timeZoneName: "short",
+    });
+  }
+
+  // ETA info for the rest-stop badge — computed from split result end time
+  const etaInfo: EtaInfo | null = (() => {
+    if (!splitResult || !value.rest_stop.enabled) return null;
+    const rs = value.rest_stop;
+    const tz = splitEndTz ?? courseTz;
+    const dayIdx = dayIndexInTimezone(splitResult.end_time, tz);
+    const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
+    const status = checkArrivalVsHoursDetailed(
+      splitResult.end_time,
+      entry,
+      tz,
+      etaMarginOpen,
+      etaMarginClose,
+    );
+    if (!status) return null;
+
+    const hoursLabel = hoursLabelForEntry(entry);
+    const nearDetail =
+      status === "near-open" || status === "near-close"
+        ? buildDetailedNearDetail(status, splitResult.end_time, entry, tz)
+        : null;
+
+    const statusWords: Record<string, string> = {
+      open: "Open",
+      "near-open": "Near open",
+      "near-close": "Near close",
+      closed: "Closed",
+    };
+
+    const arrivalTime = formatArrivalTimeWithTz(splitResult.end_time, tz);
+
+    return {
+      status,
+      statusWord: statusWords[status],
+      hoursLabel,
+      nearDetail,
+      arrivalTime,
+    };
+  })();
+
   // Timezone badge — shown whenever a split timezone override is active,
   // OR when the GPX profile detects a different tz (before onChange fires).
   const effectiveTz =
@@ -255,216 +386,330 @@ export default function SplitFormComponent({
         ? gpxProfile.endTimezone
         : null;
   const tzBadgeAbbr = effectiveTz
-    ? (new Intl.DateTimeFormat("en-US", {
-        timeZone: effectiveTz,
-        timeZoneName: "short",
-      })
-        .formatToParts(new Date())
-        .find((p) => p.type === "timeZoneName")?.value ?? effectiveTz)
+    ? timezoneAbbreviationAt(new Date().toISOString(), effectiveTz)
     : null;
 
   return (
-    <div className="split-form" ref={splitFormRef}>
-      <div className="split-header" onClick={() => setCollapsed((c) => !c)}>
-        <span className="collapse-icon-sm">{collapsed ? "▶" : "▼"}</span>
-        <div className="split-header-left">
-          <div className="split-header-title-row">
-            {isEditingName ? (
-              <input
-                ref={nameInputRef}
-                className="split-header-name-input"
-                type="text"
-                value={value.name ?? ""}
-                placeholder={`Split ${splitIndex + 1}`}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => update({ name: e.target.value })}
-                onBlur={() => setIsEditingName(false)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === "Escape") {
-                    setIsEditingName(false);
-                    e.preventDefault();
-                  }
-                }}
-              />
-            ) : (
-              <span
-                className="split-header-title split-header-title--editable"
-                title="Click to rename"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsEditingName(true);
-                  setTimeout(() => nameInputRef.current?.focus(), 0);
-                }}
-              >
-                {headerTitle}
-                {gpxDistStatus === "over" && (
-                  <span
-                    className="gpx-dist-asterisk gpx-dist-asterisk--over"
-                    title="Split distance exceeds GPX track total"
-                  >
-                    {" "}
-                    *
-                  </span>
-                )}
-                {gpxDistStatus === "under-last" && (
-                  <span
-                    className="gpx-dist-asterisk gpx-dist-asterisk--under"
-                    title="Total distance has not reached GPX track total"
-                  >
-                    {" "}
-                    *
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
-          {(gpxProfile || splitDistUser != null) && (
-            <div className="split-header-meta">
-              {splitDistUser != null && (
+    <div
+      className={`split-form${jumpHighlight ? " split-form--jump-highlight" : ""}`}
+      ref={splitFormRef}
+    >
+      <div
+        className="split-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((c) => !c)}
+        onKeyDown={(e) => {
+          if (
+            (e.key === "Enter" || e.key === " ") &&
+            e.target === e.currentTarget
+          ) {
+            e.preventDefault();
+            setCollapsed((c) => !c);
+          }
+        }}
+      >
+        <span
+          className="collapse-icon-sm"
+          style={segColor ? { color: segColor } : undefined}
+        >
+          {collapsed ? (
+            <i className="fas fa-chevron-right" />
+          ) : (
+            <i className="fas fa-chevron-down" />
+          )}
+        </span>
+        <div className="planning-split-header-grid">
+          <div className="split-header-left">
+            <div className="split-header-title-row">
+              {isEditingName ? (
+                <input
+                  ref={nameInputRef}
+                  className="split-header-name-input"
+                  type="text"
+                  value={value.name ?? ""}
+                  placeholder={`Split ${splitIndex + 1}`}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => update({ name: e.target.value })}
+                  onBlur={() => setIsEditingName(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") {
+                      setIsEditingName(false);
+                      e.preventDefault();
+                    }
+                  }}
+                />
+              ) : (
                 <span
-                  className="split-header-meta-item split-header-meta-item--dist"
-                  title="Split distance"
+                  className="split-header-title split-header-title--editable"
+                  title="Click to rename"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditingName(true);
+                    setTimeout(() => nameInputRef.current?.focus(), 0);
+                  }}
                 >
-                  {splitDistUser.toLocaleString(undefined, {
-                    minimumFractionDigits: 1,
-                    maximumFractionDigits: 1,
-                  })}{" "}
-                  {dLabel}
+                  {headerTitle}
+                  {gpxDistStatus === "over" && (
+                    <span
+                      className="gpx-dist-asterisk gpx-dist-asterisk--over"
+                      title="Split distance exceeds GPX track total"
+                    >
+                      {" "}
+                      *
+                    </span>
+                  )}
+                  {gpxDistStatus === "under-last" && (
+                    <span
+                      className="gpx-dist-asterisk gpx-dist-asterisk--under"
+                      title="Total distance has not reached GPX track total"
+                    >
+                      {" "}
+                      *
+                    </span>
+                  )}
                 </span>
               )}
-              {gpxProfile && (
-                <>
+            </div>
+            {(gpxProfile || splitDistUser != null) && (
+              <div className="split-header-meta">
+                {splitDistUser != null && (
                   <span
-                    className="split-header-meta-item split-header-meta-item--gain"
-                    title="Elevation gain"
+                    className="split-header-meta-item split-header-meta-item--dist"
+                    title="Split distance"
                   >
-                    ⬆ {toElevUnit(gpxProfile.elevGainM)}
-                    {elevUnit}
+                    {splitDistUser.toLocaleString(undefined, {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    {dLabel}
                   </span>
-                  <span
-                    className="split-header-meta-item split-header-meta-item--loss"
-                    title="Elevation loss"
-                  >
-                    ⬇ {toElevUnit(gpxProfile.elevLossM)}
-                    {elevUnit}
-                  </span>
-                  <span
-                    className="split-header-meta-item split-header-meta-item--grade"
-                    title="Average grade"
-                  >
-                    {gpxProfile.avgGradePct.toFixed(1)}% avg
-                  </span>
-                  {gpxProfile.steepPct > 0 && (
+                )}
+                {gpxProfile && (
+                  <>
                     <span
-                      className="split-header-meta-item split-header-meta-item--steep"
-                      title="% of distance with grade > 5%"
+                      className="split-header-meta-item split-header-meta-item--gain"
+                      title="Elevation gain"
                     >
-                      ⚠ {gpxProfile.steepPct}% steep
+                      <i className="fas fa-arrow-up" />{" "}
+                      {toElevUnit(gpxProfile.elevGainM)}
+                      {elevUnit}
                     </span>
-                  )}
-                  {gpxProfile.surface !== "unknown" && (
                     <span
-                      className="split-header-meta-item split-header-meta-item--surface"
-                      title="Dominant surface"
+                      className="split-header-meta-item split-header-meta-item--loss"
+                      title="Elevation loss"
                     >
-                      {gpxProfile.surface}
+                      <i className="fas fa-arrow-down" />{" "}
+                      {toElevUnit(gpxProfile.elevLossM)}
+                      {elevUnit}
                     </span>
-                  )}
-                </>
-              )}
+                    <span
+                      className="split-header-meta-item split-header-meta-item--grade"
+                      title="Average grade"
+                    >
+                      {gpxProfile.avgGradePct.toFixed(1)}% avg
+                    </span>
+                    {gpxProfile.steepPct > 0 && (
+                      <span
+                        className="split-header-meta-item split-header-meta-item--steep"
+                        title="% of distance with grade > 5%"
+                      >
+                        <i className="fa-solid fa-triangle-exclamation"></i>{" "}
+                        {gpxProfile.steepPct}% steep
+                      </span>
+                    )}
+                    {gpxProfile.surface !== "unknown" && (
+                      <span
+                        className="split-header-meta-item split-header-meta-item--surface"
+                        title="Dominant surface"
+                      >
+                        {gpxProfile.surface}
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          {(tzBadgeAbbr ||
+            (cumulativeDist != null && gpxTotalDist != null)) && (
+            <div
+              className="split-header-right"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {(() => {
+                const hasDist = cumulativeDist != null && gpxTotalDist != null;
+                const diff = hasDist ? cumulativeDist! - gpxTotalDist! : 0;
+                const absDiff = Math.abs(diff);
+                const sign =
+                  diff > 0.05 ? "over" : diff < -0.05 ? "under" : "exact";
+                const distColor = !hasDist
+                  ? undefined
+                  : sign === "exact"
+                    ? "#4ade80"
+                    : sign === "over"
+                      ? "#f87171"
+                      : isLastOverall
+                        ? "#facc15"
+                        : undefined;
+                return (
+                  <>
+                    <div className="split-header-dist-row">
+                      {tzBadgeAbbr && (
+                        <span
+                          className={`split-header-meta-item split-header-meta-item--tz${value.tzManuallySet ? " tz-manual" : ""}`}
+                          title={`Split timezone: ${effectiveTz}${value.tzManuallySet ? " (manually set — auto-detection paused)" : " (auto-detected)"}`}
+                        >
+                          <i className="fa-solid fa-clock-rotate-left"></i>{" "}
+                          {tzBadgeAbbr}
+                          {value.tzManuallySet && " ✏️"}
+                        </span>
+                      )}
+                      {hasDist && (
+                        <span
+                          className="split-header-dist"
+                          style={{ color: distColor }}
+                        >
+                          {cumulativeDist!.toLocaleString(undefined, {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })}{" "}
+                          {dLabel}
+                        </span>
+                      )}
+                    </div>
+                    {hasDist && (
+                      <span className="split-header-city">
+                        {etaInfo && (
+                          <span
+                            className={`eta-badge eta-${etaInfo.status}`}
+                            title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
+                          >
+                            {etaInfo.status === "open" &&
+                              (etaInfo.hoursLabel === "24 hours"
+                                ? "24/7"
+                                : "Open")}
+                            {etaInfo.status === "near-open" && "Near open"}
+                            {etaInfo.status === "near-close" && "Near close"}
+                            {etaInfo.status === "closed" && "Closed"}
+                          </span>
+                        )}
+                        {nearbyCity_fetching && (
+                          <span className="split-nearby-city--loading">
+                            (finding nearest city…) ·{" "}
+                          </span>
+                        )}
+                        {!nearbyCity_fetching &&
+                          nearbyCity &&
+                          `${nearbyCity} · `}
+                        {sign === "exact"
+                          ? "✓ matches GPX"
+                          : sign === "under"
+                            ? `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} left`
+                            : `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} over`}
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>
-        {(tzBadgeAbbr || (cumulativeDist != null && gpxTotalDist != null)) && (
-          <div
-            className="split-header-right"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const hasDist = cumulativeDist != null && gpxTotalDist != null;
-              const diff = hasDist ? cumulativeDist! - gpxTotalDist! : 0;
-              const absDiff = Math.abs(diff);
-              const sign =
-                diff > 0.05 ? "over" : diff < -0.05 ? "under" : "exact";
-              const distColor = !hasDist
-                ? undefined
-                : sign === "exact"
-                  ? "#4ade80"
-                  : sign === "over"
-                    ? "#f87171"
-                    : isLastOverall
-                      ? "#facc15"
-                      : undefined;
-              return (
-                <>
-                  <div className="split-header-dist-row">
-                    {tzBadgeAbbr && (
-                      <span
-                        className={`split-header-meta-item split-header-meta-item--tz${value.tzManuallySet ? " tz-manual" : ""}`}
-                        title={`Split timezone: ${effectiveTz}${value.tzManuallySet ? " (manually set — auto-detection paused)" : " (auto-detected)"}`}
-                      >
-                        🕐 {tzBadgeAbbr}
-                        {value.tzManuallySet && " ✏️"}
-                      </span>
-                    )}
-                    {hasDist && (
-                      <span
-                        className="split-header-dist"
-                        style={{ color: distColor }}
-                      >
-                        {cumulativeDist!.toLocaleString(undefined, {
-                          minimumFractionDigits: 1,
-                          maximumFractionDigits: 1,
-                        })}{" "}
-                        {dLabel}
-                      </span>
-                    )}
-                  </div>
-                  {hasDist && (
-                    <span className="split-header-city">
-                      {nearbyCity_fetching && (
-                        <span className="split-nearby-city--loading">
-                          (finding nearest city…) ·{" "}
-                        </span>
-                      )}
-                      {!nearbyCity_fetching && nearbyCity && `${nearbyCity} · `}
-                      {sign === "exact"
-                        ? "✓ matches GPX"
-                        : sign === "under"
-                          ? `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} left`
-                          : `${absDiff.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel} over`}
-                    </span>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        )}
       </div>
 
-      {!collapsed && mapAvailable && (
+      {!collapsed && (
         <div className="split-view-bar">
-          <div
-            className="split-tri-slider"
-            onClick={handleSliderClick}
-            role="group"
-            aria-label="Layout"
-          >
-            <div className="split-tri-track" />
-            <div
-              className="split-tri-thumb"
-              style={{ left: `${THUMB_POS[layoutState]}px` }}
-            />
-            <div className="split-tri-labels">
-              {(["form", "both", "map"] as const).map((s) => (
-                <span
-                  key={s}
-                  className={`split-tri-label${layoutState === s ? " active" : ""}`}
-                >
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </span>
-              ))}
-            </div>
+          <div className="split-layout-toggles">
+            <button
+              type="button"
+              className={`split-layout-btn${showForm ? " active" : ""}`}
+              onClick={() => {
+                if (showForm && !showMap) return;
+                setShowForm((v) => !v);
+              }}
+            >
+              Form
+            </button>
+            <button
+              type="button"
+              className={`split-layout-btn${showMap ? " active" : ""}`}
+              disabled={!mapAvailable}
+              onClick={() => {
+                if (!showForm && showMap) return;
+                setShowMap((v) => !v);
+              }}
+            >
+              Map
+            </button>
+          </div>
+          <div className="split-action-buttons">
+            {onZoomToSplit && (
+              <button
+                type="button"
+                className="split-action-btn zoom-to-map-btn"
+                title="Zoom course map to this split"
+                onClick={() => onZoomToSplit()}
+              >
+                <i className="fa-regular fa-map"></i>
+              </button>
+            )}
+            {(canMoveToNextSeg ||
+              canShiftUp ||
+              canShiftDown ||
+              canMoveToNextSeg ||
+              canDelete) && <span className="view-bar-separator" />}
+            {canMoveToPrevSeg && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Move to previous segment"
+                onClick={() => onMoveToPrevSeg?.()}
+              >
+                <i className="fas fa-arrow-up" /> Prev Seg
+              </button>
+            )}
+            {canShiftUp && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Shift up"
+                onClick={() => onShiftUp?.()}
+              >
+                <i className="fa-solid fa-arrow-up"></i>
+              </button>
+            )}
+            {canShiftDown && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Shift down"
+                onClick={() => onShiftDown?.()}
+              >
+                {/* ↓ */}
+                <i className="fa-solid fa-arrow-down"></i>
+              </button>
+            )}
+            {canMoveToNextSeg && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Move to next segment"
+                onClick={() => onMoveToNextSeg?.()}
+              >
+                <i className="fas fa-arrow-down" /> Next Seg
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                className="split-action-btn split-action-btn--delete"
+                title="Delete this split"
+                onClick={() => setConfirmDeleteSplitOpen(true)}
+              >
+                <i className="fa-solid fa-trash"></i>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -473,7 +718,7 @@ export default function SplitFormComponent({
         (() => {
           // ── Shared form content (distance, overrides, sub-splits, rest stop) ──
           const formContent = (
-            <>
+            <div>
               {/* Row 1: Distance */}
               <div className="field">
                 <label htmlFor={`${prefix}-distance`}>
@@ -481,7 +726,7 @@ export default function SplitFormComponent({
                 </label>
                 <NumberInput
                   id={`${prefix}-distance`}
-                  step="any"
+                  step="0.25"
                   min="0"
                   value={value.distance}
                   onChange={(v) => update({ distance: v })}
@@ -489,92 +734,6 @@ export default function SplitFormComponent({
                 />
                 <FieldError fieldId={`${prefix}-distance`} />
               </div>
-
-              {/* Row 2: Sub-splits — mode dropdown + conditional option */}
-              <div className="fields-grid fields-grid--2col">
-                <div className="field">
-                  <label htmlFor={`${prefix}-ssm`}>Sub-Split Mode</label>
-                  <select
-                    id={`${prefix}-ssm`}
-                    value={value.sub_split_mode}
-                    onChange={(e) =>
-                      update({
-                        sub_split_mode: e.target.value as SubSplitMode,
-                      })
-                    }
-                  >
-                    <option value="even">Even</option>
-                    <option value="fixed">Fixed Size</option>
-                    <option value="custom">Custom</option>
-                  </select>
-                </div>
-
-                {value.sub_split_mode === "even" && (
-                  <div className="field">
-                    <label htmlFor={`${prefix}-ss-count`}>Count *</label>
-                    <NumberInput
-                      id={`${prefix}-ss-count`}
-                      min="1"
-                      step="1"
-                      value={value.sub_split_count}
-                      onChange={(v) => update({ sub_split_count: v })}
-                      placeholder="1"
-                    />
-                    <FieldError fieldId={`${prefix}-ss-count`} />
-                  </div>
-                )}
-
-                {value.sub_split_mode === "fixed" && (
-                  <div className="field">
-                    <label htmlFor={`${prefix}-ss-distance`}>
-                      Size ({dLabel}) *
-                    </label>
-                    <NumberInput
-                      id={`${prefix}-ss-distance`}
-                      step="any"
-                      value={value.sub_split_distance}
-                      onChange={(v) => update({ sub_split_distance: v })}
-                      placeholder="e.g. 20"
-                    />
-                    <FieldError fieldId={`${prefix}-ss-distance`} />
-                  </div>
-                )}
-
-                {value.sub_split_mode === "custom" && (
-                  <div className="field">
-                    <label htmlFor={`${prefix}-ss-distances`}>
-                      Distances (comma-sep.) *
-                    </label>
-                    <input
-                      id={`${prefix}-ss-distances`}
-                      type="text"
-                      value={value.sub_split_distances}
-                      onChange={(e) =>
-                        update({ sub_split_distances: e.target.value })
-                      }
-                      placeholder="e.g. 10, 20, 30"
-                    />
-                    <FieldError fieldId={`${prefix}-ss-distances`} />
-                  </div>
-                )}
-              </div>
-
-              {/* Fixed mode: threshold on its own row */}
-              {value.sub_split_mode === "fixed" && (
-                <div className="field">
-                  <label htmlFor={`${prefix}-ss-threshold`}>
-                    Last Threshold ({dLabel}) *
-                  </label>
-                  <NumberInput
-                    id={`${prefix}-ss-threshold`}
-                    step="any"
-                    value={value.last_sub_split_threshold}
-                    onChange={(v) => update({ last_sub_split_threshold: v })}
-                    placeholder="e.g. 10"
-                  />
-                  <FieldError fieldId={`${prefix}-ss-threshold`} />
-                </div>
-              )}
 
               {/* Action row: Overrides toggle */}
               <button
@@ -623,6 +782,112 @@ export default function SplitFormComponent({
                     allowNegative
                   />
 
+                  {/* Sub-split override */}
+                  <div className="field">
+                    <label htmlFor={`${prefix}-ss-mode`}>Sub-Splits</label>
+                    <select
+                      id={`${prefix}-ss-mode`}
+                      value={
+                        value.sub_split_override ? value.sub_split_mode : ""
+                      }
+                      onChange={(e) => {
+                        if (e.target.value === "") {
+                          update({ sub_split_override: false });
+                        } else {
+                          update({
+                            sub_split_override: true,
+                            sub_split_mode: e.target.value as SubSplitMode,
+                          });
+                        }
+                      }}
+                    >
+                      <option value="">
+                        Inherits (
+                        {courseSplitMode === "hour"
+                          ? "Hourly"
+                          : courseSplitMode === "even"
+                            ? "Even"
+                            : courseSplitMode === "fixed"
+                              ? "Fixed Size"
+                              : "Custom"}
+                        )
+                      </option>
+                      <option value="hour">Hourly</option>
+                      <option value="even">Even</option>
+                      <option value="fixed">Fixed Size</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+
+                  {value.sub_split_override &&
+                    value.sub_split_mode === "even" && (
+                      <div className="field">
+                        <label htmlFor={`${prefix}-ss-count`}>Count *</label>
+                        <NumberInput
+                          id={`${prefix}-ss-count`}
+                          min="1"
+                          step="1"
+                          value={value.sub_split_count}
+                          onChange={(v) => update({ sub_split_count: v })}
+                          placeholder="1"
+                        />
+                        <FieldError fieldId={`${prefix}-ss-count`} />
+                      </div>
+                    )}
+
+                  {value.sub_split_override &&
+                    value.sub_split_mode === "fixed" && (
+                      <>
+                        <div className="field">
+                          <label htmlFor={`${prefix}-ss-distance`}>
+                            Size ({dLabel}) *
+                          </label>
+                          <NumberInput
+                            id={`${prefix}-ss-distance`}
+                            step="any"
+                            value={value.sub_split_distance}
+                            onChange={(v) => update({ sub_split_distance: v })}
+                            placeholder="e.g. 20"
+                          />
+                          <FieldError fieldId={`${prefix}-ss-distance`} />
+                        </div>
+                        <div className="field">
+                          <label htmlFor={`${prefix}-ss-threshold`}>
+                            Last Threshold ({dLabel}) *
+                          </label>
+                          <NumberInput
+                            id={`${prefix}-ss-threshold`}
+                            step="any"
+                            value={value.last_sub_split_threshold}
+                            onChange={(v) =>
+                              update({ last_sub_split_threshold: v })
+                            }
+                            placeholder="e.g. 10"
+                          />
+                          <FieldError fieldId={`${prefix}-ss-threshold`} />
+                        </div>
+                      </>
+                    )}
+
+                  {value.sub_split_override &&
+                    value.sub_split_mode === "custom" && (
+                      <div className="field field--full-width">
+                        <label htmlFor={`${prefix}-ss-distances`}>
+                          Distances (comma-sep.) *
+                        </label>
+                        <input
+                          id={`${prefix}-ss-distances`}
+                          type="text"
+                          value={value.sub_split_distances}
+                          onChange={(e) =>
+                            update({ sub_split_distances: e.target.value })
+                          }
+                          placeholder="e.g. 10, 20, 30"
+                        />
+                        <FieldError fieldId={`${prefix}-ss-distances`} />
+                      </div>
+                    )}
+
                   <div className="field field--full-width">
                     <label htmlFor={`${prefix}-tz`}>
                       Split Timezone
@@ -648,15 +913,11 @@ export default function SplitFormComponent({
                         value.differentTimezone ? value.timezone : courseTz
                       }
                       onChange={(tz) =>
-                        update(
-                          tz === courseTz
-                            ? { differentTimezone: false, tzManuallySet: false }
-                            : {
-                                differentTimezone: true,
-                                timezone: tz,
-                                tzManuallySet: true,
-                              },
-                        )
+                        update({
+                          differentTimezone: true,
+                          timezone: tz,
+                          tzManuallySet: true,
+                        })
                       }
                     />
                   </div>
@@ -669,6 +930,7 @@ export default function SplitFormComponent({
                 value={value.rest_stop}
                 onChange={(rs) => update({ rest_stop: rs })}
                 addressLoading={addressLoading}
+                etaInfo={etaInfo}
               />
 
               {/* Notes */}
@@ -683,7 +945,7 @@ export default function SplitFormComponent({
                   onChange={(e) => update({ notes: e.target.value })}
                 />
               </div>
-            </>
+            </div>
           );
 
           // ── Map content (SplitEndpointMap) ──
@@ -708,48 +970,279 @@ export default function SplitFormComponent({
             </Suspense>
           ) : null;
 
-          // ── Select layout shell ──
-          if (mapAvailable && layoutState === "both") {
-            if (isNarrow) {
-              return (
-                <div className="split-two-pane split-two-pane--stacked">
-                  <div className="split-form-col">{formContent}</div>
-                  <div className="split-map-col">{mapContent}</div>
+          // ── Results panel content ──
+
+          const resultsContent = splitResult ? (
+            <div className="split-results-panel">
+              <dl className="split-results-grid">
+                <div>
+                  <dt title="Split start time">Start</dt>
+                  <dd>
+                    {fmtInTz(splitResult.start_time, splitStartTz ?? courseTz)}
+                    {splitStartTz && splitStartTz !== courseTz && (
+                      <span className="split-end-tz">
+                        {" "}
+                        {fmtInTz(splitResult.start_time, courseTz)}
+                      </span>
+                    )}
+                  </dd>
                 </div>
-              );
-            }
+                <div>
+                  <dt title="Split end time (arrival at rest stop or next split)">
+                    End
+                  </dt>
+                  <dd>
+                    {fmtInTz(splitResult.end_time, splitEndTz ?? courseTz)}
+                    {splitEndTz && splitEndTz !== courseTz && (
+                      <span className="split-end-tz">
+                        {" "}
+                        {fmtInTz(splitResult.end_time, courseTz)}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt title="Time spent actively riding or moving">Active</dt>
+                  <dd
+                    title={formatHours(splitResult.active_time_hours, "full")}
+                  >
+                    {formatHours(splitResult.active_time_hours)}
+                  </dd>
+                </div>
+                <div>
+                  <dt title="Time spent moving (excludes down time)">Moving</dt>
+                  <dd
+                    title={formatHours(splitResult.moving_time_hours, "full")}
+                  >
+                    {formatHours(splitResult.moving_time_hours)}
+                  </dd>
+                </div>
+                <div>
+                  <dt title="Time stopped or inactive">Down</dt>
+                  <dd title={formatHours(splitResult.down_time_hours, "full")}>
+                    {formatHours(splitResult.down_time_hours)}
+                  </dd>
+                </div>
+                <div>
+                  <dt title="Moving time + down time">Split Time</dt>
+                  <dd
+                    title={formatHours(
+                      splitResult.moving_time_hours +
+                        splitResult.down_time_hours,
+                      "full",
+                    )}
+                  >
+                    {formatHours(
+                      splitResult.moving_time_hours +
+                        splitResult.down_time_hours,
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt title="Average moving speed across this split">Speed</dt>
+                  <dd>
+                    {splitResult.moving_speed.toFixed(2)} {sLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt title="Average pace across this split">Pace</dt>
+                  <dd>
+                    {splitResult.pace.toFixed(2)} {sLabel}
+                  </dd>
+                </div>
+                {splitResult.adjustment_time_hours != null &&
+                  splitResult.adjustment_time_hours !== 0 && (
+                    <div>
+                      <dt title="Manual time adjustment applied to this split">
+                        Adj. Time
+                      </dt>
+                      <dd
+                        title={formatHours(
+                          splitResult.adjustment_time_hours,
+                          "full",
+                        )}
+                      >
+                        {formatHours(splitResult.adjustment_time_hours)}
+                      </dd>
+                    </div>
+                  )}
+                {etaInfo && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <dt title="These are the hours for the rest stop at the estimated time of arrival.">
+                      Rest Stop Hours
+                    </dt>
+                    <dd>
+                      <span>{etaInfo.hoursLabel}</span>
+                      {etaInfo.nearDetail && (
+                        <span className="split-results-near-detail">
+                          {etaInfo.nearDetail}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              {value.rest_stop.enabled &&
+                (value.rest_stop.name ||
+                  value.rest_stop.address ||
+                  value.rest_stop.alt ||
+                  value.notes) && (
+                  <div className="split-results-rs-info">
+                    {value.rest_stop.name && (
+                      <div className="split-results-rs-name">
+                        {value.rest_stop.alt ? (
+                          <a
+                            href={value.rest_stop.alt}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {value.rest_stop.name}
+                          </a>
+                        ) : (
+                          value.rest_stop.name
+                        )}
+                      </div>
+                    )}
+                    {value.rest_stop.address && (
+                      <div className="split-results-rs-address">
+                        {value.rest_stop.address}
+                      </div>
+                    )}
+                    {!value.rest_stop.name && value.rest_stop.alt && (
+                      <div className="split-results-rs-address">
+                        <a
+                          href={value.rest_stop.alt}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {value.rest_stop.alt}
+                        </a>
+                      </div>
+                    )}
+                    {value.notes && (
+                      <div className="split-results-rs-notes">
+                        {value.notes}
+                      </div>
+                    )}
+                  </div>
+                )}
+              {splitResult.sub_splits.length > 0 && (
+                <details className="split-sub-splits">
+                  <summary>
+                    Sub-splits ({splitResult.sub_splits.length})
+                  </summary>
+                  <table className="split-sub-splits-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Dist</th>
+                        <th>Moving</th>
+                        <th>Down</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {splitResult.sub_splits.map(
+                        (ss: SubSplitDetail, i: number) => (
+                          <tr key={i}>
+                            <td>{i + 1}</td>
+                            <td>
+                              {ss.distance.toLocaleString(undefined, {
+                                minimumFractionDigits: 1,
+                                maximumFractionDigits: 1,
+                              })}{" "}
+                              {dLabel}
+                            </td>
+                            <td>{formatHours(ss.moving_time_hours)}</td>
+                            <td>{formatHours(ss.down_time_hours)}</td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+            </div>
+          ) : (
+            <div className="split-results-panel split-results-panel--empty">
+              <span>No results — calculate first</span>
+            </div>
+          );
+
+          const hasFormOrMap = showForm || (showMap && mapAvailable);
+          const formMapPane = hasFormOrMap
+            ? (() => {
+                if (isNarrow) {
+                  return (
+                    <div className="split-two-pane split-two-pane--stacked">
+                      {showForm && (
+                        <div className="split-form-col">{formContent}</div>
+                      )}
+                      {showMap && mapAvailable && (
+                        <div className="split-map-col">{mapContent}</div>
+                      )}
+                    </div>
+                  );
+                }
+                if (showForm && showMap && mapAvailable) {
+                  return (
+                    <div className="split-two-pane">
+                      <div
+                        className="split-form-col"
+                        style={{ width: formColWidth }}
+                      >
+                        {formContent}
+                      </div>
+                      <div
+                        ref={resizeHandleRef}
+                        className="split-resize-handle"
+                        onMouseDown={(e) => {
+                          isDragging.current = true;
+                          dragStartX.current = e.clientX;
+                          dragStartWidth.current = formColWidth;
+                          resizeHandleRef.current?.classList.add("active");
+                          e.preventDefault();
+                        }}
+                      />
+                      <div className="split-map-col">{mapContent}</div>
+                    </div>
+                  );
+                }
+                if (showMap && mapAvailable) {
+                  return (
+                    <div className="split-two-pane">
+                      <div className="split-map-col--full">{mapContent}</div>
+                    </div>
+                  );
+                }
+                return <div className="split-body">{formContent}</div>;
+              })()
+            : null;
+
+          if (!showResults) {
             return (
-              <div className="split-two-pane">
-                <div className="split-form-col" style={{ width: formColWidth }}>
-                  {formContent}
-                </div>
-                <div
-                  ref={resizeHandleRef}
-                  className="split-resize-handle"
-                  onMouseDown={(e) => {
-                    isDragging.current = true;
-                    dragStartX.current = e.clientX;
-                    dragStartWidth.current = formColWidth;
-                    resizeHandleRef.current?.classList.add("active");
-                    e.preventDefault();
-                  }}
-                />
-                <div className="split-map-col">{mapContent}</div>
-              </div>
+              formMapPane ?? <div className="split-body">{formContent}</div>
             );
           }
 
-          if (mapAvailable && layoutState === "map") {
-            return (
-              <div className="split-two-pane">
-                <div className="split-map-col--full">{mapContent}</div>
-              </div>
-            );
-          }
-
-          // "form" or GPX not available — plain split-body (original layout, no map)
-          return <div className="split-body">{formContent}</div>;
+          return (
+            <div className="split-stacked-layout">
+              <div className="split-results-row">{resultsContent}</div>
+              {formMapPane}
+            </div>
+          );
         })()}
+      <ConfirmModal
+        open={confirmDeleteSplitOpen}
+        title="Delete Split"
+        message={`Delete ${headerTitle}?`}
+        confirmLabel="Delete Split"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirmDeleteSplitOpen(false)}
+        onConfirm={() => {
+          setConfirmDeleteSplitOpen(false);
+          onDelete?.();
+        }}
+      />
     </div>
   );
 }

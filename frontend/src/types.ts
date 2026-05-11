@@ -16,6 +16,8 @@ export interface SplitGpxProfile {
   avgGradePct: number;
   steepPct: number; // % of distance with grade > 5%
   surface: string; // e.g. "paved" | "gravel" | "unknown"
+  startLat: number;
+  startLon: number;
   endLat: number;
   endLon: number;
   endTimezone: string; // IANA tz at endpoint
@@ -23,9 +25,34 @@ export interface SplitGpxProfile {
   endKm: number;
 }
 
+export interface GpxWaypoint {
+  name: string;
+  lat: number;
+  lon: number;
+  description?: string;
+  symbol: "food";
+}
+
+/**
+ * Weather data sampled at a specific wall-clock hour along the course.
+ * The lat/lon is interpolated along the GPX track based on the fraction of
+ * elapsed time within the enclosing split.
+ */
+export interface HourlyWeatherPoint {
+  /** UTC ISO string for this wall-clock hour (e.g. "2025-07-15T14:00:00.000Z"). */
+  timeIso: string;
+  lat: number;
+  lon: number;
+  weather: import("./calculator/weather").SplitWeather;
+  /** Segment index this point belongs to. */
+  segIdx: number;
+  /** Split index (within segment) this point belongs to. */
+  splitIdx: number;
+}
+
 // ── API request types ──
 export type Mode = "distance" | "target_distance";
-export type SubSplitMode = "even" | "fixed" | "custom";
+export type SubSplitMode = "even" | "fixed" | "custom" | "hour";
 
 export interface RestStopPayload {
   name: string;
@@ -46,6 +73,7 @@ export interface SplitPayload {
   down_time?: number | null; // seconds
   moving_speed?: number | null;
   adjustment_time?: number; // seconds
+  end_timezone?: string | null; // IANA tz at split endpoint
 }
 
 export interface SegmentPayload {
@@ -57,6 +85,8 @@ export interface SegmentPayload {
   min_moving_speed?: number | null;
   sleep_time?: number; // seconds
   no_end_down_time: boolean;
+  nullified?: boolean;
+  fixed_elapsed_time_seconds?: number; // seconds
 }
 
 export interface CoursePayload {
@@ -67,6 +97,7 @@ export interface CoursePayload {
   down_time_ratio: number;
   split_delta: number;
   start_time: string; // ISO 8601
+  course_timezone?: string | null; // IANA tz for the course start
 }
 
 // ── Form state types (mirrors form inputs, not API) ──
@@ -80,14 +111,17 @@ export interface DayHoursEntry {
 }
 
 export function makeDefaultDayHours(): DayHoursEntry {
-  return { mode: "hours", opens: "06:00", closes: "22:00" };
+  return { mode: "closed", opens: "0:00", closes: "24:00" };
 }
 
 export interface RestStopForm {
   enabled: boolean;
+  backup: boolean;
   name: string;
   address: string;
   alt: string;
+  lat?: number;
+  lon?: number;
   sameHoursEveryDay: boolean;
   allDays: DayHoursEntry; // used when sameHoursEveryDay
   perDay: [
@@ -105,6 +139,7 @@ export interface SplitForm {
   name?: string;
   distance: string;
   sub_split_mode: SubSplitMode;
+  sub_split_override?: boolean; // when false/undefined, split inherits course-level mode
   sub_split_count: string;
   sub_split_distance: string;
   last_sub_split_threshold: string;
@@ -129,14 +164,22 @@ export interface SegmentForm {
   min_moving_speed: string;
   splitCount: string;
   splits: SplitForm[];
+  nullified?: boolean;
+  fixed_elapsed_time: string; // minutes
 }
 
 export interface CourseForm {
   name?: string;
   gpxFileName?: string; // filename (no .gpx) of the associated GPX, for IDB restore on import
+  rwgpsRouteId?: number | null; // RWGPS route ID used to re-fetch route tracks on reload/import
   unitSystem: UnitSystem;
   mode: Mode;
   timezone: string; // IANA timezone
+  sub_split_mode: SubSplitMode; // course-level default, splits may override
+  sub_split_count?: string;
+  sub_split_distance?: string;
+  last_sub_split_threshold?: string;
+  sub_split_distances?: string; // comma-separated
   init_moving_speed: string;
   min_moving_speed: string;
   down_time_ratio: string;
@@ -167,6 +210,8 @@ export interface SubSplitDetail {
 
 export interface SplitDetail extends SubSplitDetail {
   name?: string | null;
+  start_timezone?: string | null;
+  end_timezone?: string | null;
   sub_splits: SubSplitDetail[];
   adjustment_start: string;
   adjustment_time: string;
@@ -175,7 +220,6 @@ export interface SplitDetail extends SubSplitDetail {
     name: string;
     address: string;
     alt?: string | null;
-    arrival_date?: string | null;
   } | null;
 }
 
@@ -203,6 +247,7 @@ export interface SegmentDetail {
   moving_speed: null;
   adjustment_start: null;
   name: string | null;
+  nullified?: boolean;
 }
 
 export interface CourseDetail {
@@ -221,4 +266,5 @@ export interface CourseDetail {
   down_time_hours: number;
   moving_time_hours: number;
   sleep_time_hours: number;
+  transit_time_hours: number;
 }

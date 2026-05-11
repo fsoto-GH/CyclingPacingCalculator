@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from pacing.calculator.dtos.segment import Segment
 from pacing.calculator.dtos.split import Split
+from pacing.calculator.dtos.sub_split_mode import HourSubSplitMode
 from pacing.calculator.models.details.segment_detail import SegmentDetail
 from pacing.calculator.models.details.split_detail import SplitDetail
 from pacing.calculator.models.details.sub_split_detail import SubSplitDetail
@@ -15,6 +16,10 @@ def process_segment(segment: Segment,
                     split_delta: float,
                     distance: float,
                     ) -> SegmentDetail:
+    # Nullified (transit) segments bypass all pace/speed calculations.
+    if segment.nullified and segment.fixed_elapsed_time is not None:
+        return __compute_nullified_segment_detail(segment, start_time, moving_speed, distance)
+
     is_valid = __validate_segment(segment, moving_speed, min_moving_speed)
     if not is_valid:
         # in theory, this failed for an unexpected reason
@@ -30,11 +35,61 @@ def process_segment(segment: Segment,
                                     distance=distance)
 
 
+def __compute_nullified_segment_detail(segment: Segment,
+                                       start_time: datetime,
+                                       moving_speed: float,
+                                       distance: float,
+                                       ) -> SegmentDetail:
+    """Build a SegmentDetail for a nullified (transit) segment.
+
+    A nullified segment has a fixed elapsed time instead of pace-based
+    calculations. moving_time and down_time are both zero; the supplied
+    moving_speed is carried through unchanged to the next segment.
+    """
+    elapsed: timedelta = segment.fixed_elapsed_time  # type: ignore[assignment]
+    split = segment.splits[0]
+    elapsed_hours = elapsed.total_seconds() / 3600
+    pace = split.distance / elapsed_hours if elapsed_hours > 0 and split.distance > 0 else 0.0
+
+    nullified_split = SplitDetail(
+        distance=split.distance,
+        start_time=start_time,
+        end_time=start_time + elapsed,
+        moving_speed=moving_speed,
+        moving_time=timedelta(0),
+        down_time=timedelta(0),
+        split_time=timedelta(0),
+        active_time=elapsed,
+        pace=pace,
+        start_distance=distance,
+        sub_splits=[],
+        adjustment_start=start_time,
+        adjustment_time=timedelta(0),
+        name=split.name,
+    )
+
+    return SegmentDetail(
+        split_details=[nullified_split],
+        start_time=start_time,
+        end_time=start_time + elapsed,
+        end_moving_speed=moving_speed,
+        distance=split.distance,
+        start_distance=distance,
+        moving_time=timedelta(0),
+        down_time=timedelta(0),
+        sleep_time=segment.sleep_time,
+        adjustment_time=timedelta(0),
+        name=segment.name,
+        nullified=True,
+    )
+
+
 def __validate_segment(segment: Segment, moving_speed: float, min_moving_speed) -> bool:
-    curr_min_moving_speed = segment.moving_speed if segment.min_moving_speed is not None else min_moving_speed
+    curr_min_moving_speed = segment.min_moving_speed if segment.min_moving_speed is not None else min_moving_speed
     curr_moving_speed = segment.moving_speed if segment.moving_speed else moving_speed
 
-    if curr_moving_speed < curr_min_moving_speed:
+    # Only error if the segment explicitly sets a moving speed below its minimum
+    if segment.moving_speed is not None and curr_moving_speed < curr_min_moving_speed:
         raise ValueError('Split moving speed cannot be lower than the minimum moving speed')
 
     return True
@@ -85,8 +140,11 @@ def __compute_segment_detail(segment: Segment,
     if segment.down_time_ratio is not None:
         down_time_ratio = segment.down_time_ratio
 
-    if curr_moving_speed < min_moving_speed:
+    # Only error if the segment explicitly sets a moving speed below its minimum.
+    # When speed is inherited from a previous segment's decay, clamp it up instead.
+    if segment.moving_speed is not None and curr_moving_speed < min_moving_speed:
         raise ValueError('Split moving speed cannot be lower than the minimum moving speed')
+    curr_moving_speed = max(curr_moving_speed, min_moving_speed)
 
     for i, split in enumerate(segment.splits):
         # at this point, the following respect the course/segment-level settings:
@@ -172,32 +230,47 @@ def __compute_sub_split_detail(split: Split,
                                down_time: timedelta,
                                moving_speed: float,
                                no_end_down_time: bool) -> list[SubSplitDetail]:
-    sub_split_distances = split.sub_split_mode.sub_splits(split.distance)
+    # Compute effective DTR for the "hour" mode: distPerHour = speed / (1 + dtr)
+    # so each sub-split boundary is exactly one elapsed hour (moving + down time).
+    moving_time_h = split.distance / moving_speed
+    down_time_h = down_time.total_seconds() / 3600
+    effective_dtr = down_time_h / moving_time_h if moving_time_h > 0 else 0.0
+
+    sub_split_distances = split.sub_split_mode.sub_splits(split.distance, moving_speed, down_time_ratio=effective_dtr)
     res: list[SubSplitDetail] = []
 
-    # avoid technical computations and evenly split down_time
-    # could consider this being = moving_time * split.down_time_ratio or segment.down_time_ratio
-    # however, we'd need to handle cases where down_time is explicitly defined for splits
-    # down_time_count = len(sub_split_distances) - (1 if no_end_down_time else 0)
-    #
-    # # check if there is no_end_down_time and there is only one sub-split
-    # # illogical to have down_time disabled in this case
-    # if no_end_down_time and down_time_count == 0 and down_time.total_seconds() != 0:
-    #     raise ValueError("A sub-split calculation with no_end_down_time requires 1) at least two sub-splits or "
-    #                      "2) a down_time of zero.")
+    is_hour_mode = isinstance(split.sub_split_mode, HourSubSplitMode)
 
-    sub_split_down_time = timedelta(hours=0)
+    # For non-hour modes, down time is split evenly across all sub-splits.
+    sub_split_down_time = (
+        down_time / len(sub_split_distances)
+        if not is_hour_mode and len(sub_split_distances) > 0
+        else timedelta(0)
+    )
 
-    if down_time.total_seconds() != 0:
-        sub_split_down_time = down_time / len(sub_split_distances)
+    # For hour mode: rolling remainder bucket so each sub-split boundary falls
+    # on a wall-clock hour mark (moving + down = 1 h), draining the budget.
+    remaining_down_time = down_time if is_hour_mode else timedelta(0)
 
-    for i, sub_split_distance in enumerate(sub_split_distances):
-        # if we have exceeded our down_time_count, set down_time to 0
-        if i >= len(sub_split_distances):
-            sub_split_down_time = timedelta(hours=0)
-
+    for sub_split_distance in sub_split_distances:
         sub_split_moving_time = timedelta(hours=sub_split_distance / moving_speed)
-        sub_split_active_time = sub_split_moving_time + sub_split_down_time
+
+        if is_hour_mode:
+            down_per_sub = timedelta(hours=1) - sub_split_moving_time
+
+            # Case 1: less budget remaining than the ideal fill-to-1-hour amount
+            if remaining_down_time > timedelta(0) and remaining_down_time - down_per_sub < timedelta(0):
+                down_per_sub = remaining_down_time
+            # Case 2: budget exhausted
+            if remaining_down_time <= timedelta(0):
+                down_per_sub = timedelta(0)
+                remaining_down_time = timedelta(0)
+
+            remaining_down_time -= down_per_sub
+        else:
+            down_per_sub = sub_split_down_time
+
+        sub_split_active_time = sub_split_moving_time + down_per_sub
 
         sub_split_detail = SubSplitDetail(
             distance=sub_split_distance,
@@ -205,14 +278,14 @@ def __compute_sub_split_detail(split: Split,
             end_time=start_time + sub_split_active_time,
             moving_speed=moving_speed,
             moving_time=sub_split_moving_time,
-            down_time=sub_split_down_time,
+            down_time=down_per_sub,
             split_time=sub_split_active_time,
             active_time=sub_split_active_time,  # equal to split time because sub-splits do not consider adjusted time
             pace=sub_split_distance / (sub_split_active_time.total_seconds() / 3600),
             start_distance=start_distance
         )
 
-        start_time += sub_split_moving_time + sub_split_down_time
+        start_time += sub_split_active_time
         start_distance += sub_split_distance
 
         res.append(sub_split_detail)

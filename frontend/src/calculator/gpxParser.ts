@@ -5,6 +5,7 @@
 
 import tzlookup from "tz-lookup";
 import type { GpxTrackPoint, SplitGpxProfile } from "../types";
+import type { GpxWaypoint } from "../types";
 
 // ── Haversine distance ──────────────────────────────────────────────────────
 
@@ -23,6 +24,32 @@ function haversineKm(
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Return the track point within [startKm, endKm] that is closest to
+ * the given lat/lon.  Scoped to the split's boundary so a rest stop in
+ * split 3 won't snap to a track point in split 1.
+ * Returns null if `track` is empty or the boundary slice is empty.
+ */
+export function findNearestTrackPoint(
+  track: GpxTrackPoint[],
+  lat: number,
+  lon: number,
+  startKm: number,
+  endKm: number,
+): GpxTrackPoint | null {
+  let best: GpxTrackPoint | null = null;
+  let bestDist = Infinity;
+  for (const pt of track) {
+    if (pt.cumDist < startKm || pt.cumDist > endKm) continue;
+    const d = haversineKm(lat, lon, pt.lat, pt.lon);
+    if (d < bestDist) {
+      bestDist = d;
+      best = pt;
+    }
+  }
+  return best;
 }
 
 // ── GPX parsing ─────────────────────────────────────────────────────────────
@@ -120,7 +147,7 @@ function windowSmoothing(
 /**
  * Compute elevation gain and loss using the gpx.studio algorithm:
  *
- *  1. Ramer–Douglas–Peucker simplification (ε = 20 m in elevation-profile
+ *  1. Ramer-Douglas-Peucker simplification (ε = 20 m in elevation-profile
  *     space) to identify significant terrain anchors.
  *  2. Within each pair of adjacent anchors, apply a 100 m distance-window
  *     moving average to the raw elevations, forcing the raw value at each
@@ -286,6 +313,8 @@ export function computeSplitProfile(
       avgGradePct: 0,
       steepPct: 0,
       surface,
+      startLat: closest.lat,
+      startLon: closest.lon,
       endLat: closest.lat,
       endLon: closest.lon,
       endTimezone: tzlookup(closest.lat, closest.lon),
@@ -313,6 +342,7 @@ export function computeSplitProfile(
   const avgGradePct = (elevGainM / (splitDistKm * 1000)) * 100;
   const steepPct = (steepDistKm / splitDistKm) * 100;
 
+  const startPt = slice[0];
   const endPt = slice[slice.length - 1];
 
   return {
@@ -321,6 +351,8 @@ export function computeSplitProfile(
     avgGradePct: Math.round(avgGradePct * 10) / 10,
     steepPct: Math.round(steepPct),
     surface,
+    startLat: startPt.lat,
+    startLon: startPt.lon,
     endLat: endPt.lat,
     endLon: endPt.lon,
     endTimezone: tzlookup(endPt.lat, endPt.lon),
@@ -401,12 +433,57 @@ function escapeXml(s: string): string {
 }
 
 /**
+ * Format rest stop opening hours into a human-readable description string.
+ */
+export function formatRestStopHours(openHours: Record<string, string>): string {
+  if (!openHours || Object.keys(openHours).length === 0) {
+    return "Hours not specified";
+  }
+  if (openHours.fixed) {
+    return openHours.fixed;
+  }
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const hoursList = ["0", "1", "2", "3", "4", "5", "6"]
+    .map((i) => openHours[i])
+    .filter(Boolean);
+  if (hoursList.length === 0) {
+    return "Hours not specified";
+  }
+  const allSame = hoursList.every((h) => h === hoursList[0]);
+  if (allSame) {
+    return hoursList[0];
+  }
+  const grouped: Array<{ days: string[]; hours: string }> = [];
+  let currentHours = hoursList[0];
+  let dayGroup = [dayNames[0]];
+  for (let i = 1; i < 7; i++) {
+    const dayHours = openHours[String(i)];
+    if (dayHours === currentHours) {
+      dayGroup.push(dayNames[i]);
+    } else {
+      grouped.push({ days: dayGroup, hours: currentHours });
+      currentHours = dayHours;
+      dayGroup = [dayNames[i]];
+    }
+  }
+  grouped.push({ days: dayGroup, hours: currentHours });
+  return grouped
+    .map(({ days, hours }) => {
+      const dayRange =
+        days.length === 1 ? days[0] : `${days[0]}-${days[days.length - 1]}`;
+      return `${dayRange} ${hours}`;
+    })
+    .join("; ");
+}
+
+/**
  * Serialize a list of named track segments into a standard GPX 1.1 string.
  * Each entry in `segments` becomes its own <trkseg>.
  */
 export function buildGpxString(
   segments: Array<{ name: string; points: GpxTrackPoint[] }>,
   trackName = "Exported Track",
+  waypoints: GpxWaypoint[] = [],
 ): string {
   const trksegs = segments
     .filter((s) => s.points.length > 0)
@@ -421,13 +498,34 @@ export function buildGpxString(
     })
     .join("\n");
 
+  // Generate Garmin course points for waypoints
+  const wpts = waypoints
+    .map((w) => {
+      const desc = w.description
+        ? `<desc>${escapeXml(w.description)}</desc>`
+        : "";
+      return (
+        `  <wpt lat="${w.lat.toFixed(7)}" lon="${w.lon.toFixed(7)}">` +
+        `<name>${escapeXml(w.name)}</name>` +
+        desc +
+        `<sym>food</sym>` +
+        `<type>food</type>` +
+        `<extensions><gpx:course_point>food</gpx:course_point></extensions>` +
+        `</wpt>`
+      );
+    })
+    .join("\n");
+
+  const waypointXml = wpts.length > 0 ? `\n${wpts}\n` : "";
+
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<gpx version="1.1" creator="UltraCyclingPlanner" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+    `<gpx version="1.1" creator="UltraCyclingPlanner" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpx="http://www.garmin.com/xmlschemas/GpxExtension/v3">\n` +
     `  <trk>\n` +
     `    <name>${escapeXml(trackName)}</name>\n` +
     trksegs +
-    `\n  </trk>\n` +
+    `\n  </trk>` +
+    waypointXml +
     `</gpx>`
   );
 }

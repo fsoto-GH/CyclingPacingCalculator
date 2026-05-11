@@ -26,6 +26,7 @@ import type {
 } from "leaflet";
 import type {
   GpxTrackPoint,
+  HourlyWeatherPoint,
   UnitSystem,
   SegmentForm,
   SplitGpxProfile,
@@ -33,7 +34,9 @@ import type {
 import type { RestStopForm } from "../types";
 import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
 import { distanceLabel, SEGMENT_COLORS } from "../utils";
+import type { SunriseSunsetEntry } from "../calculator/weather";
 const ElevationProfile = lazy(() => import("./ElevationProfile"));
+const TemperatureChart = lazy(() => import("./TemperatureChart"));
 
 interface RouteMarker {
   lat: number;
@@ -44,6 +47,7 @@ interface RouteMarker {
   segIdx: number;
   splitIdx: number;
   notes?: string;
+  backup?: boolean;
 }
 
 interface CourseMapProps {
@@ -56,9 +60,19 @@ interface CourseMapProps {
   onMarkerClick?: (segIdx: number, splitIdx: number) => void;
   /** Display name shown in the elevation panel header. */
   courseName?: string;
+  /** When set, zoom the map to the given segment (or split within it). */
+  zoomTarget?: { segIdx: number; splitIdx?: number; rev: number } | null;
+  /** Hourly weather points for the wind overlay and temperature chart. */
+  hourlyWeather?: HourlyWeatherPoint[] | null;
+  /** IANA timezone of the course start — forwarded to TemperatureChart. */
+  courseTz?: string;
+  /** ISO end-times of each segment — used for boundary lines in TemperatureChart. */
+  segmentBoundaryTimes?: string[];
+  /** Sunrise and sunset events for the course date range. */
+  sunriseSunset?: SunriseSunsetEntry[];
 }
 
-/** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2–3k. */
+/** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2-3k. */
 function decimateTrack(track: GpxTrackPoint[]): [number, number][] {
   if (track.length === 0) return [];
   const result: [number, number][] = [[track[0].lat, track[0].lon]];
@@ -114,6 +128,20 @@ function makeTickIcon(label: string) {
     className: "",
     iconSize: [0, 0],
     iconAnchor: [0, 9],
+  });
+}
+
+function makeEndpointPinIcon(
+  role: Exclude<RouteMarker["role"], "stop">,
+  color: string,
+) {
+  const sizeClass = role === "split" ? "" : " route-endpoint-pin--lg";
+  return divIcon({
+    html: `<div class="route-endpoint-pin${sizeClass}" style="--marker-color:${color}"><i class="fa-solid fa-location-pin"></i></div>`,
+    className: "",
+    iconSize: [22, 30],
+    iconAnchor: [11, 29],
+    popupAnchor: [0, -26],
   });
 }
 
@@ -280,17 +308,12 @@ function SplitMarker({
 }) {
   const map = useMap();
   const canNav = onMarkerClick != null && m.splitIdx >= 0;
+  const icon = useMemo(
+    () => makeEndpointPinIcon(m.role as "start" | "split" | "finish", color),
+    [m.role, color],
+  );
   return (
-    <CircleMarker
-      center={[m.lat, m.lon]}
-      radius={m.role === "start" || m.role === "finish" ? 9 : 7}
-      pathOptions={{
-        color: "#1a1a2e",
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 1,
-      }}
-    >
+    <Marker position={[m.lat, m.lon]} icon={icon}>
       <Popup>
         <strong>{m.label}</strong>
         <br />
@@ -316,7 +339,7 @@ function SplitMarker({
           </>
         )}
       </Popup>
-    </CircleMarker>
+    </Marker>
   );
 }
 
@@ -331,12 +354,13 @@ function StopMarker({
   const icon = useMemo(
     () =>
       divIcon({
-        html: `<div class="stop-marker-icon">🛑</div>`,
+        html: `<div class="split-rest-stop-pin${m.backup ? " stop-marker-backup" : ""}"><i class="fa-solid fa-location-dot"></i></div>`,
         className: "",
-        iconSize: [22, 22],
-        iconAnchor: [11, 26],
+        iconSize: [20, 28],
+        iconAnchor: [10, 27],
+        popupAnchor: [0, -24],
       }),
-    [],
+    [m.backup],
   );
   const canNav = onMarkerClick != null && m.splitIdx >= 0;
   return (
@@ -391,6 +415,11 @@ export default function CourseMap({
   gpxProfiles,
   onMarkerClick,
   courseName,
+  zoomTarget,
+  hourlyWeather,
+  courseTz,
+  segmentBoundaryTimes,
+  sunriseSunset,
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
   const toUserDist =
@@ -411,9 +440,13 @@ export default function CourseMap({
         segBounds[segBounds.length - 1]?.[1] ??
         gpxTrack[gpxTrack.length - 1].cumDist;
       const slice = sliceTrackPoints(gpxTrack, startKm, endKm);
-      return { positions: decimateTrack(slice), segIdx: si };
+      return {
+        positions: decimateTrack(slice),
+        segIdx: si,
+        isTransit: !!formSegments[si]?.nullified,
+      };
     });
-  }, [gpxTrack, splitBoundariesKm]);
+  }, [gpxTrack, splitBoundariesKm, formSegments]);
 
   const bounds = useMemo<LatLngBoundsExpression>(() => {
     let minLat = Infinity,
@@ -448,7 +481,6 @@ export default function CourseMap({
     });
 
     // One marker per split end
-    let markerCount = 0;
     for (let si = 0; si < splitBoundariesKm.length; si++) {
       const segBounds = splitBoundariesKm[si];
       for (let sj = 0; sj < segBounds.length; sj++) {
@@ -467,7 +499,6 @@ export default function CourseMap({
         const distUser = toUserDist(endKm);
         const distanceStr = `${distUser.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`;
 
-        markerCount++;
         result.push({
           lat: coord.lat,
           lon: coord.lon,
@@ -486,7 +517,8 @@ export default function CourseMap({
       result[result.length - 1].role = "finish";
     }
 
-    // Rest stop markers — placed at split endpoints where a rest stop is enabled
+    // Rest stop markers — use the stop's own coordinates when available,
+    // otherwise fall back to the split endpoint position on the GPX track.
     for (let si = 0; si < splitBoundariesKm.length; si++) {
       const segBounds = splitBoundariesKm[si];
       for (let sj = 0; sj < segBounds.length; sj++) {
@@ -494,7 +526,10 @@ export default function CourseMap({
           formSegments[si]?.splits[sj]?.rest_stop;
         if (!rs?.enabled || !rs.name) continue;
         const [, endKm] = segBounds[sj];
-        const coord = interpolateLatLon(gpxTrack, endKm);
+        const hasOwnCoords = rs.lat != null && rs.lon != null;
+        const coord = hasOwnCoords
+          ? { lat: rs.lat!, lon: rs.lon! }
+          : interpolateLatLon(gpxTrack, endKm);
         if (!coord) continue;
         result.push({
           lat: coord.lat,
@@ -504,6 +539,7 @@ export default function CourseMap({
           segIdx: si,
           splitIdx: sj,
           role: "stop",
+          backup: rs.backup,
         });
       }
     }
@@ -516,13 +552,21 @@ export default function CourseMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMarkers, setShowMarkers] = useState(true);
+  const [showSplitMarkers, setShowSplitMarkers] = useState(true);
   const [showRestStops, setShowRestStops] = useState(false);
+  const [showWindOverlay, setShowWindOverlay] = useState(false);
   const [mapStyle, setMapStyle] = useState<"osm" | "topo">("osm");
   const [selectedSegIdx, setSelectedSegIdx] = useState<number | null>(null);
   const [hoverKm, setHoverKm] = useState<number | null>(null);
+  const [hoverWeatherPt, setHoverWeatherPt] =
+    useState<HourlyWeatherPoint | null>(null);
   const [elevZoomRange, setElevZoomRange] = useState<[number, number] | null>(
     null,
   );
+  const [tempZoomKey, setTempZoomKey] = useState<{
+    segIdx: number;
+    splitIdx?: number;
+  } | null>(null);
   const [, startSelectionTransition] = useTransition();
 
   // Throttle hover updates to one per animation frame — mousemove fires at
@@ -550,6 +594,40 @@ export default function CourseMap({
       setElevZoomRange(null);
     }
   }, [formSegments.length, selectedSegIdx]);
+
+  // React to external zoom requests from SegmentForm / SplitForm buttons.
+  const lastZoomRevRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!zoomTarget || zoomTarget.rev === lastZoomRevRef.current) return;
+    lastZoomRevRef.current = zoomTarget.rev;
+    startSelectionTransition(() => setSelectedSegIdx(zoomTarget.segIdx));
+    requestAnimationFrame(() => {
+      if (zoomTarget.splitIdx != null) {
+        fitToSplit(zoomTarget.segIdx, zoomTarget.splitIdx);
+        // Zoom elevation profile to the split's km range
+        const prof = gpxProfiles?.[zoomTarget.segIdx]?.[zoomTarget.splitIdx];
+        if (prof) {
+          setElevZoomRange([prof.startKm, prof.endKm]);
+        }
+      } else {
+        fitToSegment(zoomTarget.segIdx);
+        // Zoom elevation profile to the segment's km range
+        const segProfiles = gpxProfiles?.[zoomTarget.segIdx];
+        if (segProfiles && segProfiles.length > 0) {
+          setElevZoomRange([
+            segProfiles[0].startKm,
+            segProfiles[segProfiles.length - 1].endKm,
+          ]);
+        }
+      }
+      setTempZoomKey(
+        zoomTarget.splitIdx != null
+          ? { segIdx: zoomTarget.segIdx, splitIdx: zoomTarget.splitIdx }
+          : { segIdx: zoomTarget.segIdx },
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomTarget]);
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
@@ -620,6 +698,9 @@ export default function CourseMap({
             startSelectionTransition(() => {
               setSelectedSegIdx(si);
             });
+            // Zoom elevation profile and forecast chart to this split.
+            setElevZoomRange([p.startKm, p.endKm]);
+            setTempZoomKey({ segIdx: si, splitIdx: sj });
             // Defer the expensive sliceTrackPoints call to after paint.
             requestAnimationFrame(() => fitToSplit(si, sj));
             return;
@@ -654,9 +735,20 @@ export default function CourseMap({
           aria-label={showMarkers ? "Hide mile markers" : "Show mile markers"}
           style={{ opacity: showMarkers ? 1 : 0.5 }}
         >
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-          </svg>
+          <i className="fa-solid fa-flag" />
+        </button>
+        <button
+          className="map-split-markers-btn"
+          onClick={() => setShowSplitMarkers((v) => !v)}
+          title={
+            showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"
+          }
+          aria-label={
+            showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"
+          }
+          style={{ opacity: showSplitMarkers ? 1 : 0.5 }}
+        >
+          <i className="fa-solid fa-location-pin" />
         </button>
         <button
           className="map-stop-btn"
@@ -667,13 +759,9 @@ export default function CourseMap({
           aria-label={
             showRestStops ? "Hide rest stop markers" : "Show rest stop markers"
           }
-          style={{
-            opacity: showRestStops ? 1 : 0.5,
-            fontSize: "14px",
-            lineHeight: 1,
-          }}
+          style={{ opacity: showRestStops ? 1 : 0.5 }}
         >
-          🛑
+          <i className="fa-solid fa-location-dot" />
         </button>
         <button
           className="map-topo-btn"
@@ -692,6 +780,19 @@ export default function CourseMap({
         >
           🗻
         </button>
+        {hourlyWeather && hourlyWeather.length > 0 && (
+          <button
+            className="map-wind-btn"
+            onClick={() => setShowWindOverlay((v) => !v)}
+            title={showWindOverlay ? "Hide wind overlay" : "Show wind overlay"}
+            aria-label={
+              showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
+            }
+            style={{ opacity: showWindOverlay ? 1 : 0.5 }}
+          >
+            <i className="fa-solid fa-wind" />
+          </button>
+        )}
         <button
           className="map-reset-btn"
           onClick={() =>
@@ -769,7 +870,7 @@ export default function CourseMap({
             pane="route-lines"
           />
           {/* Colored segment overlays — paint over the ghost where splits are defined */}
-          {segmentPolylines.map(({ positions, segIdx }) => (
+          {segmentPolylines.map(({ positions, segIdx, isTransit }) => (
             <Polyline
               key={segIdx}
               positions={positions as LatLngExpression[]}
@@ -777,6 +878,7 @@ export default function CourseMap({
                 color: SEGMENT_COLORS[segIdx % SEGMENT_COLORS.length],
                 weight: 3,
                 opacity: 0.85,
+                dashArray: isTransit ? "12 12" : undefined,
               }}
               pane="route-lines"
             />
@@ -786,7 +888,7 @@ export default function CourseMap({
               showRestStops ? (
                 <StopMarker key={i} m={m} onMarkerClick={onMarkerClick} />
               ) : null
-            ) : (
+            ) : showSplitMarkers ? (
               <SplitMarker
                 key={i}
                 m={m}
@@ -797,7 +899,7 @@ export default function CourseMap({
                 }
                 onMarkerClick={onMarkerClick}
               />
-            ),
+            ) : null,
           )}
           {hoverKm !== null &&
             (() => {
@@ -817,6 +919,104 @@ export default function CourseMap({
                 />
               ) : null;
             })()}
+          {/* Temperature chart hover dot */}
+          {hoverWeatherPt !== null && (
+            <CircleMarker
+              center={[hoverWeatherPt.lat, hoverWeatherPt.lon]}
+              radius={7}
+              pathOptions={{
+                color: "#fff",
+                weight: 2.5,
+                fillColor: "#60a5fa",
+                fillOpacity: 1,
+              }}
+              interactive={false}
+              pane="route-labels"
+            />
+          )}
+          {/* Wind overlay — one arrow per hourly sample */}
+          {showWindOverlay &&
+            hourlyWeather &&
+            hourlyWeather.map((pt, i) => {
+              // ── Scale constants — adjust these to taste ──────────────────
+              /** px at 0 km/h wind */
+              const ARROW_MIN = 12;
+              /** px at max wind */
+              const ARROW_MAX = 64;
+              /** wind speed (km/h) that maps to ARROW_MAX */
+              const SPEED_AT_MAX = 60;
+              // ─────────────────────────────────────────────────────────────
+              const sz = Math.round(
+                ARROW_MIN +
+                  (ARROW_MAX - ARROW_MIN) *
+                    Math.min(pt.weather.windSpeed / SPEED_AT_MAX, 1),
+              );
+              const half = sz / 2;
+              // Arrow drawn in a 0 0 10 20 viewBox: shaft + arrowhead
+              // Shaft runs from (5,18) up to (5,8); head is a triangle at the top
+              const arrowSvg = `<svg viewBox="0 0 10 20" width="${sz}" height="${sz}" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${
+                (pt.weather.windDirection + 180) % 360
+              }deg);transform-origin:50% 50%;display:block;overflow:visible"><line x1="5" y1="18" x2="5" y2="9" stroke="rgba(255,255,255,0.9)" stroke-width="2.5" stroke-linecap="round"/><line x1="5" y1="18" x2="5" y2="9" stroke="#111827" stroke-width="1" stroke-linecap="round"/><polygon points="5,1 9,10 5,7 1,10" fill="#111827" stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+              return (
+                <Marker
+                  key={i}
+                  position={[pt.lat, pt.lon]}
+                  icon={divIcon({
+                    html: arrowSvg,
+                    className: "",
+                    iconSize: [sz, sz],
+                    iconAnchor: [half, half],
+                  })}
+                  pane="route-labels"
+                >
+                  <Popup>
+                    <div style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
+                      <strong>
+                        {new Date(pt.timeIso).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </strong>
+                      <br />
+                      Wind:{" "}
+                      {unitSystem === "imperial"
+                        ? Math.round(pt.weather.windSpeed / 1.60934)
+                        : Math.round(pt.weather.windSpeed)}{" "}
+                      {unitSystem === "imperial" ? "mph" : "km/h"} from{" "}
+                      {
+                        [
+                          "N",
+                          "NNE",
+                          "NE",
+                          "ENE",
+                          "E",
+                          "ESE",
+                          "SE",
+                          "SSE",
+                          "S",
+                          "SSW",
+                          "SW",
+                          "WSW",
+                          "W",
+                          "WNW",
+                          "NW",
+                          "NNW",
+                        ][Math.round(pt.weather.windDirection / 22.5) % 16]
+                      }
+                      {pt.weather.windGusts > pt.weather.windSpeed
+                        ? ` (gusts ${unitSystem === "imperial" ? Math.round(pt.weather.windGusts / 1.60934) : Math.round(pt.weather.windGusts)} ${unitSystem === "imperial" ? "mph" : "km/h"})`
+                        : ""}
+                      <br />
+                      Temp:{" "}
+                      {unitSystem === "imperial"
+                        ? Math.round((pt.weather.temperature * 9) / 5 + 32)
+                        : Math.round(pt.weather.temperature)}
+                      {unitSystem === "imperial" ? "°F" : "°C"}
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
         </MapContainer>
       </div>
       {/* ── Legend ── */}
@@ -880,14 +1080,16 @@ export default function CourseMap({
                 if (segProfiles && segProfiles.length > 0) {
                   const segStart = segProfiles[0].startKm;
                   const segEnd = segProfiles[segProfiles.length - 1].endKm;
-                  setElevZoomRange((prev) =>
-                    prev && prev[0] === segStart && prev[1] === segEnd
-                      ? null
-                      : [segStart, segEnd],
-                  );
+                  const alreadyZoomed =
+                    elevZoomRange &&
+                    elevZoomRange[0] === segStart &&
+                    elevZoomRange[1] === segEnd;
+                  setElevZoomRange(alreadyZoomed ? null : [segStart, segEnd]);
+                  setTempZoomKey(alreadyZoomed ? null : { segIdx: i });
                 } else {
                   // No profiles yet — clear any stale zoom.
                   setElevZoomRange(null);
+                  setTempZoomKey(null);
                 }
               }}
               title={`Zoom to ${seg.name}`}
@@ -969,14 +1171,17 @@ export default function CourseMap({
             <div className="cml-elev-panel">
               <div className="cml-elev-header">
                 <span className="cml-elev-title">{elevTitle}</span>
-                {elevZoomRange && (
+                {(elevZoomRange || tempZoomKey) && (
                   <button
                     type="button"
                     className="cml-elev-reset"
-                    onClick={() => setElevZoomRange(null)}
-                    title="Return to full course elevation"
+                    onClick={() => {
+                      setElevZoomRange(null);
+                      setTempZoomKey(null);
+                    }}
+                    title="Return to full course view"
                   >
-                    ↺ Reset
+                    <i className="fa-solid fa-arrow-rotate-left" /> Reset
                   </button>
                 )}
               </div>
@@ -995,6 +1200,65 @@ export default function CourseMap({
             </div>
           );
         })()}
+        {/* Temperature chart — shown once hourly weather is fetched */}
+        {hourlyWeather &&
+          hourlyWeather.length >= 2 &&
+          courseTz &&
+          (() => {
+            // Compute zoom domain from hourlyWeather when a zoom key is set
+            let tempZoomDomain: [number, number] | null = null;
+            let tempZoomLabel: string | undefined;
+            if (tempZoomKey) {
+              const pts =
+                tempZoomKey.splitIdx !== undefined
+                  ? hourlyWeather.filter(
+                      (p) =>
+                        p.segIdx === tempZoomKey.segIdx &&
+                        p.splitIdx === tempZoomKey.splitIdx,
+                    )
+                  : hourlyWeather.filter(
+                      (p) => p.segIdx === tempZoomKey.segIdx,
+                    );
+              if (pts.length >= 2) {
+                const times = pts.map((p) => new Date(p.timeIso).getTime());
+                const minMs = Math.min(...times);
+                const maxMs = Math.max(...times);
+                const span = maxMs - minMs;
+                const pad = Math.max(span * 0.05, 900_000);
+                tempZoomDomain = [minMs - pad, maxMs + pad];
+                tempZoomLabel =
+                  tempZoomKey.splitIdx !== undefined
+                    ? "split view"
+                    : "segment view";
+              }
+            }
+            return (
+              <div className="cml-elev-panel">
+                <div className="cml-elev-header">
+                  <span className="cml-elev-title">
+                    <i className="fa-solid fa-temperature-half" /> Forecast
+                    {tempZoomLabel && (
+                      <span className="temp-chart-zoom-badge">
+                        {tempZoomLabel}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <Suspense fallback={null}>
+                  <TemperatureChart
+                    hourlyWeather={hourlyWeather}
+                    courseTz={courseTz}
+                    unitSystem={unitSystem}
+                    segmentBoundaryTimes={segmentBoundaryTimes}
+                    onHoverPoint={setHoverWeatherPt}
+                    sunriseSunset={sunriseSunset}
+                    zoomDomain={tempZoomDomain}
+                    zoomLabel={tempZoomLabel}
+                  />
+                </Suspense>
+              </div>
+            );
+          })()}
       </div>
     </div>
   );

@@ -1,10 +1,28 @@
 version: "3.9"
 
 services:
+  postgres:
+    image: postgres:16
+    container_name: pacing-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: pacing
+      POSTGRES_PASSWORD: pacing
+      POSTGRES_DB: pacing
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pacing"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   pacing-api:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_ENABLE_PAID_APIS: ${VITE_ENABLE_PAID_APIS:-false}
     container_name: pacing-api
     ports:
       - "8000:8000"
@@ -15,7 +33,22 @@ services:
       - .:/pacing
       - /pacing/static
     restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
     # command here overrides the CMD in the Dockerfile, so it will run the API when the container starts
     command: uvicorn pacing.api.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - PYTHONPATH=/pacing
+      - DATABASE_URL=postgresql://pacing:pacing@postgres:5432/pacing
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8000}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
+      - RIDEWITHGPS_API_KEY=${RIDEWITHGPS_API_KEY:-}
+      - WEATHER_API_KEY=${WEATHER_API_KEY:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+
+volumes:
+  postgres_data:

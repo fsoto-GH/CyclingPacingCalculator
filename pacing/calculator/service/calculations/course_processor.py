@@ -96,6 +96,7 @@ def __compute_course_detail(course: Course, curr_distance: float = 0) -> CourseD
     total_down_time: timedelta = timedelta(hours=0)
     total_adjustment_time: timedelta = timedelta(hours=0)
     total_sleep_time: timedelta = timedelta(hours=0)
+    total_transit_time: timedelta = timedelta(hours=0)
 
     # rolling times
     rolling_adjustment_time: timedelta = timedelta(hours=0)
@@ -138,6 +139,8 @@ def __compute_course_detail(course: Course, curr_distance: float = 0) -> CourseD
         total_down_time += segment_detail.down_time
         total_adjustment_time += segment_detail.adjustment_time
         total_sleep_time += segment.sleep_time
+        if segment.nullified and segment.fixed_elapsed_time is not None:
+            total_transit_time += segment.fixed_elapsed_time
 
         curr_start_time += segment.sleep_time
 
@@ -150,5 +153,6 @@ def __compute_course_detail(course: Course, curr_distance: float = 0) -> CourseD
         down_time=total_down_time,
         sleep_time=total_sleep_time,
         adjustment_time=total_adjustment_time,
+        transit_time=total_transit_time,
         start_distance=initial_start_distance
     )

@@ -1,4 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, lazy, Suspense } from "react";
+
+const GpxExportModal = lazy(() => import("./GpxExportModal"));
+const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
 import type {
   SegmentForm,
   SplitForm as SplitFormType,
@@ -6,6 +9,9 @@ import type {
   Mode,
   SplitGpxProfile,
   GpxTrackPoint,
+  SplitDetail,
+  SegmentDetail,
+  SubSplitMode,
 } from "../types";
 import {
   speedLabel,
@@ -13,11 +19,15 @@ import {
   minutesToHms,
   SEGMENT_COLORS,
 } from "../utils";
+import { buildSegmentTimezoneSequence } from "../timeMath";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import SplitFormComponent from "./SplitForm";
+import RestStopFormComponent from "./RestStopForm";
 import { FieldError } from "./FieldError";
 import NumberInput from "./NumberInput";
+import ConfirmModal from "./ConfirmModal";
+import InsertZone from "./InsertZone";
 
 interface SegmentFormProps {
   segIndex: number;
@@ -52,6 +62,29 @@ interface SegmentFormProps {
   collapseSignal?: number;
   /** Increment to expand this segment and all its splits without scrolling. */
   expandAllSignal?: number;
+  /** Calculated split results for inline display inside each SplitForm. */
+  splitResults?: (SplitDetail | null)[];
+  /** Calculated segment result for inline display at segment level. */
+  segmentResult?: SegmentDetail | null;
+  /** Course-level sub-split mode default; splits may override. */
+  courseSplitMode: SubSplitMode;
+  /** Total number of segments in the course */
+  totalSegments?: number;
+  onMoveSplitToPrevSeg?: (splitIdx: number) => void;
+  onMoveSplitToNextSeg?: (splitIdx: number) => void;
+  onDeleteSplit?: (splitIdx: number) => void;
+  canDeleteSegment?: boolean;
+  onDeleteSegment?: () => void;
+  onInsertSplitAfter?: (splitIdx: number) => void;
+  /** Whether the immediately preceding segment is in transit (nullified) mode */
+  prevSegNullified?: boolean;
+  /** Whether the immediately following segment is in transit (nullified) mode */
+  nextSegNullified?: boolean;
+  etaMarginOpen?: number;
+  etaMarginClose?: number;
+  onZoomToSegment?: () => void;
+  onZoomToSplit?: (splitIdx: number) => void;
+  splitBoundariesKm?: [number, number][] | null;
 }
 
 export default function SegmentFormComponent({
@@ -75,6 +108,22 @@ export default function SegmentFormComponent({
   expandSplitIdx = -1,
   collapseSignal,
   expandAllSignal,
+  splitResults,
+  courseSplitMode,
+  totalSegments = 1,
+  onMoveSplitToPrevSeg,
+  onMoveSplitToNextSeg,
+  onDeleteSplit,
+  canDeleteSegment,
+  onDeleteSegment,
+  onInsertSplitAfter,
+  prevSegNullified = false,
+  nextSegNullified = false,
+  etaMarginOpen = 15,
+  etaMarginClose = 7,
+  onZoomToSegment,
+  onZoomToSplit,
+  splitBoundariesKm,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -95,6 +144,47 @@ export default function SegmentFormComponent({
   const segColor = SEGMENT_COLORS[segIndex % SEGMENT_COLORS.length];
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const [confirmDeleteSegmentOpen, setConfirmDeleteSegmentOpen] =
+    useState(false);
+  const [confirmTransitOpen, setConfirmTransitOpen] = useState(false);
+  const [confirmReduceSplitsOpen, setConfirmReduceSplitsOpen] = useState(false);
+  const [pendingSplitCountRaw, setPendingSplitCountRaw] = useState<
+    string | null
+  >(null);
+  const [
+    pendingDeletedSplitDistanceCount,
+    setPendingDeletedSplitDistanceCount,
+  ] = useState(0);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
+  const [targetSplitSignal, setTargetSplitSignal] = useState(0);
+  const [transitJumpPulse, setTransitJumpPulse] = useState(false);
+  const transitPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const splitHasDistanceValue = (split: SplitFormType): boolean => {
+    const raw = split.distance?.trim();
+    if (!raw) return false;
+    return !Number.isNaN(Number(raw));
+  };
+
+  const applySplitCountChange = (raw: string) => {
+    update({ splitCount: raw });
+    const n = parseInt(raw, 10);
+    if (!isNaN(n) && n > 0) {
+      const curr = value.splits;
+      if (n > curr.length) {
+        const extra: SplitFormType[] = Array.from(
+          { length: n - curr.length },
+          makeDefaultSplit,
+        );
+        update({ splitCount: raw, splits: [...curr, ...extra] });
+      } else if (n < curr.length) {
+        update({ splitCount: raw, splits: curr.slice(0, n) });
+      }
+    }
+  };
 
   // When segment transitions to collapsed, cascade a collapse to all splits
   useEffect(() => {
@@ -112,6 +202,20 @@ export default function SegmentFormComponent({
     if (!expandSignal || expandSignal === lastFiredExpandRef.current) return;
     lastFiredExpandRef.current = expandSignal;
     setCollapsed(false);
+    if (value.nullified) {
+      setTransitJumpPulse(true);
+      if (transitPulseTimerRef.current !== null) {
+        clearTimeout(transitPulseTimerRef.current);
+      }
+      transitPulseTimerRef.current = setTimeout(() => {
+        setTransitJumpPulse(false);
+        transitPulseTimerRef.current = null;
+      }, 2200);
+    }
+    if (expandSplitIdx >= 0) {
+      setTargetSplitIdx(expandSplitIdx);
+      setTargetSplitSignal((s) => s + 1);
+    }
     // Scroll after the DOM has expanded
     requestAnimationFrame(() => {
       segRootRef.current?.scrollIntoView({
@@ -119,7 +223,30 @@ export default function SegmentFormComponent({
         block: "start",
       });
     });
-  }, [expandSignal]);
+    return () => {
+      // Reset on unmount so fresh mounts (StrictMode remount or page flip) can fire again
+      lastFiredExpandRef.current = undefined;
+    };
+  }, [expandSignal, expandSplitIdx, value.nullified]);
+
+  useEffect(() => {
+    return () => {
+      if (transitPulseTimerRef.current !== null) {
+        clearTimeout(transitPulseTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Clear the split-expand signal after SplitForm children have consumed it.
+  // React fires children's effects before parents', so splits get to read the
+  // signal first; then this effect resets it so stale values don't re-fire
+  // when splits unmount/remount (e.g. segment collapse → expand).
+  useEffect(() => {
+    if (targetSplitSignal > 0) {
+      setTargetSplitSignal(0);
+      setTargetSplitIdx(-1);
+    }
+  }, [targetSplitSignal]);
 
   useEffect(() => {
     if (!collapseSignal) return;
@@ -132,20 +259,20 @@ export default function SegmentFormComponent({
   }, [expandAllSignal]);
 
   const handleSplitCountChange = (raw: string) => {
-    update({ splitCount: raw });
     const n = parseInt(raw, 10);
-    if (!isNaN(n) && n > 0) {
-      const curr = value.splits;
-      if (n > curr.length) {
-        const extra: SplitFormType[] = Array.from(
-          { length: n - curr.length },
-          makeDefaultSplit,
-        );
-        update({ splitCount: raw, splits: [...curr, ...extra] });
-      } else if (n < curr.length) {
-        update({ splitCount: raw, splits: curr.slice(0, n) });
+    if (!isNaN(n) && n > 0 && n < value.splits.length) {
+      const removedSplits = value.splits.slice(n);
+      const removedWithDistance = removedSplits.filter(
+        splitHasDistanceValue,
+      ).length;
+      if (removedWithDistance > 0) {
+        setPendingSplitCountRaw(raw);
+        setPendingDeletedSplitDistanceCount(removedWithDistance);
+        setConfirmReduceSplitsOpen(true);
+        return;
       }
     }
+    applySplitCountChange(raw);
   };
 
   const updateSplit = (i: number, split: SplitFormType) => {
@@ -184,58 +311,11 @@ export default function SegmentFormComponent({
   const segCumulativeDist = cumulativeDists?.[lastSplitIdx] ?? null;
   const segEndCity = cityLabels?.[lastSplitIdx] ?? null;
   const segEndCityFetching = cityFetching?.[lastSplitIdx] ?? false;
-
-  // Ordered, adjacent-deduplicated TZ abbreviations across this segment's splits.
-  // The effective TZ per split mirrors the logic in SplitForm's auto-detection useEffect
-  // so that badges stay accurate even when the segment is collapsed (splits unmounted):
-  //   - tzManuallySet → honour the stored differentTimezone / timezone fields as-is
-  //   - otherwise     → derive from gpxProfile.endTimezone vs courseTz (same as the effect)
-  // The leading entry is dropped when it matches the course TZ (not a "new" zone).
-  const segTzSequence = (() => {
-    const courseTzAbbr =
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: courseTz,
-        timeZoneName: "short",
-      })
-        .formatToParts(new Date())
-        .find((p) => p.type === "timeZoneName")?.value ?? courseTz;
-
-    const result: { tz: string; abbr: string }[] = [];
-    let prevAbbr: string | null = null;
-
-    value.splits.forEach((split, j) => {
-      let tz: string;
-      if (split.tzManuallySet) {
-        // User explicitly set TZ — trust the stored flag.
-        tz =
-          split.differentTimezone && split.timezone ? split.timezone : courseTz;
-      } else {
-        // Auto-detected: mirror SplitForm's useEffect logic so the badge is
-        // correct even before the effect has a chance to run on mount.
-        const detectedTz = gpxProfiles?.[j]?.endTimezone ?? null;
-        tz = detectedTz && detectedTz !== courseTz ? detectedTz : courseTz;
-      }
-
-      const abbr =
-        new Intl.DateTimeFormat("en-US", {
-          timeZone: tz,
-          timeZoneName: "short",
-        })
-          .formatToParts(new Date())
-          .find((p) => p.type === "timeZoneName")?.value ?? tz;
-
-      if (abbr !== prevAbbr) {
-        result.push({ tz, abbr });
-        prevAbbr = abbr;
-      }
-    });
-
-    // Drop the leading entry if it just reflects the course TZ.
-    if (result.length > 0 && result[0].abbr === courseTzAbbr) {
-      return result.slice(1);
-    }
-    return result;
-  })();
+  const segTzSequence = buildSegmentTimezoneSequence(
+    value.splits,
+    courseTz,
+    gpxProfiles,
+  );
 
   // Aggregate GPX stats across all splits
   const validProfiles = (gpxProfiles ?? []).filter(
@@ -271,10 +351,32 @@ export default function SegmentFormComponent({
       : null;
 
   return (
-    <div className="segment-form" ref={segRootRef}>
-      <div className="segment-header" onClick={() => setCollapsed(!collapsed)}>
+    <div
+      className={`segment-form${transitJumpPulse ? " segment-form--transit-jump-pulse" : ""}`}
+      ref={segRootRef}
+    >
+      <div
+        className="segment-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed(!collapsed)}
+        onKeyDown={(e) => {
+          if (
+            (e.key === "Enter" || e.key === " ") &&
+            e.target === e.currentTarget
+          ) {
+            e.preventDefault();
+            setCollapsed(!collapsed);
+          }
+        }}
+      >
         <span className="collapse-icon" style={{ color: segColor }}>
-          {collapsed ? "▶" : "▼"}
+          {collapsed ? (
+            <i className="fas fa-chevron-right" />
+          ) : (
+            <i className="fas fa-chevron-down" />
+          )}
         </span>
         <div className="split-header-left">
           <div className="split-header-titlerow">
@@ -307,17 +409,22 @@ export default function SegmentFormComponent({
                   setTimeout(() => nameInputRef.current?.focus(), 0);
                 }}
               >
+                {value.nullified && (
+                  <i
+                    className="fa-solid fa-forward-fast"
+                    title="Transit segment — fixed elapsed time"
+                    style={{ marginRight: "0.4em", opacity: 0.8 }}
+                  />
+                )}
                 {headerTitle}
                 {splitStatuses?.some((s) => s === "over") && (
                   <span className="gpx-dist-asterisk gpx-dist-asterisk--over">
-                    {" "}
-                    *
+                    {` ${splitStatuses.filter((x) => x === "over").length} over`}
                   </span>
                 )}
                 {splitStatuses?.some((s) => s === "under-last") && (
                   <span className="gpx-dist-asterisk gpx-dist-asterisk--under">
-                    {" "}
-                    *
+                    {` ${splitStatuses.filter((x) => x === "under-last").length} under`}
                   </span>
                 )}
               </span>
@@ -362,7 +469,8 @@ export default function SegmentFormComponent({
                   className="split-header-meta-item split-header-meta-item--steep"
                   title="% of distance with grade > 5%"
                 >
-                  ⚠ {aggGpx.steepPct}% steep
+                  <i className="fa-solid fa-triangle-exclamation"></i>{" "}
+                  {aggGpx.steepPct}% steep
                 </span>
               )}
             </div>
@@ -380,7 +488,7 @@ export default function SegmentFormComponent({
                   className="split-header-meta-item split-header-meta-item--tz"
                   title={`Timezone: ${tz}`}
                 >
-                  🕐 {abbr}
+                  <i className="fa-solid fa-clock-rotate-left"></i> {abbr}
                 </span>
               ))}
               {segCumulativeDist != null && (
@@ -410,7 +518,11 @@ export default function SegmentFormComponent({
                     ) : (
                       (segEndCity ?? null)
                     );
-                    const sleepPart = sleepHms ? `${sleepHms} 💤` : null;
+                    const sleepPart = sleepHms ? (
+                      <>
+                        {sleepHms} <i className="fa-solid fa-moon"></i>
+                      </>
+                    ) : null;
                     if (segEndCityFetching) {
                       return sleepPart ? (
                         <>
@@ -422,170 +534,462 @@ export default function SegmentFormComponent({
                         cityPart
                       );
                     }
-                    return [cityPart, sleepPart].filter(Boolean).join(" · ");
+                    if (!cityPart && !sleepPart) return null;
+                    return (
+                      <>
+                        {cityPart}
+                        {cityPart && sleepPart && " · "}
+                        {sleepPart}
+                      </>
+                    );
                   })()}
                 </span>
               )}
           </div>
         )}
       </div>
+      {!collapsed && (
+        <div className="segment-view-bar">
+          <div className="split-layout-toggles">
+            <label
+              className="split-layout-toggle-label"
+              title="Transit segment — fixed elapsed time, no pace calculation"
+            >
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={!!value.nullified}
+                  onChange={() => {
+                    if (!value.nullified && value.splits.length > 1) {
+                      setConfirmTransitOpen(true);
+                    } else {
+                      const on = !value.nullified;
+                      update({
+                        nullified: on,
+                        ...(on
+                          ? {
+                              splitCount: "1",
+                              splits: value.splits.slice(0, 1),
+                            }
+                          : {}),
+                      });
+                    }
+                  }}
+                />
+                <span className="toggle-track" />
+                <span className="toggle-thumb" />
+              </label>
+              <i className="fa-solid fa-forward-fast" /> Transit
+            </label>
+          </div>
+          <div className="split-action-buttons">
+            {gpxTrack && (
+              <button
+                type="button"
+                className="split-action-btn"
+                title="Export GPX splits for this segment"
+                onClick={() => setShowExportModal(true)}
+              >
+                <i className="fa-solid fa-download"></i> GPX
+              </button>
+            )}
+            {onZoomToSegment && (
+              <button
+                type="button"
+                className="split-action-btn zoom-to-map-btn"
+                title="Zoom course map to this segment"
+                onClick={() => onZoomToSegment()}
+              >
+                <i className="fa-regular fa-map"></i>
+              </button>
+            )}
+            {canDeleteSegment && (
+              <>
+                <span className="view-bar-separator" />
+                <button
+                  type="button"
+                  className="split-action-btn split-action-btn--delete"
+                  title="Delete this segment"
+                  onClick={() => setConfirmDeleteSegmentOpen(true)}
+                >
+                  <i className="fa-solid fa-trash"></i>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {!collapsed && (
         <div className="segment-body">
-          <div className="fields-grid">
-            <TimeInput
-              id={`${prefix}-sleep-time`}
-              label="Sleep Time"
-              value={value.sleep_time}
-              onChange={(v) => update({ sleep_time: v })}
-            />
+          {value.nullified ? (
+            (() => {
+              const transitSplit = value.splits[0] ?? makeDefaultSplit();
+              return (
+                <>
+                  <div className="fields-grid">
+                    <TimeInput
+                      id={`${prefix}-transit-time`}
+                      label="Transit Time"
+                      value={value.fixed_elapsed_time ?? ""}
+                      onChange={(v) => update({ fixed_elapsed_time: v })}
+                    />
+                    <div className="field">
+                      <label htmlFor={`${prefix}-transit-dist`}>
+                        Distance ({dLabel})
+                      </label>
+                      <NumberInput
+                        id={`${prefix}-transit-dist`}
+                        step="0.25"
+                        min="0"
+                        value={value.splits[0]?.distance ?? ""}
+                        onChange={(v) => {
+                          update({
+                            splits: [{ ...transitSplit, distance: v }],
+                          });
+                        }}
+                        placeholder="0"
+                      />
+                      <FieldError fieldId={`${prefix}-transit-dist`} />
+                    </div>
+                  </div>
 
-            <div className="field">
-              <label htmlFor={`${prefix}-split-count`}># of Splits</label>
-              <NumberInput
-                id={`${prefix}-split-count`}
-                min="1"
-                step="1"
-                value={value.splitCount}
-                onChange={(v) => handleSplitCountChange(v)}
-                placeholder="1"
-              />
-              <FieldError fieldId={`${prefix}-split-count`} />
-            </div>
-
-            <div className="field">
-              <label
-                htmlFor={`${prefix}-end-dt`}
-                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-              >
-                <label className="toggle-switch">
-                  <input
-                    id={`${prefix}-end-dt`}
-                    type="checkbox"
-                    checked={value.include_end_down_time}
-                    onChange={(e) =>
-                      update({ include_end_down_time: e.target.checked })
+                  <RestStopFormComponent
+                    prefix={`${prefix}-transit-rs`}
+                    value={transitSplit.rest_stop}
+                    onChange={(rs) =>
+                      update({ splits: [{ ...transitSplit, rest_stop: rs }] })
                     }
                   />
-                  <span className="toggle-track" />
-                  <span className="toggle-thumb" />
-                </label>
-                Down Time on Last
-              </label>
-            </div>
-          </div>
 
-          <button
-            type="button"
-            className="optional-toggle"
-            onClick={() => setShowOptional(!showOptional)}
-          >
-            <span className={`chevron${showOptional ? " open" : ""}`}>▶</span>
-            Optional overrides
-          </button>
+                  <div className="field split-notes-field">
+                    <label htmlFor={`${prefix}-transit-notes`}>Notes</label>
+                    <textarea
+                      id={`${prefix}-transit-notes`}
+                      className="split-notes-textarea"
+                      rows={2}
+                      placeholder="Optional rider notes for this transit leg…"
+                      value={transitSplit.notes ?? ""}
+                      onChange={(e) =>
+                        update({
+                          splits: [{ ...transitSplit, notes: e.target.value }],
+                        })
+                      }
+                    />
+                  </div>
 
-          {showOptional && (
-            <div className="optional-fields fields-grid">
-              <div className="field">
-                <label htmlFor={`${prefix}-dtr`}>Down Time Ratio</label>
-                <NumberInput
-                  id={`${prefix}-dtr`}
-                  step="0.05"
-                  min="0"
-                  max="1"
-                  value={value.down_time_ratio}
-                  onChange={(v) => update({ down_time_ratio: v })}
-                  placeholder="Inherits"
+                  {gpxTrack &&
+                    validProfiles.length > 0 &&
+                    (() => {
+                      const firstProfile = validProfiles[0];
+                      const lastProfile =
+                        validProfiles[validProfiles.length - 1];
+                      return (
+                        <Suspense
+                          fallback={
+                            <div className="map-loading">Loading map…</div>
+                          }
+                        >
+                          <TransitSegmentMap
+                            gpxTrack={gpxTrack}
+                            startKm={firstProfile.startKm}
+                            endKm={lastProfile.endKm}
+                            unitSystem={unitSystem}
+                            segmentColor={segColor}
+                            restStop={transitSplit.rest_stop}
+                            onSelectStop={(patch) =>
+                              update({
+                                splits: [
+                                  {
+                                    ...transitSplit,
+                                    rest_stop: {
+                                      ...transitSplit.rest_stop,
+                                      ...patch,
+                                    },
+                                  },
+                                ],
+                              })
+                            }
+                          />
+                        </Suspense>
+                      );
+                    })()}
+                </>
+              );
+            })()
+          ) : (
+            <>
+              <div className="fields-grid">
+                <TimeInput
+                  id={`${prefix}-sleep-time`}
+                  label="Sleep Time"
+                  value={value.sleep_time}
+                  onChange={(v) => update({ sleep_time: v })}
                 />
-                <FieldError fieldId={`${prefix}-dtr`} />
+
+                <div className="field">
+                  <label htmlFor={`${prefix}-split-count`}># of Splits</label>
+                  <NumberInput
+                    id={`${prefix}-split-count`}
+                    min="1"
+                    step="1"
+                    value={value.splitCount}
+                    onChange={(v) => handleSplitCountChange(v)}
+                    placeholder="1"
+                  />
+                  <FieldError fieldId={`${prefix}-split-count`} />
+                </div>
+
+                <div className="field">
+                  <label
+                    htmlFor={`${prefix}-end-dt`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    <label className="toggle-switch">
+                      <input
+                        id={`${prefix}-end-dt`}
+                        type="checkbox"
+                        checked={value.include_end_down_time}
+                        onChange={(e) =>
+                          update({ include_end_down_time: e.target.checked })
+                        }
+                      />
+                      <span className="toggle-track" />
+                      <span className="toggle-thumb" />
+                    </label>
+                    Down Time on Last
+                  </label>
+                </div>
               </div>
 
-              <div className="field">
-                <label
-                  htmlFor={`${prefix}-split-delta`}
-                  title="Per-split speed change; negative = decelerating"
-                >
-                  Speed Delta ({sLabel})
-                </label>
-                <NumberInput
-                  id={`${prefix}-split-delta`}
-                  step="any"
-                  value={value.split_delta}
-                  onChange={(v) => update({ split_delta: v })}
-                  placeholder="Inherits"
-                />
-              </div>
+              <button
+                type="button"
+                className="optional-toggle"
+                onClick={() => setShowOptional(!showOptional)}
+              >
+                <span className={`chevron${showOptional ? " open" : ""}`}>
+                  <i className="fas fa-chevron-right" />
+                </span>
+                Optional overrides
+              </button>
 
-              <div className="field">
-                <label htmlFor={`${prefix}-moving-speed`}>
-                  Speed ({sLabel})
-                </label>
-                <NumberInput
-                  id={`${prefix}-moving-speed`}
-                  step="any"
-                  value={value.moving_speed}
-                  onChange={(v) => update({ moving_speed: v })}
-                  placeholder="Inherits"
-                />
-                <FieldError fieldId={`${prefix}-moving-speed`} />
-              </div>
+              {showOptional && (
+                <div className="optional-fields fields-grid">
+                  <div className="field">
+                    <label htmlFor={`${prefix}-dtr`}>Down Time Ratio</label>
+                    <NumberInput
+                      id={`${prefix}-dtr`}
+                      step="0.05"
+                      min="0"
+                      max="1"
+                      value={value.down_time_ratio}
+                      onChange={(v) => update({ down_time_ratio: v })}
+                      placeholder="Inherits"
+                    />
+                    <FieldError fieldId={`${prefix}-dtr`} />
+                  </div>
 
-              <div className="field">
-                <label htmlFor={`${prefix}-min-speed`}>
-                  Min Speed ({sLabel})
-                </label>
-                <NumberInput
-                  id={`${prefix}-min-speed`}
-                  step="any"
-                  value={value.min_moving_speed}
-                  onChange={(v) => update({ min_moving_speed: v })}
-                  placeholder="Inherits"
-                />
-                <FieldError fieldId={`${prefix}-min-speed`} />
+                  <div className="field">
+                    <label
+                      htmlFor={`${prefix}-split-delta`}
+                      title="Per-split speed change; negative = decelerating"
+                    >
+                      Speed Delta ({sLabel})
+                    </label>
+                    <NumberInput
+                      id={`${prefix}-split-delta`}
+                      step="any"
+                      value={value.split_delta}
+                      onChange={(v) => update({ split_delta: v })}
+                      placeholder="Inherits"
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor={`${prefix}-moving-speed`}>
+                      Speed ({sLabel})
+                    </label>
+                    <NumberInput
+                      id={`${prefix}-moving-speed`}
+                      step="any"
+                      value={value.moving_speed}
+                      onChange={(v) => update({ moving_speed: v })}
+                      placeholder="Inherits"
+                    />
+                    <FieldError fieldId={`${prefix}-moving-speed`} />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor={`${prefix}-min-speed`}>
+                      Min Speed ({sLabel})
+                    </label>
+                    <NumberInput
+                      id={`${prefix}-min-speed`}
+                      step="any"
+                      value={value.min_moving_speed}
+                      onChange={(v) => update({ min_moving_speed: v })}
+                      placeholder="Inherits"
+                    />
+                    <FieldError fieldId={`${prefix}-min-speed`} />
+                  </div>
+                </div>
+              )}
+
+              <div
+                className="splits-container"
+                style={{ borderLeftColor: `${segColor}33` }}
+              >
+                {value.splits.flatMap((split, j) => {
+                  const isLastSplit = j === value.splits.length - 1;
+                  const splitEl = (
+                    <SplitFormComponent
+                      key={j}
+                      segIndex={segIndex}
+                      splitIndex={j}
+                      value={split}
+                      onChange={(s) => updateSplit(j, s)}
+                      unitSystem={unitSystem}
+                      isLast={j === value.splits.length - 1}
+                      isLastOverall={isLastSeg && j === value.splits.length - 1}
+                      segColor={segColor}
+                      splitDistUser={(() => {
+                        const cum = cumulativeDists?.[j] ?? null;
+                        const prev =
+                          j === 0
+                            ? (segmentStartDist ?? 0)
+                            : (cumulativeDists?.[j - 1] ?? 0);
+                        return cum != null
+                          ? Math.round((cum - prev) * 10) / 10
+                          : null;
+                      })()}
+                      includeEndDownTime={value.include_end_down_time}
+                      gpxProfile={gpxProfiles?.[j] ?? null}
+                      gpxTrack={gpxTrack ?? null}
+                      courseTz={courseTz}
+                      gpxDistStatus={splitStatuses?.[j] ?? null}
+                      nearbyCity={cityLabels?.[j] ?? null}
+                      nearbyCity_fetching={cityFetching?.[j] ?? false}
+                      cumulativeDist={cumulativeDists?.[j] ?? null}
+                      gpxTotalDist={gpxTotalDist ?? null}
+                      expandSignal={
+                        targetSplitIdx === j ? targetSplitSignal : undefined
+                      }
+                      collapseSignal={splitCollapseSignal || undefined}
+                      expandAllSignal={undefined}
+                      splitResult={splitResults?.[j] ?? null}
+                      courseSplitMode={courseSplitMode}
+                      canShiftUp={j > 0}
+                      canShiftDown={j < value.splits.length - 1}
+                      canMoveToPrevSeg={
+                        j === 0 && segIndex > 0 && !prevSegNullified
+                      }
+                      canMoveToNextSeg={
+                        j === value.splits.length - 1 &&
+                        segIndex < totalSegments - 1 &&
+                        !nextSegNullified
+                      }
+                      canDelete={value.splits.length > 1 || totalSegments > 1}
+                      onShiftUp={() => {
+                        const next = [...value.splits];
+                        [next[j - 1], next[j]] = [next[j], next[j - 1]];
+                        update({ splits: next });
+                      }}
+                      onShiftDown={() => {
+                        const next = [...value.splits];
+                        [next[j], next[j + 1]] = [next[j + 1], next[j]];
+                        update({ splits: next });
+                      }}
+                      onMoveToPrevSeg={() => onMoveSplitToPrevSeg?.(j)}
+                      onMoveToNextSeg={() => onMoveSplitToNextSeg?.(j)}
+                      onDelete={() => onDeleteSplit?.(j)}
+                      etaMarginOpen={etaMarginOpen}
+                      etaMarginClose={etaMarginClose}
+                      onZoomToSplit={
+                        onZoomToSplit ? () => onZoomToSplit(j) : undefined
+                      }
+                    />
+                  );
+                  if (isLastSplit) return [splitEl];
+                  return [
+                    splitEl,
+                    <InsertZone
+                      key={`insert-split-${j}`}
+                      onInsert={() => onInsertSplitAfter?.(j)}
+                      label={`Insert split after split ${j + 1}`}
+                    />,
+                  ];
+                })}
               </div>
-            </div>
+            </>
           )}
-
-          <div
-            className="splits-container"
-            style={{ borderLeftColor: `${segColor}33` }}
-          >
-            {value.splits.map((split, j) => (
-              <SplitFormComponent
-                key={j}
-                segIndex={segIndex}
-                splitIndex={j}
-                value={split}
-                onChange={(s) => updateSplit(j, s)}
-                unitSystem={unitSystem}
-                isLast={j === value.splits.length - 1}
-                isLastOverall={isLastSeg && j === value.splits.length - 1}
-                splitDistUser={(() => {
-                  const cum = cumulativeDists?.[j] ?? null;
-                  const prev =
-                    j === 0
-                      ? (segmentStartDist ?? 0)
-                      : (cumulativeDists?.[j - 1] ?? 0);
-                  return cum != null
-                    ? Math.round((cum - prev) * 10) / 10
-                    : null;
-                })()}
-                includeEndDownTime={value.include_end_down_time}
-                gpxProfile={gpxProfiles?.[j] ?? null}
-                gpxTrack={gpxTrack ?? null}
-                courseTz={courseTz}
-                gpxDistStatus={splitStatuses?.[j] ?? null}
-                nearbyCity={cityLabels?.[j] ?? null}
-                nearbyCity_fetching={cityFetching?.[j] ?? false}
-                cumulativeDist={cumulativeDists?.[j] ?? null}
-                gpxTotalDist={gpxTotalDist ?? null}
-                expandSignal={expandSplitIdx === j ? expandSignal : undefined}
-                collapseSignal={splitCollapseSignal || undefined}
-                expandAllSignal={undefined}
-              />
-            ))}
-          </div>
         </div>
+      )}
+      <ConfirmModal
+        open={confirmTransitOpen}
+        title="Set as Transit Segment"
+        message={`Switch "${headerTitle}" to a transit segment? This will collapse all ${value.splits.length} splits into one and remove their individual settings.`}
+        confirmLabel="Enable Transit"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirmTransitOpen(false)}
+        onConfirm={() => {
+          setConfirmTransitOpen(false);
+          update({
+            nullified: true,
+            splitCount: "1",
+            splits: value.splits.slice(0, 1),
+          });
+        }}
+      />
+      <ConfirmModal
+        open={confirmDeleteSegmentOpen}
+        title="Delete Segment"
+        message={`Delete ${headerTitle}? This will remove all splits in this segment.`}
+        confirmLabel="Delete Segment"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirmDeleteSegmentOpen(false)}
+        onConfirm={() => {
+          setConfirmDeleteSegmentOpen(false);
+          onDeleteSegment?.();
+        }}
+      />
+      <ConfirmModal
+        open={confirmReduceSplitsOpen}
+        title="Reduce split count?"
+        message={`Reducing split count will delete ${pendingDeletedSplitDistanceCount} split${pendingDeletedSplitDistanceCount === 1 ? "" : "s"} with distance values in ${headerTitle}. Continue?`}
+        confirmLabel="Reduce"
+        cancelLabel="Cancel"
+        onCancel={() => {
+          setConfirmReduceSplitsOpen(false);
+          setPendingSplitCountRaw(null);
+          setPendingDeletedSplitDistanceCount(0);
+        }}
+        onConfirm={() => {
+          if (pendingSplitCountRaw != null) {
+            applySplitCountChange(pendingSplitCountRaw);
+          }
+          setConfirmReduceSplitsOpen(false);
+          setPendingSplitCountRaw(null);
+          setPendingDeletedSplitDistanceCount(0);
+        }}
+      />
+      {gpxTrack && showExportModal && (
+        <Suspense fallback={null}>
+          <GpxExportModal
+            open={showExportModal}
+            onClose={() => setShowExportModal(false)}
+            segIndex={segIndex}
+            segName={value.name}
+            splits={value.splits}
+            gpxTrack={gpxTrack}
+            splitBoundariesKm={splitBoundariesKm ?? []}
+            gpxProfiles={gpxProfiles ?? []}
+            unitSystem={unitSystem}
+          />
+        </Suspense>
       )}
     </div>
   );

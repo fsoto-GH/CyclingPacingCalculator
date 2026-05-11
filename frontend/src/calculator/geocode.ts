@@ -92,15 +92,20 @@ function cacheKey(lat: number, lon: number): string {
 }
 
 interface NominatimResponse {
+  addresstype?: string;
   address?: {
+    "ISO3166-2-lvl4"?: string;
     house_number?: string;
     road?: string;
     city?: string;
     town?: string;
     village?: string;
     hamlet?: string;
+    municipality?: string;
     county?: string;
+    state_district?: string;
     state?: string;
+    country?: string;
   };
   error?: string;
 }
@@ -143,11 +148,30 @@ export async function reverseGeocode(
   if (data.error || !data.address) return null;
 
   const addr = data.address;
+  const subdivisionCode = addr["ISO3166-2-lvl4"];
+  const subdivisionAbbrev = (() => {
+    if (!subdivisionCode) return null;
+    const parts = subdivisionCode.split("-");
+    if (parts.length < 2) return null;
+    const code = parts[parts.length - 1].trim();
+    // Keep this conservative so we don't emit odd numeric/long codes.
+    return /^[A-Z]{2,3}$/.test(code) ? code : null;
+  })();
   const place =
-    addr.city ?? addr.town ?? addr.village ?? addr.hamlet ?? addr.county;
+    addr.city ??
+    addr.town ??
+    addr.village ??
+    addr.hamlet ??
+    addr.municipality ??
+    addr.county ??
+    addr.state_district ??
+    addr.state ??
+    addr.country;
   if (!place) return null;
 
-  const label = addr.state ? `${place}, ${addr.state}` : place;
+  const stateLabel = subdivisionAbbrev ?? addr.state ?? null;
+  const label =
+    stateLabel && place !== addr.state ? `${place}, ${stateLabel}` : place;
 
   cache.set(key, label);
   lsPersist(key, label);
@@ -226,4 +250,131 @@ export async function reverseGeocodeAddress(
   const label = parts.join(", ");
   addressCache.set(key, label);
   return label;
+}
+
+// ── Forward geocode (address → coordinates) ──────────────────────────────────
+
+export interface ForwardGeocodeResult {
+  lat: number;
+  lon: number;
+  type?: string;
+  placeClass?: string;
+  name?: string;
+}
+
+/**
+ * Parse a coordinate-like address string and return lat/lon when both values
+ * include at least 3 decimal places. Accepts either `lat, lon` or `lon, lat`
+ * (the latter is auto-swapped when ranges make that unambiguous).
+ */
+export function parseHighPrecisionCoordinateAddress(
+  address: string,
+): { lat: number; lon: number } | null {
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+
+  const unwrapped =
+    trimmed.startsWith("(") && trimmed.endsWith(")")
+      ? trimmed.slice(1, -1).trim()
+      : trimmed;
+  const parts = unwrapped.split(",").map((p) => p.trim());
+  if (parts.length !== 2) return null;
+
+  const DECIMAL_3_PLUS = /^[+-]?\d+\.\d{3,}$/;
+  if (!DECIMAL_3_PLUS.test(parts[0]) || !DECIMAL_3_PLUS.test(parts[1])) {
+    return null;
+  }
+
+  const a = Number(parts[0]);
+  const b = Number(parts[1]);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+
+  const aCanBeLat = Math.abs(a) <= 90;
+  const aCanBeLon = Math.abs(a) <= 180;
+  const bCanBeLat = Math.abs(b) <= 90;
+  const bCanBeLon = Math.abs(b) <= 180;
+
+  if (aCanBeLat && bCanBeLon) {
+    return { lat: a, lon: b };
+  }
+  if (aCanBeLon && bCanBeLat) {
+    return { lat: b, lon: a };
+  }
+  return null;
+}
+
+const forwardCache = new Map<string, ForwardGeocodeResult | null>();
+const forwardInflight = new Map<string, Promise<ForwardGeocodeResult | null>>();
+const FORWARD_MIN_INTERVAL_MS = 1100;
+let forwardLastRequestMs = 0;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Forward-geocode an address string to coordinates via Nominatim `/search`.
+ * Results are cached in memory (keyed by address) for the session.
+ */
+export async function forwardGeocode(
+  address: string,
+  signal?: AbortSignal,
+): Promise<ForwardGeocodeResult | null> {
+  const addr = address.trim();
+  if (!addr) return null;
+  if (forwardCache.has(addr)) return forwardCache.get(addr) ?? null;
+  const inflight = forwardInflight.get(addr);
+  if (inflight) return inflight;
+
+  const SEARCH_URL = "https://nominatim.openstreetmap.org/search";
+  const req = (async (): Promise<ForwardGeocodeResult | null> => {
+    try {
+      const waitMs =
+        FORWARD_MIN_INTERVAL_MS - (Date.now() - forwardLastRequestMs);
+      if (waitMs > 0) await sleep(waitMs);
+
+      const resp = await fetch(
+        `${SEARCH_URL}?q=${encodeURIComponent(addr)}&format=json&limit=1`,
+        {
+          signal,
+          headers: { "User-Agent": USER_AGENT, "Accept-Language": "en" },
+        },
+      );
+      forwardLastRequestMs = Date.now();
+      if (!resp.ok) return null;
+      const res = (await resp.json()) as Array<{
+        lat: string;
+        lon: string;
+        type?: string;
+        class?: string;
+        name?: string;
+      }>;
+      const result: ForwardGeocodeResult | null =
+        res.length > 0
+          ? {
+              lat: +res[0].lat,
+              lon: +res[0].lon,
+              type: res[0].type,
+              placeClass: res[0].class,
+              name: res[0].name,
+            }
+          : null;
+      forwardCache.set(addr, result);
+      return result;
+    } catch {
+      return null;
+    }
+  })();
+
+  forwardInflight.set(addr, req);
+  return req.finally(() => {
+    forwardInflight.delete(addr);
+  });
+}
+
+/** Return cached forward geocode result, or undefined if not cached. */
+export function getCachedForwardGeocode(
+  address: string,
+): ForwardGeocodeResult | null | undefined {
+  return forwardCache.get(address.trim());
 }
