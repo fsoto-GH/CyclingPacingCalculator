@@ -17,8 +17,8 @@ RUN cd frontend && npm ci
 COPY frontend/ ./frontend/
 
 # Accept the feature-flag build arg and pass it to Vite
-ARG VITE_ENABLE_PAID_APIS=false
-ENV VITE_ENABLE_PAID_APIS=${VITE_ENABLE_PAID_APIS}
+ARG VITE_ENABLE_SERVER_FUNCTIONS=false
+ENV VITE_ENABLE_SERVER_FUNCTIONS=${VITE_ENABLE_SERVER_FUNCTIONS}
 RUN cd frontend && npm run build
 
 # Install Python deps

@@ -9,6 +9,7 @@ import type {
   Mode,
   SplitGpxProfile,
   GpxTrackPoint,
+  GpxWaypoint,
   SplitDetail,
   SegmentDetail,
   SubSplitMode,
@@ -85,6 +86,8 @@ interface SegmentFormProps {
   onZoomToSegment?: () => void;
   onZoomToSplit?: (splitIdx: number) => void;
   splitBoundariesKm?: [number, number][] | null;
+  /** Original GPX <wpt> waypoints from the loaded track, to include on export */
+  gpxWaypoints?: GpxWaypoint[];
 }
 
 export default function SegmentFormComponent({
@@ -124,6 +127,7 @@ export default function SegmentFormComponent({
   onZoomToSegment,
   onZoomToSplit,
   splitBoundariesKm,
+  gpxWaypoints,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -988,6 +992,7 @@ export default function SegmentFormComponent({
             splitBoundariesKm={splitBoundariesKm ?? []}
             gpxProfiles={gpxProfiles ?? []}
             unitSystem={unitSystem}
+            gpxWaypoints={gpxWaypoints}
           />
         </Suspense>
       )}

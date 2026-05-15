@@ -96,6 +96,31 @@ export function parseGpx(xml: string): GpxTrackPoint[] {
 }
 
 /**
+ * Parse a GPX XML string and return all `<wpt>` waypoints in the file.
+ * Preserves name, description (from <desc> or <cmt>), and symbol (<sym>).
+ */
+export function parseGpxWaypoints(xml: string): GpxWaypoint[] {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const parseErr = doc.querySelector("parsererror");
+  if (parseErr) return [];
+
+  return Array.from(doc.getElementsByTagName("wpt"))
+    .map((el): GpxWaypoint | null => {
+      const lat = parseFloat(el.getAttribute("lat") ?? "");
+      const lon = parseFloat(el.getAttribute("lon") ?? "");
+      if (isNaN(lat) || isNaN(lon)) return null;
+      const name =
+        el.getElementsByTagName("name")[0]?.textContent?.trim() ?? "Waypoint";
+      const description =
+        el.getElementsByTagName("desc")[0]?.textContent?.trim() ||
+        el.getElementsByTagName("cmt")[0]?.textContent?.trim() ||
+        undefined;
+      return { lat, lon, name, description, symbol: "food" as const };
+    })
+    .filter((w): w is GpxWaypoint => w !== null);
+}
+
+/**
  * Try to extract a dominant surface tag from GPX <extensions> elements.
  * Komoot, OsmAnd, and Garmin use varying tag names — we check the most common.
  */

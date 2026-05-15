@@ -23,12 +23,14 @@ router = APIRouter(prefix="/v1/cycling/race_plan", tags=["race-plan"])
 
 class RacePlanCreate(BaseModel):
     name: str
+    description: Optional[str] = None
     is_public: bool = False
     payload: Any  # the serialized CoursePayload JSON
 
 
 class RacePlanUpdate(BaseModel):
     name: Optional[str] = None
+    description: Optional[str] = None
     is_public: Optional[bool] = None
     payload: Optional[Any] = None
 
@@ -55,19 +57,34 @@ def _assert_owner(plan: RacePlan, user: CurrentUser) -> None:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[dict])
+@router.get("", response_model=dict)
 def list_race_plans(
+    q: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 20,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return all race plans owned by the current user."""
-    plans = (
-        db.query(RacePlan)
-        .filter(RacePlan.user_id == current_user.id)
-        .order_by(RacePlan.updated_at.desc())
+    """Return paginated race plans owned by the current user, optionally filtered by name."""
+    from sqlalchemy import func
+    query = db.query(RacePlan).filter(RacePlan.user_id == current_user.id)
+    if q:
+        query = query.filter(func.lower(RacePlan.name).contains(q.lower()))
+    total = query.count()
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+    items = (
+        query.order_by(RacePlan.updated_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
         .all()
     )
-    return [p.to_dict() for p in plans]
+    return {
+        "items": [p.to_dict() for p in items],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+    }
 
 
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
@@ -79,6 +96,7 @@ def create_race_plan(
     plan = RacePlan(
         user_id=current_user.id,
         name=body.name,
+        description=body.description,
         is_public=body.is_public,
         payload=body.payload,
     )
@@ -115,6 +133,8 @@ def update_race_plan(
     _assert_owner(plan, current_user)
     if body.name is not None:
         plan.name = body.name
+    if body.description is not None:
+        plan.description = body.description
     if body.is_public is not None:
         plan.is_public = body.is_public
     if body.payload is not None:

@@ -15,11 +15,27 @@ class Settings(BaseSettings):
     )
 
     # ── Database ──────────────────────────────────────────────────────────────
+    # Set IS_LOCAL=true to use DATABASE_URL_LOCAL, false to use DATABASE_URL_SUPABASE.
+    # If DATABASE_URL is set directly it always takes precedence (e.g. inside Docker).
+    is_local: bool = False
     database_url: str = "sqlite:///./cycling_pacing.db"
+    database_url_local: Optional[str] = None
+    database_url_supabase: Optional[str] = None
+
+    @property
+    def active_database_url(self) -> str:
+        """Resolve the database URL based on IS_LOCAL, falling back to DATABASE_URL."""
+        if self.is_local and self.database_url_local:
+            return self.database_url_local
+        if not self.is_local and self.database_url_supabase:
+            return self.database_url_supabase
+        return self.database_url
 
     # ── Auth ──────────────────────────────────────────────────────────────────
-    # JWT secret from Supabase: Settings → API → JWT Secret.
-    # Used to verify access tokens issued by Supabase Auth.
+    # Supabase project URL — used to fetch JWKS public keys for JWT verification.
+    supabase_url: Optional[str] = None
+
+    # Legacy HS256 secret — only needed if the project still uses the old signing mode.
     supabase_jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
 

@@ -42,6 +42,8 @@ interface GpxExportModalProps {
   splitBoundariesKm: [number, number][];
   gpxProfiles: SplitGpxProfile[];
   unitSystem: UnitSystem;
+  /** Original GPX <wpt> waypoints from the loaded track file */
+  gpxWaypoints?: GpxWaypoint[];
 }
 
 export default function GpxExportModal({
@@ -54,6 +56,7 @@ export default function GpxExportModal({
   splitBoundariesKm,
   gpxProfiles,
   unitSystem,
+  gpxWaypoints,
 }: GpxExportModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -190,10 +193,11 @@ export default function GpxExportModal({
         });
 
         const trackName = fileName.trim() || defaultName;
+        const allWaypoints = [...waypoints, ...(gpxWaypoints ?? [])];
         const gpx = buildGpxString(
           [{ name: trackName, points: mergedPoints }],
           trackName,
-          waypoints,
+          allWaypoints,
         );
         const blob = new Blob([gpx], { type: "application/gpx+xml" });
         const url = URL.createObjectURL(blob);
@@ -216,6 +220,7 @@ export default function GpxExportModal({
     fileName,
     defaultName,
     waypoints,
+    gpxWaypoints,
   ]);
   return (
     <dialog ref={dialogRef} className="gpx-export-modal" onClose={onClose}>

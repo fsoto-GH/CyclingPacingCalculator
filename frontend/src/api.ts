@@ -19,6 +19,33 @@ async function authHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// ── Auth sync ─────────────────────────────────────────────────────────────────
+
+export interface SyncUserResponse {
+  is_new_user: boolean;
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    avatar_url: string | null;
+    is_active: boolean;
+    created_at: string;
+    last_login_at: string;
+  };
+}
+
+/**
+ * Called immediately after a successful sign-in to upsert the user record
+ * in our local database.  The access_token is passed directly so this can
+ * be called inside onAuthStateChange before the context has updated.
+ */
+export async function syncUser(accessToken: string): Promise<SyncUserResponse> {
+  const response = await axios.post<SyncUserResponse>("/v1/auth/sync", null, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return response.data;
+}
+
 // ── Calculator ────────────────────────────────────────────────────────────────
 
 export async function calculateCourse(
@@ -106,6 +133,7 @@ export interface RacePlanSummary {
   id: string;
   user_id: string;
   name: string;
+  description?: string | null;
   is_public: boolean;
   created_at: string;
   updated_at: string;
@@ -115,9 +143,21 @@ export interface RacePlanFull extends RacePlanSummary {
   payload: unknown;
 }
 
-export async function listRacePlans(): Promise<RacePlanSummary[]> {
-  const resp = await axios.get<RacePlanSummary[]>("/v1/cycling/race_plan", {
+export interface RacePlanPage {
+  items: RacePlanSummary[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export async function listRacePlans(params?: {
+  q?: string;
+  page?: number;
+  per_page?: number;
+}): Promise<RacePlanPage> {
+  const resp = await axios.get<RacePlanPage>("/v1/cycling/race_plan", {
     headers: await authHeader(),
+    params,
   });
   return resp.data;
 }
@@ -132,11 +172,12 @@ export async function getRacePlan(id: string): Promise<RacePlanFull> {
 export async function createRacePlan(
   name: string,
   isPublic: boolean,
+  description: string | null | undefined,
   payload: unknown,
 ): Promise<RacePlanFull> {
   const resp = await axios.post<RacePlanFull>(
     "/v1/cycling/race_plan",
-    { name, is_public: isPublic, payload },
+    { name, is_public: isPublic, description: description ?? null, payload },
     { headers: await authHeader() },
   );
   return resp.data;
@@ -144,7 +185,12 @@ export async function createRacePlan(
 
 export async function updateRacePlan(
   id: string,
-  patch: Partial<{ name: string; is_public: boolean; payload: unknown }>,
+  patch: Partial<{
+    name: string;
+    description: string | null;
+    is_public: boolean;
+    payload: unknown;
+  }>,
 ): Promise<RacePlanFull> {
   const resp = await axios.put<RacePlanFull>(
     `/v1/cycling/race_plan/${id}`,

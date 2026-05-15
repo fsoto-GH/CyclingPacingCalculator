@@ -7,9 +7,7 @@ function App() {
   return (
     <AppSettingsProvider>
       <AmenityProvider>
-        <div className="app-container">
-          <CourseForm />
-        </div>
+        <CourseForm />
       </AmenityProvider>
     </AppSettingsProvider>
   );

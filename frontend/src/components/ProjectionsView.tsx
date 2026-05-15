@@ -1358,13 +1358,13 @@ function ProjectionSegment({
                           Wind Direction
                         </dt>
                         <dd>
-                          <i className="fa-solid fa-arrow-up" />{" "}
+                          {"N "}
                           {segWeatherStats.windDir.N}%{" · "}
-                          <i className="fa-solid fa-arrow-right" />{" "}
+                          {"E "}
                           {segWeatherStats.windDir.E}%{" · "}
-                          <i className="fa-solid fa-arrow-down" />{" "}
+                          {"S "}
                           {segWeatherStats.windDir.S}%{" · "}
-                          <i className="fa-solid fa-arrow-left" />{" "}
+                          {"W "}
                           {segWeatherStats.windDir.W}%
                         </dd>
                       </div>

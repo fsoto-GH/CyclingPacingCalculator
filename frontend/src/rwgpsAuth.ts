@@ -12,10 +12,10 @@
  * The stored token is used by frontend RWGPS API calls via
  * Authorization: Bearer <token>.
  *
- * NOTE: The /start endpoint requires authentication.  Because this is a popup
- * navigation (not a fetch), Authorization headers cannot be sent.  Instead, the
- * current Supabase access token is appended as the `access_token` query param.
- * The backend verifies it server-side and it is never stored or forwarded.
+ * NOTE: The /start endpoint accepts an optional Supabase access token for
+ * additional verification when the user is signed in.  When the user is not
+ * signed in (self-hosted / SERVER_FUNCTIONS_ENABLED=false), the token is
+ * omitted and the backend still allows the RWGPS OAuth flow to proceed.
  */
 
 import { supabase } from "./supabaseClient";
@@ -108,18 +108,17 @@ export function startRwgpsOAuth(): Promise<RwgpsAuthResult> {
     window.addEventListener("message", onMessage);
 
     // Resolve Supabase session after opening popup, then navigate popup to
-    // the authenticated backend start endpoint.
+    // the backend start endpoint. The access token is optional — if the user
+    // is not signed into Supabase the backend will still allow the RWGPS flow.
     void supabase.auth
       .getSession()
       .then(({ data }) => {
         const accessToken = data.session?.access_token ?? "";
-        if (!accessToken) {
-          fail(new Error("You must be signed in to connect RideWithGPS."));
-          return;
-        }
 
         const state = encodeURIComponent(window.location.origin);
-        const url = `/v1/cycling/rwgps/oauth/start?state=${state}&access_token=${encodeURIComponent(accessToken)}`;
+        const url = accessToken
+          ? `/v1/cycling/rwgps/oauth/start?state=${state}&access_token=${encodeURIComponent(accessToken)}`
+          : `/v1/cycling/rwgps/oauth/start?state=${state}`;
         try {
           popupWindow.location.href = url;
         } catch {
@@ -127,7 +126,13 @@ export function startRwgpsOAuth(): Promise<RwgpsAuthResult> {
         }
       })
       .catch(() => {
-        fail(new Error("Failed to read auth session. Please try again."));
+        // Even if we can't read the session, proceed without a token.
+        const state = encodeURIComponent(window.location.origin);
+        try {
+          popupWindow.location.href = `/v1/cycling/rwgps/oauth/start?state=${state}`;
+        } catch {
+          fail(new Error("Failed to launch authorization popup."));
+        }
       });
 
     // Detect if the user closes the popup without completing auth.

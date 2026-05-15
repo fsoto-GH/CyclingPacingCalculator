@@ -64,20 +64,20 @@ async def oauth_start(
     ),
     access_token: str = Query(
         "",
-        description="Supabase access token.  Popup navigations cannot send headers "
-        "so the token is passed as a query parameter and verified server-side.",
+        description="Optional Supabase access token. Popup navigations cannot send "
+        "headers so the token is passed as a query parameter and verified server-side. "
+        "When omitted the OAuth flow proceeds unauthenticated (suitable for local/self-hosted use).",
     ),
 ):
     """Redirect the popup to the RideWithGPS OAuth consent page."""
-    if not access_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-        )
-    try:
-        _decode_token(access_token)
-    except HTTPException:
-        raise
+    # Validate the Supabase token only when one is actually supplied.
+    # Self-hosted / local users who haven't configured Supabase can still
+    # connect their RideWithGPS account without being signed in.
+    if access_token:
+        try:
+            _decode_token(access_token)
+        except HTTPException:
+            raise
     if not settings.ridewithgps_client_id:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

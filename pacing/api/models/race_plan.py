@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import String, DateTime, Boolean
+from sqlalchemy import String, DateTime, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column
+from typing import Optional
 
 # Use Text with JSON serialization for SQLite compatibility;
 # JSONB for Postgres is set via a type override in the column definition.
@@ -24,6 +25,7 @@ class RacePlan(Base):
     )
     user_id: Mapped[str] = mapped_column(String(36), index=True)
     name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     payload: Mapped[Any] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -38,6 +40,7 @@ class RacePlan(Base):
             "id": self.id,
             "user_id": self.user_id,
             "name": self.name,
+            "description": self.description,
             "is_public": self.is_public,
             "payload": self.payload,
             "created_at": self.created_at.isoformat(),

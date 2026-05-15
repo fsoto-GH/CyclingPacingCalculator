@@ -24,7 +24,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_ENABLE_PAID_APIS: ${VITE_ENABLE_PAID_APIS:-false}
+        VITE_ENABLE_SERVER_FUNCTIONS: ${VITE_ENABLE_SERVER_FUNCTIONS:-false}
     container_name: pacing-api
     ports:
       - "8000:8000"
@@ -41,13 +41,19 @@ services:
     command: uvicorn pacing.api.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - PYTHONPATH=/pacing
-      - DATABASE_URL=postgresql://pacing:pacing@postgres:5432/pacing
-      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - IS_LOCAL=${IS_LOCAL:-true}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://pacing:pacing@postgres:5432/pacing}
+      - DATABASE_URL_LOCAL=${DATABASE_URL_LOCAL:-postgresql://pacing:pacing@postgres:5432/pacing}
+      - DATABASE_URL_SUPABASE=${DATABASE_URL_SUPABASE:-}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-change-me-in-production}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8000}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
       - RIDEWITHGPS_API_KEY=${RIDEWITHGPS_API_KEY:-}
+      - RIDEWITHGPS_CLIENT_ID=${RIDEWITHGPS_CLIENT_ID:-}
+      - RIDEWITHGPS_CLIENT_SECRET=${RIDEWITHGPS_CLIENT_SECRET:-}
       - WEATHER_API_KEY=${WEATHER_API_KEY:-}
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
 

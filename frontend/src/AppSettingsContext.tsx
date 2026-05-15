@@ -1,12 +1,7 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
-import { PAID_APIS_ENABLED } from "./config";
+import { syncUser } from "./api";
+import { SERVER_FUNCTIONS_ENABLED } from "./config";
 
 export interface AuthUser {
   id: string;
@@ -16,94 +11,36 @@ export interface AuthUser {
 }
 
 interface AppSettingsContextValue {
-  /** Master frontend switch for paid API controls. If false, force free APIs. */
-  paidApisFrontendEnabled: boolean;
-  setPaidApisFrontendEnabled: (enabled: boolean) => void;
-  /** Free vs. freemium mode toggle (only meaningful when paidApisFrontendEnabled=true). */
-  useFreemiumApis: boolean;
-  setUseFreemiumApis: (enabled: boolean) => void;
-  /** Effective paid API usage flag consumed by API routing call sites. */
+  /** True when paid/external APIs may be used (mirrors SERVER_FUNCTIONS_ENABLED). */
   paidApisEnabled: boolean;
   /** Currently authenticated user, or null if not signed in. */
   user: AuthUser | null;
   setUser: (user: AuthUser | null) => void;
-  /** True while the initial /v1/auth/me request is in flight. */
+  /** True while the initial Supabase session check is in flight. */
   authLoading: boolean;
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue>({
-  paidApisFrontendEnabled: false,
-  setPaidApisFrontendEnabled: () => {},
-  useFreemiumApis: false,
-  setUseFreemiumApis: () => {},
   paidApisEnabled: false,
   user: null,
   setUser: () => {},
   authLoading: false,
 });
 
-const FRONTEND_ENABLE_KEY = "paidApisFrontendEnabled";
-const FREEMIUM_MODE_KEY = "useFreemiumApis";
-const LEGACY_PAID_APIS_KEY = "paidApisEnabled";
-
 export function AppSettingsProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [paidApisFrontendEnabled, _setPaidApisFrontendEnabled] =
-    useState<boolean>(() => {
-      try {
-        return localStorage.getItem(FRONTEND_ENABLE_KEY) === "true";
-      } catch {
-        return false;
-      }
-    });
-
-  const [useFreemiumApis, _setUseFreemiumApis] = useState<boolean>(() => {
-    try {
-      // Backward-compatible migration: if the new key doesn't exist yet,
-      // fall back to the legacy paidApisEnabled flag.
-      const next = localStorage.getItem(FREEMIUM_MODE_KEY);
-      if (next != null) return next === "true";
-      return localStorage.getItem(LEGACY_PAID_APIS_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  const paidApisEnabled = paidApisFrontendEnabled && useFreemiumApis;
+  const paidApisEnabled = SERVER_FUNCTIONS_ENABLED;
 
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  const setPaidApisFrontendEnabled = useCallback((enabled: boolean) => {
-    _setPaidApisFrontendEnabled(enabled);
-    try {
-      localStorage.setItem(FRONTEND_ENABLE_KEY, String(enabled));
-    } catch {
-      /* storage unavailable */
-    }
-  }, []);
-
-  const setUseFreemiumApis = useCallback((enabled: boolean) => {
-    _setUseFreemiumApis(enabled);
-    try {
-      localStorage.setItem(FREEMIUM_MODE_KEY, String(enabled));
-      // Keep legacy key in sync so older code paths remain consistent.
-      localStorage.setItem(LEGACY_PAID_APIS_KEY, String(enabled));
-    } catch {
-      /* storage unavailable */
-    }
-  }, []);
+  const [authLoading, setAuthLoading] = useState(SERVER_FUNCTIONS_ENABLED);
 
   // Hydrate user from the Supabase session on mount, and keep in sync.
+  // Skipped entirely when SERVER_FUNCTIONS_ENABLED is false.
   useEffect(() => {
-    if (!PAID_APIS_ENABLED || !paidApisFrontendEnabled) {
-      setUser(null);
-      setAuthLoading(false);
-      return;
-    }
+    if (!SERVER_FUNCTIONS_ENABLED) return;
 
     setAuthLoading(true);
 
@@ -130,7 +67,7 @@ export function AppSettingsProvider({
 
     // Keep in sync for sign-in / sign-out events.
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         const u = session?.user ?? null;
         setUser(
           u
@@ -147,21 +84,24 @@ export function AppSettingsProvider({
               }
             : null,
         );
+
+        // Upsert the user in our local DB on every fresh sign-in.
+        if (event === "SIGNED_IN" && session?.access_token) {
+          syncUser(session.access_token).catch((err) =>
+            console.error("[auth] sync failed:", err),
+          );
+        }
       },
     );
 
     return () => {
       listener.subscription.unsubscribe();
     };
-  }, [paidApisFrontendEnabled]);
+  }, []);
 
   return (
     <AppSettingsContext.Provider
       value={{
-        paidApisFrontendEnabled,
-        setPaidApisFrontendEnabled,
-        useFreemiumApis,
-        setUseFreemiumApis,
         paidApisEnabled,
         user,
         setUser,
