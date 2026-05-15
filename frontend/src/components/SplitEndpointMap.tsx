@@ -38,6 +38,7 @@ import {
 } from "../calculator/overpass";
 import { reverseGeocode } from "../calculator/geocode";
 import { useRestStopGeocode } from "../calculator/mapUtils";
+import { MAP_TILE_LAYERS, MapTileLayerKey } from "../calculator/mapTileLayers";
 import type { NearbyAmenity } from "../calculator/overpass";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
@@ -362,7 +363,7 @@ interface SplitEndpointMapProps {
   endpointDefined?: boolean;
   unitSystem: UnitSystem;
   restStop?: RestStopForm | null;
-  onSelectStop: (patch: Partial<RestStopForm>) => void;
+  onSelectStop?: (patch: Partial<RestStopForm>) => void;
   onAddressLoading?: (loading: boolean) => void;
   /** Hourly weather points for this split's wind overlay. */
   splitHourlyWeather?: HourlyWeatherPoint[] | null;
@@ -379,6 +380,7 @@ export default function SplitEndpointMap({
   onSelectStop,
   splitHourlyWeather,
 }: SplitEndpointMapProps) {
+  const interactive = !!onSelectStop;
   const [showNearby, setShowNearby] = useState(false);
   const { radiusM, selectedTypes, customTypes } = useContext(AmenityContext);
   const { paidApisEnabled } = useAppSettings();
@@ -393,6 +395,7 @@ export default function SplitEndpointMap({
   const usedStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showWindOverlay, setShowWindOverlay] = useState(false);
+  const [mapStyle, setMapStyle] = useState<MapTileLayerKey>("osm");
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
 
@@ -622,9 +625,10 @@ export default function SplitEndpointMap({
           <ScrollWheelActivator />
           <FitBounds bounds={bounds} />
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            maxZoom={19}
+            key={mapStyle}
+            url={MAP_TILE_LAYERS[mapStyle].url}
+            attribution={MAP_TILE_LAYERS[mapStyle].attribution}
+            maxZoom={MAP_TILE_LAYERS[mapStyle].maxZoom}
           />
 
           {/* Zoom-adaptive distance labels and direction arrows */}
@@ -819,97 +823,115 @@ export default function SplitEndpointMap({
             })}
         </MapContainer>
 
-        {/* Wind overlay toggle button */}
-        {splitHourlyWeather && splitHourlyWeather.length > 0 && (
+        <div className="split-map-controls-stack">
+          <select
+            className="split-map-tile-select"
+            value={mapStyle}
+            onChange={(e) => setMapStyle(e.target.value as MapTileLayerKey)}
+            title="Map style"
+            aria-label="Map style"
+          >
+            {(Object.keys(MAP_TILE_LAYERS) as MapTileLayerKey[]).map((key) => (
+              <option key={key} value={key}>
+                {MAP_TILE_LAYERS[key].label}
+              </option>
+            ))}
+          </select>
+          {document.fullscreenEnabled && (
+            <button
+              type="button"
+              className="split-map-fullscreen-btn"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              aria-label={
+                isFullscreen ? "Exit fullscreen" : "View map fullscreen"
+              }
+            >
+              {isFullscreen ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                >
+                  <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+                </svg>
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                >
+                  <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+                </svg>
+              )}
+            </button>
+          )}
           <button
             type="button"
-            className="split-map-wind-btn"
-            onClick={() => setShowWindOverlay((v) => !v)}
-            title={showWindOverlay ? "Hide wind overlay" : "Show wind overlay"}
-            aria-label={
-              showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
+            className="split-map-reset-btn"
+            onClick={() =>
+              mapRef.current?.fitBounds(bounds, { padding: [20, 20] })
             }
-            style={{ opacity: showWindOverlay ? 1 : 0.5 }}
+            title="Reset view"
+            aria-label="Reset map view"
           >
-            <i className="fa-solid fa-wind" />
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
+            </svg>
           </button>
-        )}
-        {document.fullscreenEnabled && (
-          <button
-            type="button"
-            className="split-map-fullscreen-btn"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            aria-label={
-              isFullscreen ? "Exit fullscreen" : "View map fullscreen"
-            }
-          >
-            {isFullscreen ? (
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="currentColor"
-              >
-                <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
-              </svg>
-            ) : (
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="currentColor"
-              >
-                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-              </svg>
-            )}
-          </button>
-        )}
-        {/* Reset view button */}
-        <button
-          type="button"
-          className="split-map-reset-btn"
-          onClick={() =>
-            mapRef.current?.fitBounds(bounds, { padding: [20, 20] })
-          }
-          title="Reset view"
-          aria-label="Reset map view"
-        >
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-            <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
-          </svg>
-        </button>
+          {/* Wind overlay toggle button */}
+          {splitHourlyWeather && splitHourlyWeather.length > 0 && (
+            <button
+              type="button"
+              className="split-map-wind-btn"
+              onClick={() => setShowWindOverlay((v) => !v)}
+              title={
+                showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
+              }
+              aria-label={
+                showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
+              }
+              style={{ opacity: showWindOverlay ? 1 : 0.5 }}
+            >
+              <i className="fa-solid fa-wind" />
+            </button>
+          )}
+        </div>
         {/* Right-side stack: Nearby → Google Maps → OSM */}
         <div className="split-map-right-stack">
-          <button
-            type="button"
-            className="split-map-nearby-fab"
-            onClick={
-              amenities !== null && !showNearby
-                ? () => setShowNearby(true)
-                : showNearby
-                  ? () => setShowNearby(false)
-                  : () => handleSearch()
-            }
-            disabled={searchLoading}
-            title={
-              searchLoading
+          {interactive && (
+            <button
+              type="button"
+              className="split-map-nearby-fab"
+              onClick={
+                amenities !== null && !showNearby
+                  ? () => setShowNearby(true)
+                  : showNearby
+                    ? () => setShowNearby(false)
+                    : () => handleSearch()
+              }
+              disabled={searchLoading}
+              title={
+                searchLoading
+                  ? "Searching…"
+                  : amenities !== null && !showNearby
+                    ? "Show nearby results"
+                    : showNearby
+                      ? "Hide nearby results"
+                      : "Search for nearby stops"
+              }
+            >
+              {searchLoading
                 ? "Searching…"
                 : amenities !== null && !showNearby
-                  ? "Show nearby results"
+                  ? "Show Stops 📍"
                   : showNearby
-                    ? "Hide nearby results"
-                    : "Search for nearby stops"
-            }
-          >
-            {searchLoading
-              ? "Searching…"
-              : amenities !== null && !showNearby
-                ? "Show Stops 📍"
-                : showNearby
-                  ? "Hide ✕"
-                  : "Nearby Stops 📍"}
-          </button>
+                    ? "Hide ✕"
+                    : "Nearby Stops 📍"}
+            </button>
+          )}
           <a
             href={`https://www.google.com/maps?q=${endLat},${endLon}`}
             target="_blank"

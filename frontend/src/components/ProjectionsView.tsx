@@ -979,18 +979,26 @@ function ProjectionSegment({
               {isTransitSegment &&
                 transitFormSplit?.rest_stop.enabled &&
                 transitEtaInfo && (
-                  <span
-                    className={`eta-badge eta-${transitEtaInfo.status}`}
-                    title={`${transitEtaInfo.statusWord} (${transitEtaInfo.nearDetail ? transitEtaInfo.nearDetail : transitEtaInfo.hoursLabel})`}
-                  >
-                    {transitEtaInfo.status === "open" &&
-                      (transitEtaInfo.hoursLabel === "24 hours"
-                        ? "24/7"
-                        : "Open")}
-                    {transitEtaInfo.status === "near-open" && "Near open"}
-                    {transitEtaInfo.status === "near-close" && "Near close"}
-                    {transitEtaInfo.status === "closed" && "Closed"}
-                  </span>
+                  <>
+                    <span
+                      className={`eta-badge eta-${transitEtaInfo.status}`}
+                      title={`${transitEtaInfo.statusWord} (${transitEtaInfo.nearDetail ? transitEtaInfo.nearDetail : transitEtaInfo.hoursLabel})`}
+                    >
+                      {transitFormSplit.rest_stop.name && (
+                        <span className="proj-segment-city">
+                          {transitFormSplit.rest_stop.name}
+                          {"—"}
+                        </span>
+                      )}
+                      {transitEtaInfo.status === "open" &&
+                        (transitEtaInfo.hoursLabel === "24 hours"
+                          ? "24/7"
+                          : "Open")}
+                      {transitEtaInfo.status === "near-open" && "Near open"}
+                      {transitEtaInfo.status === "near-close" && "Near close"}
+                      {transitEtaInfo.status === "closed" && "Closed"}
+                    </span>
+                  </>
                 )}
               {!segEndCityFetching && citySummary && (
                 <span className="proj-segment-city">{citySummary}</span>
@@ -1504,7 +1512,6 @@ function ProjectionSegment({
                         unitSystem={unitSystem}
                         segmentColor={segColor}
                         restStop={transitFormSplit?.rest_stop ?? null}
-                        onSelectStop={() => {}}
                       />
                     </Suspense>
                   </div>
@@ -1888,16 +1895,24 @@ function ProjectionSplit({
           {/* (1,1) eta-badge · city · GPX state */}
           <div className="proj-split-header-status split-header-city">
             {etaInfo && (
-              <span
-                className={`eta-badge eta-${etaInfo.status}`}
-                title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
-              >
-                {etaInfo.status === "open" &&
-                  (etaInfo.hoursLabel === "24 hours" ? "24/7" : "Open")}
-                {etaInfo.status === "near-open" && "Near open"}
-                {etaInfo.status === "near-close" && "Near close"}
-                {etaInfo.status === "closed" && "Closed"}
-              </span>
+              <>
+                <span
+                  className={`eta-badge eta-${etaInfo.status}`}
+                  title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
+                >
+                  {formSplit?.rest_stop.name && (
+                    <span className="proj-segment-city">
+                      {formSplit.rest_stop.name}
+                      {"—"}
+                    </span>
+                  )}
+                  {etaInfo.status === "open" &&
+                    (etaInfo.hoursLabel === "24 hours" ? "24/7" : "Open")}
+                  {etaInfo.status === "near-open" && "Near open"}
+                  {etaInfo.status === "near-close" && "Near close"}
+                  {etaInfo.status === "closed" && "Closed"}
+                </span>
+              </>
             )}
             {nearbyCity && (
               <span className="proj-segment-city">{nearbyCity}</span>
@@ -2278,7 +2293,6 @@ function ProjectionSplit({
                     endpointDefined={cumulativeDist != null}
                     unitSystem={unitSystem}
                     restStop={formSplit?.rest_stop ?? null}
-                    onSelectStop={() => {}}
                     splitHourlyWeather={splitHourlyWeather}
                   />
                 </Suspense>

@@ -34,6 +34,7 @@ import type {
 import type { RestStopForm } from "../types";
 import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
 import { distanceLabel, SEGMENT_COLORS } from "../utils";
+import { MAP_TILE_LAYERS, MapTileLayerKey } from "../calculator/mapTileLayers";
 import type { SunriseSunsetEntry } from "../calculator/weather";
 const ElevationProfile = lazy(() => import("./ElevationProfile"));
 const TemperatureChart = lazy(() => import("./TemperatureChart"));
@@ -555,7 +556,7 @@ export default function CourseMap({
   const [showSplitMarkers, setShowSplitMarkers] = useState(true);
   const [showRestStops, setShowRestStops] = useState(false);
   const [showWindOverlay, setShowWindOverlay] = useState(false);
-  const [mapStyle, setMapStyle] = useState<"osm" | "topo">("osm");
+  const [mapStyle, setMapStyle] = useState<MapTileLayerKey>("osm");
   const [selectedSegIdx, setSelectedSegIdx] = useState<number | null>(null);
   const [hoverKm, setHoverKm] = useState<number | null>(null);
   const [hoverWeatherPt, setHoverWeatherPt] =
@@ -728,115 +729,119 @@ export default function CourseMap({
   return (
     <div className="course-map-outer">
       <div className="course-map-container" ref={containerRef}>
-        <button
-          className="map-markers-btn"
-          onClick={() => setShowMarkers((v) => !v)}
-          title={showMarkers ? "Hide mile markers" : "Show mile markers"}
-          aria-label={showMarkers ? "Hide mile markers" : "Show mile markers"}
-          style={{ opacity: showMarkers ? 1 : 0.5 }}
-        >
-          <i className="fa-solid fa-flag" />
-        </button>
-        <button
-          className="map-split-markers-btn"
-          onClick={() => setShowSplitMarkers((v) => !v)}
-          title={
-            showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"
-          }
-          aria-label={
-            showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"
-          }
-          style={{ opacity: showSplitMarkers ? 1 : 0.5 }}
-        >
-          <i className="fa-solid fa-location-pin" />
-        </button>
-        <button
-          className="map-stop-btn"
-          onClick={() => setShowRestStops((v) => !v)}
-          title={
-            showRestStops ? "Hide rest stop markers" : "Show rest stop markers"
-          }
-          aria-label={
-            showRestStops ? "Hide rest stop markers" : "Show rest stop markers"
-          }
-          style={{ opacity: showRestStops ? 1 : 0.5 }}
-        >
-          <i className="fa-solid fa-location-dot" />
-        </button>
-        <button
-          className="map-topo-btn"
-          onClick={() => setMapStyle((s) => (s === "osm" ? "topo" : "osm"))}
-          title={
-            mapStyle === "osm"
-              ? "Switch to topographic map"
-              : "Switch to standard map"
-          }
-          aria-label={
-            mapStyle === "osm"
-              ? "Switch to topographic map"
-              : "Switch to standard map"
-          }
-          style={{ opacity: mapStyle === "topo" ? 1 : 0.6 }}
-        >
-          🗻
-        </button>
-        {hourlyWeather && hourlyWeather.length > 0 && (
-          <button
-            className="map-wind-btn"
-            onClick={() => setShowWindOverlay((v) => !v)}
-            title={showWindOverlay ? "Hide wind overlay" : "Show wind overlay"}
-            aria-label={
-              showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
-            }
-            style={{ opacity: showWindOverlay ? 1 : 0.5 }}
+        <div className="map-controls-stack">
+          <select
+            className="map-tile-select"
+            value={mapStyle}
+            onChange={(e) => setMapStyle(e.target.value as MapTileLayerKey)}
+            title="Map style"
+            aria-label="Map style"
           >
-            <i className="fa-solid fa-wind" />
-          </button>
-        )}
-        <button
-          className="map-reset-btn"
-          onClick={() =>
-            mapRef.current?.fitBounds(bounds, { padding: [24, 24] })
-          }
-          title="Reset view"
-          aria-label="Reset map view"
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
-          </svg>
-        </button>
-        {document.fullscreenEnabled && (
+            {(Object.keys(MAP_TILE_LAYERS) as MapTileLayerKey[]).map((key) => (
+              <option key={key} value={key}>
+                {MAP_TILE_LAYERS[key].label}
+              </option>
+            ))}
+          </select>
+          {document.fullscreenEnabled && (
+            <button
+              className="map-fullscreen-btn"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              aria-label={
+                isFullscreen ? "Exit fullscreen" : "View map fullscreen"
+              }
+            >
+              {isFullscreen ? (
+                // compress icon
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                >
+                  <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+                </svg>
+              ) : (
+                // expand icon
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                >
+                  <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+                </svg>
+              )}
+            </button>
+          )}
           <button
-            className="map-fullscreen-btn"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            aria-label={
-              isFullscreen ? "Exit fullscreen" : "View map fullscreen"
+            className="map-reset-btn"
+            onClick={() =>
+              mapRef.current?.fitBounds(bounds, { padding: [24, 24] })
             }
+            title="Reset view"
+            aria-label="Reset map view"
           >
-            {isFullscreen ? (
-              // compress icon
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="currentColor"
-              >
-                <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
-              </svg>
-            ) : (
-              // expand icon
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="currentColor"
-              >
-                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-              </svg>
-            )}
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z" />
+            </svg>
           </button>
-        )}
+          <button
+            className="map-markers-btn"
+            onClick={() => setShowMarkers((v) => !v)}
+            title={showMarkers ? "Hide mile markers" : "Show mile markers"}
+            aria-label={showMarkers ? "Hide mile markers" : "Show mile markers"}
+            style={{ opacity: showMarkers ? 1 : 0.5 }}
+          >
+            <i className="fa-solid fa-flag" />
+          </button>
+          <button
+            className="map-split-markers-btn"
+            onClick={() => setShowSplitMarkers((v) => !v)}
+            title={
+              showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"
+            }
+            aria-label={
+              showSplitMarkers ? "Hide split endpoints" : "Show split endpoints"
+            }
+            style={{ opacity: showSplitMarkers ? 1 : 0.5 }}
+          >
+            <i className="fa-solid fa-location-pin" />
+          </button>
+          <button
+            className="map-stop-btn"
+            onClick={() => setShowRestStops((v) => !v)}
+            title={
+              showRestStops
+                ? "Hide rest stop markers"
+                : "Show rest stop markers"
+            }
+            aria-label={
+              showRestStops
+                ? "Hide rest stop markers"
+                : "Show rest stop markers"
+            }
+            style={{ opacity: showRestStops ? 1 : 0.5 }}
+          >
+            <i className="fa-solid fa-location-dot" />
+          </button>
+          {hourlyWeather && hourlyWeather.length > 0 && (
+            <button
+              className="map-wind-btn"
+              onClick={() => setShowWindOverlay((v) => !v)}
+              title={
+                showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
+              }
+              aria-label={
+                showWindOverlay ? "Hide wind overlay" : "Show wind overlay"
+              }
+              style={{ opacity: showWindOverlay ? 1 : 0.5 }}
+            >
+              <i className="fa-solid fa-wind" />
+            </button>
+          )}
+        </div>
         <MapContainer
           ref={mapRef}
           bounds={bounds}
@@ -850,19 +855,12 @@ export default function CourseMap({
           {showMarkers && (
             <ZoomableMarkers gpxTrack={gpxTrack} unitSystem={unitSystem} />
           )}
-          {mapStyle === "osm" ? (
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              maxZoom={19}
-            />
-          ) : (
-            <TileLayer
-              url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
-              attribution='Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
-              maxZoom={17}
-            />
-          )}
+          <TileLayer
+            key={mapStyle}
+            url={MAP_TILE_LAYERS[mapStyle].url}
+            attribution={MAP_TILE_LAYERS[mapStyle].attribution}
+            maxZoom={MAP_TILE_LAYERS[mapStyle].maxZoom}
+          />
           {/* Ghost track — always visible; covers sections with no splits assigned */}
           <Polyline
             positions={polyline as LatLngExpression[]}

@@ -3161,11 +3161,18 @@ h4 {
   margin-bottom: 0;
 }
 
-.map-fullscreen-btn {
+.map-controls-stack {
   position: absolute;
   top: 10px;
   right: 10px;
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.map-fullscreen-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3186,10 +3193,6 @@ h4 {
 }
 
 .map-reset-btn {
-  position: absolute;
-  top: 46px;
-  right: 10px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3210,10 +3213,6 @@ h4 {
 }
 
 .map-markers-btn {
-  position: absolute;
-  top: 82px;
-  right: 10px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3234,10 +3233,6 @@ h4 {
 }
 
 .map-split-markers-btn {
-  position: absolute;
-  top: 118px;
-  right: 10px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3258,10 +3253,6 @@ h4 {
 }
 
 .map-stop-btn {
-  position: absolute;
-  top: 154px;
-  right: 10px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3281,37 +3272,27 @@ h4 {
   background: #f4f4f4;
 }
 
-.map-topo-btn {
-  position: absolute;
-  top: 190px;
-  right: 10px;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
+.map-tile-select {
   height: 30px;
-  padding: 0;
+  padding: 0 4px;
   background: #fff;
   color: #333;
   border: 2px solid rgba(0, 0, 0, 0.2);
   border-radius: 4px;
   cursor: pointer;
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
-  font-size: 16px;
-  line-height: 1;
-  transition: background 0.15s, opacity 0.15s;
+  font-size: 11px;
+  max-width: 130px;
+  transition: background 0.15s;
 }
 
-.map-topo-btn:hover {
+.map-tile-select:hover,
+.map-tile-select:focus {
   background: #f4f4f4;
+  outline: none;
 }
 
 .map-wind-btn {
-  position: absolute;
-  top: 226px;
-  right: 10px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5109,8 +5090,8 @@ dialog {
 .split-results-rs-info {
   margin-top: 0.6rem;
   padding: 0.45rem 0.6rem;
-  background: #1a1a2e;
-  border: 1px solid #2e2e4e;
+  background: #1a1a1a;
+  border: 1px solid #2e2e2e;
   border-radius: 5px;
   font-size: 0.82rem;
   display: flex;
@@ -5144,7 +5125,7 @@ dialog {
   font-size: 0.79rem;
   white-space: pre-wrap;
   margin-top: 0.15rem;
-  border-top: 1px solid #2e2e4e;
+  border-top: 1px solid #2e2e2e;
   padding-top: 0.2rem;
 }
 
@@ -5258,6 +5239,7 @@ dialog {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  width: max-content;
   gap: 4px;
 }
 
@@ -5319,8 +5301,8 @@ dialog {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  background: var(--color-surface, #1e1e2e);
-  border: 1px solid var(--color-border, #3a3a5c);
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
   border-radius: 6px;
   padding: 0.45rem 0.75rem;
   margin-bottom: 0.75rem;
@@ -5874,6 +5856,22 @@ dialog {
   height: 100%;
 }
 
+.split-map-col .transit-segment-map,
+.split-map-col--full .transit-segment-map {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  min-height: 0;
+}
+
+.split-map-col .transit-segment-map-canvas,
+.split-map-col--full .transit-segment-map-canvas {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
 /* Hide the controls div when inside the two-pane (button is now a FAB on canvas) */
 .split-map-col .split-map-controls,
 .split-map-col--full .split-map-controls {
@@ -6034,11 +6032,18 @@ dialog {
   display: contents;
 }
 
-.split-map-reset-btn {
+.split-map-controls-stack {
   position: absolute;
-  top: 46px;
+  top: 10px;
   right: 8px;
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.split-map-reset-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6059,10 +6064,6 @@ dialog {
 }
 
 .split-map-wind-btn {
-  position: absolute;
-  top: 82px;
-  right: 8px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6083,11 +6084,27 @@ dialog {
   background: #f4f4f4;
 }
 
+.split-map-tile-select {
+  height: 28px;
+  padding: 0 4px;
+  background: #fff;
+  color: #333;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  font-size: 11px;
+  max-width: 126px;
+  transition: background 0.15s;
+}
+
+.split-map-tile-select:hover,
+.split-map-tile-select:focus {
+  background: #f4f4f4;
+  outline: none;
+}
+
 .split-map-fullscreen-btn {
-  position: absolute;
-  top: 10px;
-  right: 8px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
