@@ -334,6 +334,20 @@ interface RwgpsTrackPoint {
   d: number;
 }
 
+interface RwgpsCoursePointRaw {
+  x: number;
+  y: number;
+  n?: string; // instruction text
+  t?: string; // type label ("Left", "Food", etc.)
+}
+
+interface RwgpsPOIRaw {
+  lat: number;
+  lng: number;
+  name?: string;
+  description?: string;
+}
+
 async function fetchRwgpsRouteById(
   token: string,
   routeId: number,
@@ -341,6 +355,8 @@ async function fetchRwgpsRouteById(
   id: number;
   name: string;
   track: GpxTrackPoint[];
+  pois: GpxWaypoint[];
+  coursePoints: GpxWaypoint[];
 }> {
   const resp = await fetch(`${RWGPS_BASE}/api/v1/routes/${routeId}.json`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -353,6 +369,8 @@ async function fetchRwgpsRouteById(
       id: number;
       name: string;
       track_points: RwgpsTrackPoint[];
+      course_points?: RwgpsCoursePointRaw[];
+      points_of_interest?: RwgpsPOIRaw[];
     };
   };
   return {
@@ -364,6 +382,24 @@ async function fetchRwgpsRouteById(
       ele: p.e,
       cumDist: p.d / 1000,
     })),
+    pois: (data.route.points_of_interest ?? [])
+      .filter((p) => p.lat != null && p.lng != null)
+      .map((p) => ({
+        lat: p.lat,
+        lon: p.lng,
+        name: p.name?.trim() || "Point of Interest",
+        description: p.description?.trim() || undefined,
+        symbol: "food" as const,
+      })),
+    coursePoints: (data.route.course_points ?? [])
+      .filter((p) => p.x != null && p.y != null)
+      .map((p) => ({
+        lat: p.y,
+        lon: p.x,
+        name: (p.n?.trim() || p.t?.trim()) ?? "Course Point",
+        description: p.t?.trim() || undefined,
+        symbol: "food" as const,
+      })),
   };
 }
 
@@ -619,6 +655,8 @@ export default function CourseForm() {
   // GPX state — session only, not persisted to localStorage
   const [gpxTrack, setGpxTrack] = useState<GpxTrackPoint[] | null>(null);
   const [gpxWaypoints, setGpxWaypoints] = useState<GpxWaypoint[]>([]);
+  const [rwgpsPois, setRwgpsPois] = useState<GpxWaypoint[]>([]);
+  const [rwgpsCoursePoints, setRwgpsCoursePoints] = useState<GpxWaypoint[]>([]);
   const [gpxSurface, setGpxSurface] = useState<string | null>(null);
   const [gpxFileName, setGpxFileName] = useState<string | null>(null);
   const [gpxLoading, setGpxLoading] = useState(false);
@@ -894,9 +932,15 @@ export default function CourseForm() {
   const { paidApisEnabled, user } = useAppSettings();
   const { login, logout } = useAuth();
 
-  // Persist form to localStorage on every change
+  // Persist form to localStorage, debounced so fast typing (notes, description)
+  // doesn't serialize and write the entire form on every keystroke.
+  const formPersistRef = useRef(form);
+  formPersistRef.current = form;
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+    const timer = setTimeout(() => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(formPersistRef.current));
+    }, 500);
+    return () => clearTimeout(timer);
   }, [form]);
 
   // Persist active plan reference to localStorage so "Update" works across reloads
@@ -1077,6 +1121,8 @@ export default function CourseForm() {
         setRwgpsRestorePending(example.rwgpsRouteId ?? null);
         setGpxTrack(null);
         setGpxWaypoints([]);
+        setRwgpsPois([]);
+        setRwgpsCoursePoints([]);
         setGpxFileName(null);
         setGpxSurface(null);
         setGpxMissingWarning(null);
@@ -1096,6 +1142,8 @@ export default function CourseForm() {
       setRwgpsRestorePending(null);
       setGpxTrack(null);
       setGpxWaypoints([]);
+      setRwgpsPois([]);
+      setRwgpsCoursePoints([]);
       setGpxSurface(null);
       setGpxMissingWarning(null);
 
@@ -1437,6 +1485,8 @@ export default function CourseForm() {
       setGpxLoading(true);
       setGpxTrack(null);
       setGpxWaypoints([]);
+      setRwgpsPois([]);
+      setRwgpsCoursePoints([]);
       setGpxSurface(null);
       const reader = new FileReader();
       reader.onload = () => {
@@ -1477,6 +1527,8 @@ export default function CourseForm() {
   const handleGpxClear = useCallback(() => {
     setGpxTrack(null);
     setGpxWaypoints([]);
+    setRwgpsPois([]);
+    setRwgpsCoursePoints([]);
     setGpxSurface(null);
     setGpxFileName(null);
     setGpxLoading(false);
@@ -1495,6 +1547,8 @@ export default function CourseForm() {
       track: import("../types").GpxTrackPoint[],
       routeName: string,
       routeId: number,
+      pois?: GpxWaypoint[],
+      coursePoints?: GpxWaypoint[],
     ) => {
       if (track.length === 0) {
         setGpxLoading(false);
@@ -1509,6 +1563,8 @@ export default function CourseForm() {
       setGpxFileName(routeName);
       setGpxTrack(track);
       setGpxWaypoints([]);
+      setRwgpsPois(pois ?? []);
+      setRwgpsCoursePoints(coursePoints ?? []);
       setGpxSurface("unknown");
       setGpxLoading(false);
       setApiError(null);
@@ -1560,7 +1616,13 @@ export default function CourseForm() {
     fetchRwgpsRouteById(token, routeId)
       .then((detail) => {
         if (cancelled) return;
-        handleGpxLoadDirect(detail.track, detail.name, detail.id);
+        handleGpxLoadDirect(
+          detail.track,
+          detail.name,
+          detail.id,
+          detail.pois,
+          detail.coursePoints,
+        );
       })
       .catch(() => {
         if (cancelled) return;
@@ -2450,10 +2512,23 @@ export default function CourseForm() {
     [],
   );
 
-  const allErrors = useMemo(
+  const allErrorsComputed = useMemo(
     () => computeFieldErrors(form),
     [computeFieldErrors, form],
   );
+
+  // Stabilize the allErrors reference so effects that depend on it (e.g.
+  // auto-calculate) don't fire when form fields that don't affect validation
+  // change — most notably notes and description. The error content is compared
+  // by JSON so a genuine change (new error or error resolved) still triggers.
+  const allErrorsRef = useRef(allErrorsComputed);
+  const allErrorsJsonRef = useRef<string | null>(null);
+  const allErrorsJson = JSON.stringify(allErrorsComputed);
+  if (allErrorsJson !== allErrorsJsonRef.current) {
+    allErrorsJsonRef.current = allErrorsJson;
+    allErrorsRef.current = allErrorsComputed;
+  }
+  const allErrors = allErrorsRef.current;
 
   const gpxDistanceWarnings = useMemo(() => {
     const warnings: string[] = [];
@@ -2649,7 +2724,7 @@ export default function CourseForm() {
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allErrors]);
+  }, [allErrors, form]);
 
   return (
     <AllErrorsContext.Provider value={allErrors}>
@@ -3704,8 +3779,14 @@ export default function CourseForm() {
                 unitSystem={form.unitSystem}
                 initialMode={rwgpsRestorePending ? "route-id" : "collections"}
                 initialRouteId={rwgpsRestorePending}
-                onSelect={(track, routeName, routeId) => {
-                  handleGpxLoadDirect(track, routeName, routeId);
+                onSelect={(track, routeName, routeId, pois, coursePoints) => {
+                  handleGpxLoadDirect(
+                    track,
+                    routeName,
+                    routeId,
+                    pois,
+                    coursePoints,
+                  );
                   setRwgpsRestorePending(null);
                   setGpxSearchOpen(false);
                 }}
@@ -4247,6 +4328,14 @@ export default function CourseForm() {
                             splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
                             gpxWaypoints={
                               gpxWaypoints.length > 0 ? gpxWaypoints : undefined
+                            }
+                            rwgpsPois={
+                              rwgpsPois.length > 0 ? rwgpsPois : undefined
+                            }
+                            rwgpsCoursePoints={
+                              rwgpsCoursePoints.length > 0
+                                ? rwgpsCoursePoints
+                                : undefined
                             }
                           />
                         );

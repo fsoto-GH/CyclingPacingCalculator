@@ -58,7 +58,9 @@ function formatDistFromKm(km: number, unitSystem: UnitSystem): string {
 function MapInvalidator({ bounds }: { bounds: LatLngBoundsExpression }) {
   const map = useMap();
   useEffect(() => {
+    let alive = true;
     const recenter = () => {
+      if (!alive) return;
       map.invalidateSize();
       map.fitBounds(bounds, { padding: [24, 24] });
     };
@@ -71,6 +73,7 @@ function MapInvalidator({ bounds }: { bounds: LatLngBoundsExpression }) {
     ro.observe(container);
     window.addEventListener("resize", recenter);
     return () => {
+      alive = false;
       ro.disconnect();
       window.removeEventListener("resize", recenter);
     };

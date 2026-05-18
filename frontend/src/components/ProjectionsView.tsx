@@ -36,6 +36,7 @@ import {
 
 const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
 const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
+import { SteepBadge } from "./GradeTooltip";
 
 interface EtaInfo {
   status: "open" | "near-open" | "near-close" | "closed";
@@ -509,11 +510,27 @@ function ProjectionSegment({
             totalDistKm > 0
               ? Math.round((totalSteepKm / totalDistKm) * 100)
               : 0;
+          const bucketKeys = ["b0_3", "b3_6", "b6_9", "b9_12", "b12_15", "b15_18", "b18plus"] as const;
+          const bucketSumKm = Object.fromEntries(bucketKeys.map((k) => [k, 0])) as Record<typeof bucketKeys[number], number>;
+          for (const p of validProfiles) {
+            const splitDistKm = p.endKm - p.startKm;
+            for (const k of bucketKeys) {
+              bucketSumKm[k] += (p.gradeBuckets[k] / 100) * splitDistKm;
+            }
+          }
+          const gradeBuckets = Object.fromEntries(
+            bucketKeys.map((k) => [k, totalDistKm > 0 ? Math.round((bucketSumKm[k] / totalDistKm) * 100) : 0]),
+          ) as Record<typeof bucketKeys[number], number>;
+          const minGradePct = Math.min(...validProfiles.map((p) => p.minGradePct));
+          const maxGradePct = Math.max(...validProfiles.map((p) => p.maxGradePct));
           return {
             elevGainM: Math.round(elevGainM),
             elevLossM: Math.round(elevLossM),
             avgGradePct,
             steepPct,
+            gradeBuckets,
+            minGradePct,
+            maxGradePct,
           };
         })()
       : null;
@@ -909,13 +926,12 @@ function ProjectionSegment({
                 {aggGpx.avgGradePct.toFixed(1)}% avg
               </span>
               {aggGpx.steepPct > 0 && (
-                <span
-                  className="split-header-meta-item split-header-meta-item--steep"
-                  title="% of distance with grade > 5%"
-                >
-                  <i className="fa-solid fa-triangle-exclamation"></i>{" "}
-                  {aggGpx.steepPct}% steep
-                </span>
+                <SteepBadge
+                  steepPct={aggGpx.steepPct}
+                  gradeBuckets={aggGpx.gradeBuckets}
+                  minGradePct={aggGpx.minGradePct}
+                  maxGradePct={aggGpx.maxGradePct}
+                />
               )}
             </div>
           )}
@@ -967,6 +983,19 @@ function ProjectionSegment({
                 </span>
               </>
             )}
+            {(citySummary || segEndCityFetching) && sleepHms && (
+              <span className="proj-city-sep"> · </span>
+            )}
+            {sleepHms && (
+              <span className="proj-city-pace">
+                <i className="fa-solid fa-moon"></i>{" "}
+                {segment.sleep_time_hours.toLocaleString(undefined, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}{" "}
+                hrs
+              </span>
+            )}
           </div>
 
           {(citySummary ||
@@ -1008,14 +1037,6 @@ function ProjectionSegment({
                   (finding nearest city...)
                 </span>
               )}
-              {(citySummary || segEndCityFetching) && sleepHms && (
-                <span className="proj-city-sep"> · </span>
-              )}
-              {sleepHms && (
-                <span className="proj-segment-sleep">
-                  {sleepHms} <i className="fa-solid fa-moon"></i>
-                </span>
-              )}
             </div>
           )}
 
@@ -1027,7 +1048,16 @@ function ProjectionSegment({
             <span className="proj-city-end">
               {fmtInTz(segment.end_time, segmentEndTz ?? courseTz)}
             </span>
-            <span className="proj-city-sep"> · </span>
+            {segment.sleep_time_hours > 0 && (
+              <span title="Sleep time">
+                {" "}
+                + {formatHours(segment.sleep_time_hours)}{" "}
+                <i className="fa-solid fa-moon"></i>
+              </span>
+            )}
+            <span className="proj-city-sep">
+              {segment.sleep_time_hours > 0 ? " = " : " · "}
+            </span>
             <span>{formatHours(segment.elapsed_time_hours)}</span>
           </div>
 
@@ -1392,6 +1422,45 @@ function ProjectionSegment({
                         </dd>
                       </div>
                     )}
+                  </>
+                )}
+                {aggGpx && (aggGpx.steepPct > 0 || aggGpx.minGradePct < 0 || aggGpx.maxGradePct > 0) && (
+                  <>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <dt title="% of segment distance in each absolute-grade bucket">
+                        Grade Distribution
+                      </dt>
+                      <dd>
+                        <div className="proj-grade-buckets">
+                          {(
+                            [
+                              ["0–3%", aggGpx.gradeBuckets.b0_3],
+                              ["3–6%", aggGpx.gradeBuckets.b3_6],
+                              ["6–9%", aggGpx.gradeBuckets.b6_9],
+                              ["9–12%", aggGpx.gradeBuckets.b9_12],
+                              ["12–15%", aggGpx.gradeBuckets.b12_15],
+                              ["15–18%", aggGpx.gradeBuckets.b15_18],
+                              [">18%", aggGpx.gradeBuckets.b18plus],
+                            ] as [string, number][]
+                          )
+                            .filter(([, v]) => v > 0)
+                            .map(([label, pct]) => (
+                              <span key={label} className="proj-grade-bucket-chip">
+                                <span className="proj-grade-bucket-label">{label}</span>
+                                <span className="proj-grade-bucket-pct">{pct}%</span>
+                              </span>
+                            ))}
+                        </div>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title="Steepest descent grade in this segment">Min Grade</dt>
+                      <dd>{aggGpx.minGradePct.toFixed(1)}%</dd>
+                    </div>
+                    <div>
+                      <dt title="Steepest ascent grade in this segment">Max Grade</dt>
+                      <dd>{aggGpx.maxGradePct.toFixed(1)}%</dd>
+                    </div>
                   </>
                 )}
               </dl>
@@ -1784,13 +1853,12 @@ function ProjectionSplit({
                       {profile.avgGradePct.toFixed(1)}% avg
                     </span>
                     {profile.steepPct > 0 && (
-                      <span
-                        className="split-header-meta-item split-header-meta-item--steep"
-                        title="% of distance with grade > 5%"
-                      >
-                        <i className="fa-solid fa-triangle-exclamation"></i>{" "}
-                        {profile.steepPct}% steep
-                      </span>
+                      <SteepBadge
+                        steepPct={profile.steepPct}
+                        gradeBuckets={profile.gradeBuckets}
+                        minGradePct={profile.minGradePct}
+                        maxGradePct={profile.maxGradePct}
+                      />
                     )}
                     {profile.surface !== "unknown" && (
                       <span
@@ -2197,6 +2265,45 @@ function ProjectionSplit({
                     unitSystem={unitSystem}
                   />
                 </div>
+              )}
+              {profile && (profile.steepPct > 0 || profile.minGradePct < 0 || profile.maxGradePct > 0) && (
+                <>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <dt title="% of split distance in each absolute-grade bucket">
+                      Grade Distribution
+                    </dt>
+                    <dd>
+                      <div className="proj-grade-buckets">
+                        {(
+                          [
+                            ["0–3%", profile.gradeBuckets.b0_3],
+                            ["3–6%", profile.gradeBuckets.b3_6],
+                            ["6–9%", profile.gradeBuckets.b6_9],
+                            ["9–12%", profile.gradeBuckets.b9_12],
+                            ["12–15%", profile.gradeBuckets.b12_15],
+                            ["15–18%", profile.gradeBuckets.b15_18],
+                            [">18%", profile.gradeBuckets.b18plus],
+                          ] as [string, number][]
+                        )
+                          .filter(([, v]) => v > 0)
+                          .map(([label, pct]) => (
+                            <span key={label} className="proj-grade-bucket-chip">
+                              <span className="proj-grade-bucket-label">{label}</span>
+                              <span className="proj-grade-bucket-pct">{pct}%</span>
+                            </span>
+                          ))}
+                      </div>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Steepest descent grade in this split">Min Grade</dt>
+                    <dd>{profile.minGradePct.toFixed(1)}%</dd>
+                  </div>
+                  <div>
+                    <dt title="Steepest ascent grade in this split">Max Grade</dt>
+                    <dd>{profile.maxGradePct.toFixed(1)}%</dd>
+                  </div>
+                </>
               )}
             </dl>
           )}

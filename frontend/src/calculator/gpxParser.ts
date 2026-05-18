@@ -4,7 +4,7 @@
  */
 
 import tzlookup from "tz-lookup";
-import type { GpxTrackPoint, SplitGpxProfile } from "../types";
+import type { GpxTrackPoint, GradeBuckets, SplitGpxProfile } from "../types";
 import type { GpxWaypoint } from "../types";
 
 // ── Haversine distance ──────────────────────────────────────────────────────
@@ -337,6 +337,17 @@ export function computeSplitProfile(
       elevLossM: 0,
       avgGradePct: 0,
       steepPct: 0,
+      gradeBuckets: {
+        b0_3: 0,
+        b3_6: 0,
+        b6_9: 0,
+        b9_12: 0,
+        b12_15: 0,
+        b15_18: 0,
+        b18plus: 0,
+      },
+      minGradePct: 0,
+      maxGradePct: 0,
       surface,
       startLat: closest.lat,
       startLon: closest.lon,
@@ -353,12 +364,51 @@ export function computeSplitProfile(
 
   // cumDist deltas are pre-computed at parse time — no haversine needed.
   let steepDistKm = 0;
+  const bucketKm: GradeBuckets = {
+    b0_3: 0,
+    b3_6: 0,
+    b6_9: 0,
+    b9_12: 0,
+    b12_15: 0,
+    b15_18: 0,
+    b18plus: 0,
+  };
+  let minGradePct = 0;
+  let maxGradePct = 0;
   for (let i = 1; i < slice.length; i++) {
     const dEle = slice[i].ele - slice[i - 1].ele;
     const segDistKm = slice[i].cumDist - slice[i - 1].cumDist;
     if (segDistKm > 0) {
-      const gradePct = Math.abs(dEle / (segDistKm * 1000)) * 100;
-      if (gradePct > 5) steepDistKm += segDistKm;
+      const signedGradePct = (dEle / (segDistKm * 1000)) * 100;
+      const absGrade = Math.abs(signedGradePct);
+      if (absGrade > 5) steepDistKm += segDistKm;
+      if (signedGradePct < minGradePct) minGradePct = signedGradePct;
+      if (signedGradePct > maxGradePct) maxGradePct = signedGradePct;
+      if (absGrade <= 3) bucketKm.b0_3 += segDistKm;
+      else if (absGrade <= 6) bucketKm.b3_6 += segDistKm;
+      else if (absGrade <= 9) bucketKm.b6_9 += segDistKm;
+      else if (absGrade <= 12) bucketKm.b9_12 += segDistKm;
+      else if (absGrade <= 15) bucketKm.b12_15 += segDistKm;
+      else if (absGrade <= 18) bucketKm.b15_18 += segDistKm;
+      else bucketKm.b18plus += segDistKm;
+    }
+  }
+  // Normalise bucket km → % of total split distance
+  const bucketTotalKm = (
+    Object.keys(bucketKm) as (keyof GradeBuckets)[]
+  ).reduce((s, k) => s + bucketKm[k], 0);
+  const gradeBuckets: GradeBuckets = {
+    b0_3: 0,
+    b3_6: 0,
+    b6_9: 0,
+    b9_12: 0,
+    b12_15: 0,
+    b15_18: 0,
+    b18plus: 0,
+  };
+  if (bucketTotalKm > 0) {
+    for (const k of Object.keys(bucketKm) as (keyof GradeBuckets)[]) {
+      gradeBuckets[k] = Math.round((bucketKm[k] / bucketTotalKm) * 100);
     }
   }
 
@@ -375,6 +425,9 @@ export function computeSplitProfile(
     elevLossM: Math.round(elevLossM),
     avgGradePct: Math.round(avgGradePct * 10) / 10,
     steepPct: Math.round(steepPct),
+    gradeBuckets,
+    minGradePct: Math.round(minGradePct * 10) / 10,
+    maxGradePct: Math.round(maxGradePct * 10) / 10,
     surface,
     startLat: startPt.lat,
     startLon: startPt.lon,

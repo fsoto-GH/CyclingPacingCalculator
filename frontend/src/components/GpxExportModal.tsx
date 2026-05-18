@@ -44,6 +44,10 @@ interface GpxExportModalProps {
   unitSystem: UnitSystem;
   /** Original GPX <wpt> waypoints from the loaded track file */
   gpxWaypoints?: GpxWaypoint[];
+  /** RideWithGPS Points of Interest (only present when route was loaded from RwGPS) */
+  rwgpsPois?: GpxWaypoint[];
+  /** RideWithGPS course/cue points (only present when route was loaded from RwGPS) */
+  rwgpsCoursePoints?: GpxWaypoint[];
 }
 
 export default function GpxExportModal({
@@ -57,6 +61,8 @@ export default function GpxExportModal({
   gpxProfiles,
   unitSystem,
   gpxWaypoints,
+  rwgpsPois,
+  rwgpsCoursePoints,
 }: GpxExportModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -64,6 +70,9 @@ export default function GpxExportModal({
     splits.map(() => true),
   );
   const [exporting, setExporting] = useState(false);
+  const [includeRwgpsPois, setIncludeRwgpsPois] = useState(true);
+  const [includeRwgpsCoursePoints, setIncludeRwgpsCoursePoints] =
+    useState(false);
   const defaultName = segName?.trim() || `Segment ${segIndex + 1}`;
   const [fileName, setFileName] = useState(defaultName);
 
@@ -193,7 +202,12 @@ export default function GpxExportModal({
         });
 
         const trackName = fileName.trim() || defaultName;
-        const allWaypoints = [...waypoints, ...(gpxWaypoints ?? [])];
+        const allWaypoints = [
+          ...waypoints,
+          ...(gpxWaypoints ?? []),
+          ...(includeRwgpsPois ? (rwgpsPois ?? []) : []),
+          ...(includeRwgpsCoursePoints ? (rwgpsCoursePoints ?? []) : []),
+        ];
         const gpx = buildGpxString(
           [{ name: trackName, points: mergedPoints }],
           trackName,
@@ -221,6 +235,10 @@ export default function GpxExportModal({
     defaultName,
     waypoints,
     gpxWaypoints,
+    rwgpsPois,
+    rwgpsCoursePoints,
+    includeRwgpsPois,
+    includeRwgpsCoursePoints,
   ]);
   return (
     <dialog ref={dialogRef} className="gpx-export-modal" onClose={onClose}>
@@ -309,6 +327,37 @@ export default function GpxExportModal({
             ⚠ Non-adjacent splits selected — the exported track will contain a
             positional jump where skipped splits would have been. GPS devices
             and route importers may show this as a straight-line connector.
+          </div>
+        )}
+
+        {((rwgpsPois && rwgpsPois.length > 0) ||
+          (rwgpsCoursePoints && rwgpsCoursePoints.length > 0)) && (
+          <div className="gpx-export-waypoints-section">
+            <span className="gpx-export-waypoints-label">
+              RideWithGPS waypoints
+            </span>
+            {rwgpsPois && rwgpsPois.length > 0 && (
+              <label className="gpx-export-waypoints-toggle">
+                <input
+                  type="checkbox"
+                  checked={includeRwgpsPois}
+                  onChange={(e) => setIncludeRwgpsPois(e.target.checked)}
+                />
+                Points of Interest ({rwgpsPois.length})
+              </label>
+            )}
+            {rwgpsCoursePoints && rwgpsCoursePoints.length > 0 && (
+              <label className="gpx-export-waypoints-toggle">
+                <input
+                  type="checkbox"
+                  checked={includeRwgpsCoursePoints}
+                  onChange={(e) =>
+                    setIncludeRwgpsCoursePoints(e.target.checked)
+                  }
+                />
+                Course Points ({rwgpsCoursePoints.length})
+              </label>
+            )}
           </div>
         )}
       </div>

@@ -10,11 +10,25 @@ export interface GpxTrackPoint {
   cumDist: number; // km from track start
 }
 
+/** % of total split distance in each absolute-grade bucket. */
+export interface GradeBuckets {
+  b0_3: number; // 0–3 %
+  b3_6: number; // 3–6 %
+  b6_9: number; // 6–9 %
+  b9_12: number; // 9–12 %
+  b12_15: number; // 12–15 %
+  b15_18: number; // 15–18 %
+  b18plus: number; // > 18 %
+}
+
 export interface SplitGpxProfile {
   elevGainM: number;
   elevLossM: number;
   avgGradePct: number;
   steepPct: number; // % of distance with grade > 5%
+  gradeBuckets: GradeBuckets;
+  minGradePct: number; // most negative (steepest descent)
+  maxGradePct: number; // most positive (steepest ascent)
   surface: string; // e.g. "paved" | "gravel" | "unknown"
   startLat: number;
   startLon: number;

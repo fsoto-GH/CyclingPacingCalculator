@@ -1860,6 +1860,83 @@ h4 {
 }
 
 /* amber  — steep warning */
+
+/* ── Grade breakdown tooltip (portalled to body, position:fixed via inline style) ── */
+.grade-tooltip {
+  font-family: var(--font-body);
+  background: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem 0.5rem;
+  min-width: 190px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.grade-tooltip-title {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+  margin-bottom: 0.45rem;
+}
+
+.grade-tooltip-buckets {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.grade-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: #d1d5db;
+}
+
+.grade-tooltip-label {
+  width: 3.2rem;
+  flex-shrink: 0;
+  text-align: right;
+  color: #9ca3af;
+}
+
+.grade-tooltip-bar-wrap {
+  flex: 1;
+  background: #2e2e2e;
+  border-radius: 3px;
+  height: 7px;
+  overflow: hidden;
+}
+
+.grade-tooltip-bar {
+  height: 100%;
+  background: #fbbf24;
+  border-radius: 3px;
+  min-width: 2px;
+}
+
+.grade-tooltip-pct {
+  width: 2.4rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.grade-tooltip-minmax {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 0.45rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid #2e2e2e;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.grade-tooltip-sep {
+  color: #4b5563;
+}
 .split-header-meta-item--surface {
   color: #94a3b8;
 }
@@ -3077,6 +3154,39 @@ h4 {
   color: #fbbf24;
   font-size: 0.8rem;
   line-height: 1.45;
+}
+
+.gpx-export-waypoints-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #2e2e2e;
+  border-radius: 5px;
+  background: #161616;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+}
+
+.gpx-export-waypoints-label {
+  font-family: var(--font-display);
+  color: #9ca3af;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.gpx-export-waypoints-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-family: var(--font-body);
+  color: #d1d5db;
+  white-space: nowrap;
 }
 
 /* ── Red glow on number inputs with errors ── */
@@ -5195,6 +5305,37 @@ dialog {
 
 .projections-view .proj-segment-ratio-value {
   color: inherit;
+}
+
+/* ── Grade bucket chips in Projections accordion ── */
+.proj-grade-buckets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.proj-grade-bucket-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #1f1f1f;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  font-family: var(--font-body);
+  font-size: 0.73rem;
+}
+
+.proj-grade-bucket-label {
+  font-family: var(--font-display);
+  color: #9ca3af;
+}
+
+.proj-grade-bucket-pct {
+  font-family: var(--font-body);
+  color: #fbbf24;
+  font-weight: 600;
 }
 
 @media (max-width: 768px) {

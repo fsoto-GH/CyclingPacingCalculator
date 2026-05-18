@@ -17,6 +17,7 @@ import {
   hoursLabelForEntry,
   timezoneAbbreviationAt,
 } from "../timeMath";
+import { SteepBadge } from "./GradeTooltip";
 
 interface EtaInfo {
   status: "open" | "near-open" | "near-close" | "closed";
@@ -256,6 +257,17 @@ export default function SplitFormComponent({
           elevLossM: 0,
           avgGradePct: 0,
           steepPct: 0,
+          gradeBuckets: {
+            b0_3: 0,
+            b3_6: 0,
+            b6_9: 0,
+            b9_12: 0,
+            b12_15: 0,
+            b15_18: 0,
+            b18plus: 0,
+          },
+          minGradePct: 0,
+          maxGradePct: 0,
           surface: "unknown",
           startLat: gpxTrack[0].lat,
           startLon: gpxTrack[0].lon,
@@ -511,13 +523,12 @@ export default function SplitFormComponent({
                       {gpxProfile.avgGradePct.toFixed(1)}% avg
                     </span>
                     {gpxProfile.steepPct > 0 && (
-                      <span
-                        className="split-header-meta-item split-header-meta-item--steep"
-                        title="% of distance with grade > 5%"
-                      >
-                        <i className="fa-solid fa-triangle-exclamation"></i>{" "}
-                        {gpxProfile.steepPct}% steep
-                      </span>
+                      <SteepBadge
+                        steepPct={gpxProfile.steepPct}
+                        gradeBuckets={gpxProfile.gradeBuckets}
+                        minGradePct={gpxProfile.minGradePct}
+                        maxGradePct={gpxProfile.maxGradePct}
+                      />
                     )}
                     {gpxProfile.surface !== "unknown" && (
                       <span

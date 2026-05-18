@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GpxTrackPoint, UnitSystem } from "../types";
+import type { GpxTrackPoint, GpxWaypoint, UnitSystem } from "../types";
 import { getRwgpsToken, clearRwgpsAuth, startRwgpsOAuth } from "../rwgpsAuth";
 
 const RWGPS_BASE = "https://ridewithgps.com";
@@ -37,6 +37,20 @@ interface RwgpsTrackPoint {
   d: number; // cumulative dist m
 }
 
+interface RwgpsCoursePointRaw {
+  x: number;
+  y: number;
+  n?: string; // instruction text
+  t?: string; // type label ("Left", "Food", etc.)
+}
+
+interface RwgpsPOIRaw {
+  lat: number;
+  lng: number;
+  name?: string;
+  description?: string;
+}
+
 interface GpxSearchModalProps {
   open: boolean;
   onClose: () => void;
@@ -48,6 +62,8 @@ interface GpxSearchModalProps {
     trackPoints: GpxTrackPoint[],
     routeName: string,
     routeId: number,
+    pois: GpxWaypoint[],
+    coursePoints: GpxWaypoint[],
   ) => void;
 }
 
@@ -152,17 +168,46 @@ async function fetchCollectionRoutes(
   return [];
 }
 
+interface RwgpsRouteDetail extends RwgpsRouteSummary {
+  track_points: RwgpsTrackPoint[];
+  course_points?: RwgpsCoursePointRaw[];
+  points_of_interest?: RwgpsPOIRaw[];
+}
+
 async function fetchRouteDetail(
   token: string,
   id: number,
-): Promise<RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] }> {
+): Promise<RwgpsRouteDetail> {
   const data = (await fetchJson(
     token,
     `${RWGPS_BASE}/api/v1/routes/${id}.json`,
-  )) as {
-    route: RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] };
-  };
+  )) as { route: RwgpsRouteDetail };
   return data.route;
+}
+
+function mapRwgpsWaypoints(detail: RwgpsRouteDetail): {
+  pois: GpxWaypoint[];
+  coursePoints: GpxWaypoint[];
+} {
+  const pois: GpxWaypoint[] = (detail.points_of_interest ?? [])
+    .filter((p) => p.lat != null && p.lng != null)
+    .map((p) => ({
+      lat: p.lat,
+      lon: p.lng,
+      name: p.name?.trim() || "Point of Interest",
+      description: p.description?.trim() || undefined,
+      symbol: "food" as const,
+    }));
+  const coursePoints: GpxWaypoint[] = (detail.course_points ?? [])
+    .filter((p) => p.x != null && p.y != null)
+    .map((p) => ({
+      lat: p.y,
+      lon: p.x,
+      name: (p.n?.trim() || p.t?.trim()) ?? "Course Point",
+      description: p.t?.trim() || undefined,
+      symbol: "food" as const,
+    }));
+  return { pois, coursePoints };
 }
 
 export default function GpxSearchModal({
@@ -178,9 +223,9 @@ export default function GpxSearchModal({
 
   const [mode, setMode] = useState<SearchMode>("collections");
   const [routeIdInput, setRouteIdInput] = useState("");
-  const [routeIdPreview, setRouteIdPreview] = useState<
-    (RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] }) | null
-  >(null);
+  const [routeIdPreview, setRouteIdPreview] = useState<RwgpsRouteDetail | null>(
+    null,
+  );
 
   const [collections, setCollections] = useState<RwgpsCollection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<
@@ -365,7 +410,8 @@ export default function GpxSearchModal({
         ele: p.e,
         cumDist: p.d / 1000,
       }));
-      onSelect(track, detail.name, detail.id);
+      const { pois, coursePoints } = mapRwgpsWaypoints(detail);
+      onSelect(track, detail.name, detail.id, pois, coursePoints);
       onClose();
     } catch (e: unknown) {
       setError((e as Error).message ?? `Failed to load route ${id}.`);

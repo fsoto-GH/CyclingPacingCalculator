@@ -23,6 +23,7 @@ import {
 import { buildSegmentTimezoneSequence } from "../timeMath";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
+import { SteepBadge } from "./GradeTooltip";
 import SplitFormComponent from "./SplitForm";
 import RestStopFormComponent from "./RestStopForm";
 import { FieldError } from "./FieldError";
@@ -88,6 +89,10 @@ interface SegmentFormProps {
   splitBoundariesKm?: [number, number][] | null;
   /** Original GPX <wpt> waypoints from the loaded track, to include on export */
   gpxWaypoints?: GpxWaypoint[];
+  /** RideWithGPS Points of Interest for the loaded route */
+  rwgpsPois?: GpxWaypoint[];
+  /** RideWithGPS course/cue points for the loaded route */
+  rwgpsCoursePoints?: GpxWaypoint[];
 }
 
 export default function SegmentFormComponent({
@@ -128,6 +133,8 @@ export default function SegmentFormComponent({
   onZoomToSplit,
   splitBoundariesKm,
   gpxWaypoints,
+  rwgpsPois,
+  rwgpsCoursePoints,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -345,11 +352,47 @@ export default function SegmentFormComponent({
             totalDistKm > 0
               ? Math.round((totalSteepKm / totalDistKm) * 100)
               : 0;
+          // Aggregate grade buckets (distance-weighted)
+          const bucketKeys = [
+            "b0_3",
+            "b3_6",
+            "b6_9",
+            "b9_12",
+            "b12_15",
+            "b15_18",
+            "b18plus",
+          ] as const;
+          const bucketSumKm = Object.fromEntries(
+            bucketKeys.map((k) => [k, 0]),
+          ) as Record<(typeof bucketKeys)[number], number>;
+          for (const p of validProfiles) {
+            const splitDistKm = p.endKm - p.startKm;
+            for (const k of bucketKeys) {
+              bucketSumKm[k] += (p.gradeBuckets[k] / 100) * splitDistKm;
+            }
+          }
+          const gradeBuckets = Object.fromEntries(
+            bucketKeys.map((k) => [
+              k,
+              totalDistKm > 0
+                ? Math.round((bucketSumKm[k] / totalDistKm) * 100)
+                : 0,
+            ]),
+          ) as Record<(typeof bucketKeys)[number], number>;
+          const minGradePct = Math.min(
+            ...validProfiles.map((p) => p.minGradePct),
+          );
+          const maxGradePct = Math.max(
+            ...validProfiles.map((p) => p.maxGradePct),
+          );
           return {
             elevGainM: Math.round(elevGainM),
             elevLossM: Math.round(elevLossM),
             avgGradePct,
             steepPct,
+            gradeBuckets,
+            minGradePct,
+            maxGradePct,
           };
         })()
       : null;
@@ -469,13 +512,12 @@ export default function SegmentFormComponent({
                 {aggGpx.avgGradePct.toFixed(1)}% avg
               </span>
               {aggGpx.steepPct > 0 && (
-                <span
-                  className="split-header-meta-item split-header-meta-item--steep"
-                  title="% of distance with grade > 5%"
-                >
-                  <i className="fa-solid fa-triangle-exclamation"></i>{" "}
-                  {aggGpx.steepPct}% steep
-                </span>
+                <SteepBadge
+                  steepPct={aggGpx.steepPct}
+                  gradeBuckets={aggGpx.gradeBuckets}
+                  minGradePct={aggGpx.minGradePct}
+                  maxGradePct={aggGpx.maxGradePct}
+                />
               )}
             </div>
           )}
@@ -656,6 +698,13 @@ export default function SegmentFormComponent({
                       />
                       <FieldError fieldId={`${prefix}-transit-dist`} />
                     </div>
+                    <TimeInput
+                      id={`${prefix}-sleep-time`}
+                      label="Sleep Time"
+                      value={value.sleep_time}
+                      onChange={(v) => update({ sleep_time: v })}
+                    />
+                    <FieldError fieldId={`${prefix}-sleep-time`} />
                   </div>
 
                   <RestStopFormComponent
@@ -993,6 +1042,8 @@ export default function SegmentFormComponent({
             gpxProfiles={gpxProfiles ?? []}
             unitSystem={unitSystem}
             gpxWaypoints={gpxWaypoints}
+            rwgpsPois={rwgpsPois}
+            rwgpsCoursePoints={rwgpsCoursePoints}
           />
         </Suspense>
       )}
