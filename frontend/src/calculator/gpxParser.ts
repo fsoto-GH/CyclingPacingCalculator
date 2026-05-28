@@ -7,6 +7,26 @@ import tzlookup from "tz-lookup";
 import type { GpxTrackPoint, GradeBuckets, SplitGpxProfile } from "../types";
 import type { GpxWaypoint } from "../types";
 
+// ── Grade bucket helpers ─────────────────────────────────────────────────────
+/** Zero-initialised GradeBuckets (2 % resolution, 20 keys). */
+const ZERO_GRADE_BUCKETS: GradeBuckets = Object.fromEntries([
+  ...Array.from({ length: 9 }, (_, i) => [`b${(i + 1) * 2}`, 0]),
+  ["b18plus", 0],
+  ...Array.from({ length: 9 }, (_, i) => [`bn${(i + 1) * 2}`, 0]),
+  ["bn18plus", 0],
+]) as GradeBuckets;
+
+/** Maps an absolute grade % to the 2%-resolution bucket key. */
+function gradeBucketKey(
+  absGrade: number,
+  descent: boolean,
+): keyof GradeBuckets {
+  const raw = Math.ceil(absGrade / 2) * 2;
+  const n = Math.max(2, raw);
+  if (n > 18) return descent ? "bn18plus" : "b18plus";
+  return (descent ? `bn${n}` : `b${n}`) as keyof GradeBuckets;
+}
+
 // ── Haversine distance ──────────────────────────────────────────────────────
 
 function haversineKm(
@@ -337,15 +357,7 @@ export function computeSplitProfile(
       elevLossM: 0,
       avgGradePct: 0,
       steepPct: 0,
-      gradeBuckets: {
-        b0_3: 0,
-        b3_6: 0,
-        b6_9: 0,
-        b9_12: 0,
-        b12_15: 0,
-        b15_18: 0,
-        b18plus: 0,
-      },
+      gradeBuckets: ZERO_GRADE_BUCKETS,
       minGradePct: 0,
       maxGradePct: 0,
       surface,
@@ -364,15 +376,7 @@ export function computeSplitProfile(
 
   // cumDist deltas are pre-computed at parse time — no haversine needed.
   let steepDistKm = 0;
-  const bucketKm: GradeBuckets = {
-    b0_3: 0,
-    b3_6: 0,
-    b6_9: 0,
-    b9_12: 0,
-    b12_15: 0,
-    b15_18: 0,
-    b18plus: 0,
-  };
+  const bucketKm: GradeBuckets = { ...ZERO_GRADE_BUCKETS };
   let minGradePct = 0;
   let maxGradePct = 0;
   for (let i = 1; i < slice.length; i++) {
@@ -382,30 +386,35 @@ export function computeSplitProfile(
       const signedGradePct = (dEle / (segDistKm * 1000)) * 100;
       const absGrade = Math.abs(signedGradePct);
       if (absGrade > 5) steepDistKm += segDistKm;
+      bucketKm[gradeBucketKey(absGrade, signedGradePct <= 0)] += segDistKm;
+    }
+  }
+  // Min/max grade: use a 100 m sliding window to suppress GPS elevation noise.
+  // Point-to-point grade on raw GPS data (often 2–10 m apart) can produce
+  // impossible values (e.g. -177%) due to ±3–5 m vertical accuracy on GPS devices.
+  const GRADE_WINDOW_KM = 0.1;
+  let rIdx = 0;
+  for (let li = 0; li < slice.length - 1; li++) {
+    if (rIdx <= li) rIdx = li + 1;
+    while (
+      rIdx < slice.length - 1 &&
+      slice[rIdx].cumDist - slice[li].cumDist < GRADE_WINDOW_KM
+    ) {
+      rIdx++;
+    }
+    const windowDist = slice[rIdx].cumDist - slice[li].cumDist;
+    if (windowDist >= GRADE_WINDOW_KM) {
+      const dEle = slice[rIdx].ele - slice[li].ele;
+      const signedGradePct = (dEle / (windowDist * 1000)) * 100;
       if (signedGradePct < minGradePct) minGradePct = signedGradePct;
       if (signedGradePct > maxGradePct) maxGradePct = signedGradePct;
-      if (absGrade <= 3) bucketKm.b0_3 += segDistKm;
-      else if (absGrade <= 6) bucketKm.b3_6 += segDistKm;
-      else if (absGrade <= 9) bucketKm.b6_9 += segDistKm;
-      else if (absGrade <= 12) bucketKm.b9_12 += segDistKm;
-      else if (absGrade <= 15) bucketKm.b12_15 += segDistKm;
-      else if (absGrade <= 18) bucketKm.b15_18 += segDistKm;
-      else bucketKm.b18plus += segDistKm;
     }
   }
   // Normalise bucket km → % of total split distance
   const bucketTotalKm = (
     Object.keys(bucketKm) as (keyof GradeBuckets)[]
   ).reduce((s, k) => s + bucketKm[k], 0);
-  const gradeBuckets: GradeBuckets = {
-    b0_3: 0,
-    b3_6: 0,
-    b6_9: 0,
-    b9_12: 0,
-    b12_15: 0,
-    b15_18: 0,
-    b18plus: 0,
-  };
+  const gradeBuckets: GradeBuckets = { ...ZERO_GRADE_BUCKETS };
   if (bucketTotalKm > 0) {
     for (const k of Object.keys(bucketKm) as (keyof GradeBuckets)[]) {
       gradeBuckets[k] = Math.round((bucketKm[k] / bucketTotalKm) * 100);

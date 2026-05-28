@@ -198,6 +198,12 @@ const SEARCH_INDEX: SearchEntry[] = [
   },
   {
     catKey: "information",
+    secTitle: "Grade Distribution Chart",
+    keywords:
+      "grade distribution chart descent ascent horizontal distance percent bucket asymmetric point-to-point equal gain loss",
+  },
+  {
+    catKey: "information",
     secTitle: "Start Time & Timezone",
     keywords:
       "start time timezone wall clock tz hint interpreted local course detected reset auto",
@@ -1048,6 +1054,35 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     </li>
                   </ul>
                 </Section>
+
+                <Section title="Grade Distribution Chart">
+                  <p>
+                    The grade distribution chart (shown in segment and split
+                    results when a GPX is loaded) plots what percentage of{" "}
+                    <strong>horizontal distance</strong> falls in each grade
+                    bucket, split between descent (blue, left) and ascent
+                    (amber, right).
+                  </p>
+                  <p>
+                    <strong>
+                      Why the chart looks asymmetric on a point-to-point course
+                    </strong>{" "}
+                    — even though total elevation gain and loss are equal, the
+                    distribution of <em>distance</em> across grade buckets does
+                    not have to match. Equal gain and loss means:
+                  </p>
+                  <p style={{ fontStyle: "italic", margin: "0.25rem 1rem" }}>
+                    Σ (grade × Δdistance) = 0
+                  </p>
+                  <p>
+                    This balances via many combinations of grade and distance. A
+                    course with long, gentle descents and short, steep climbs
+                    will show more distance in the shallow descent buckets and
+                    more distance in the steep ascent buckets — while still
+                    having equal total gain and loss. This is normal and not a
+                    calculation error.
+                  </p>
+                </Section>
               </Category>
 
               {/* ── Key Terms ── */}
@@ -1130,7 +1165,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                   </p>
                   <ul>
                     <li>
-                      Example: Speed 16 with delta −0.1 → 16.0 → 15.9 → 15.8 → …
+                      Example: Speed 16 with delta -0.1 → 16.0 → 15.9 → 15.8 → …
                       down to Min Speed.
                     </li>
                   </ul>

@@ -101,23 +101,31 @@ export function windDirectionLabel(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
-/**
- * Fetch 15-minute weather from the Open-Meteo API for split endpoints.
- *
- * Routes each point to the correct API based on time:
- *   - Past dates    → historical-forecast-api.open-meteo.com/v1/forecast
- *   - Future dates  → api.open-meteo.com/v1/forecast (16-day window)
- *   - Beyond 16 days in the future → null (no data available)
- *
- * Both APIs use the same request shape:
- *   minutely_15: temperature, apparent_temperature, precipitation, rain,
- *                weather_code, wind fields
- *   hourly: precipitation_probability, cloud_cover, is_day, relative_humidity_2m
- *
- * Locations are deduplicated by rounding to 0.01° (~1 km), up to 50 per batch.
- */
+// ── Open-Meteo ────────────────────────────────────────────────────────────────
 
-// ── Open-Meteo response shapes ──
+const FORECAST_API = "https://api.open-meteo.com/v1/forecast";
+const ARCHIVE_API = "https://archive-api.open-meteo.com/v1/archive";
+
+/** How far ahead the forecast API covers (16 days). */
+const FORECAST_AHEAD_MS = 16 * 24 * 3_600_000;
+/** How many past days the forecast API includes via the `past_days` param. */
+const FORECAST_PAST_DAYS = 7;
+const FORECAST_PAST_MS = FORECAST_PAST_DAYS * 24 * 3_600_000;
+
+/** Max locations per Open-Meteo batch request. */
+const BATCH_SIZE = 50;
+/** Courtesy delay between sequential batches (ms). */
+const BATCH_DELAY_MS = 200;
+
+const HOURLY_PARAMS =
+  "temperature_2m,apparent_temperature,precipitation_probability,precipitation," +
+  "rain,weathercode,windspeed_10m,winddirection_10m,windgusts_10m," +
+  "relativehumidity_2m,cloudcover,is_day";
+
+/** Archive API does not provide precipitation_probability. */
+const ARCHIVE_HOURLY_PARAMS =
+  "temperature_2m,apparent_temperature,precipitation,rain,weathercode," +
+  "windspeed_10m,winddirection_10m,windgusts_10m,relativehumidity_2m,cloudcover,is_day";
 
 // ── Sunrise / sunset ──
 
@@ -127,316 +135,346 @@ export interface SunriseSunsetEntry {
   ms: number;
 }
 
-interface DailyData {
-  time: string[];
-  sunrise: string[];
-  sunset: string[];
+// ── Internal cache ────────────────────────────────────────────────────────────
+
+interface GHourSlot {
+  startMs: number;
+  weather: SplitWeather;
 }
 
-interface Minutely15Data {
-  time: string[];
-  temperature_2m: number[];
-  apparent_temperature: number[];
-  precipitation: number[];
-  rain: number[];
-  weather_code: number[];
-  wind_speed_10m: number[];
-  wind_direction_10m: number[];
-  wind_gusts_10m: number[];
-}
-
-interface HourlyData {
-  time: string[];
-  precipitation_probability: number[];
-  cloud_cover: number[];
-  is_day: number[];
-  relative_humidity_2m: number[];
-}
-
-interface WeatherCacheEntry {
-  minutely15: Minutely15Data;
-  hourly: HourlyData;
-  daily?: DailyData;
-}
-
-interface OpenMeteoResponse {
-  minutely_15: Minutely15Data;
-  hourly: HourlyData;
-  daily?: DailyData;
-}
-
-// ── Shared helpers ──
-
-function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
-}
-
-const _MINUTELY_15_FIELDS =
-  "temperature_2m,apparent_temperature,precipitation,rain," +
-  "weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m";
-
-const _HOURLY_FIELDS =
-  "precipitation_probability,cloud_cover,is_day,relative_humidity_2m";
-
-/** Map one minutely_15 + hourly slot pair to a SplitWeather value. */
-function mapWeatherSlot(
-  m: Minutely15Data,
-  mi: number,
-  h: HourlyData,
-  hi: number,
-): SplitWeather {
-  return {
-    temperature: m.temperature_2m[mi],
-    apparentTemperature: m.apparent_temperature[mi],
-    precipitation: m.precipitation[mi],
-    rain: m.rain[mi],
-    weatherCode: m.weather_code[mi],
-    windSpeed: m.wind_speed_10m[mi],
-    windDirection: m.wind_direction_10m[mi],
-    windGusts: m.wind_gusts_10m[mi],
-    precipitationProbability: h.precipitation_probability[hi] ?? 0,
-    precipitationProbabilityAvailable: true,
-    cloudCover: h.cloud_cover[hi] ?? 0,
-    isDay: (h.is_day[hi] ?? 1) === 1,
-    humidity: h.relative_humidity_2m[hi] ?? 0,
-    // Append "Z" so the string is unambiguously UTC when parsed by the UI.
-    forecastHour: m.time[mi].endsWith("Z") ? m.time[mi] : m.time[mi] + "Z",
-  };
-}
-
-/**
- * Parse an Open-Meteo time string as UTC milliseconds.
- * The API returns ISO 8601 strings without a timezone offset (e.g. "2025-07-15T07:00").
- * Without an explicit offset, JavaScript treats them as LOCAL time — appending "Z"
- * forces UTC interpretation, which is what the API actually returns.
- */
-function parseApiTimeMs(t: string): number {
-  return new Date(t.endsWith("Z") ? t : t + "Z").getTime();
-}
-
-/** Nearest-slot search over minutely_15 data. */
-function findBestMinutely15(m: Minutely15Data, targetMs: number): number {
-  let bestIdx = -1;
-  let bestDiff = Infinity;
-  for (let i = 0; i < m.time.length; i++) {
-    const diff = Math.abs(targetMs - parseApiTimeMs(m.time[i]));
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      bestIdx = i;
-    }
-  }
-  return bestIdx;
-}
-
-/** Nearest-slot search over hourly supplement data. */
-function findBestHourly(h: HourlyData, targetMs: number): number {
-  let bestIdx = -1;
-  let bestDiff = Infinity;
-  for (let i = 0; i < h.time.length; i++) {
-    const diff = Math.abs(targetMs - parseApiTimeMs(h.time[i]));
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      bestIdx = i;
-    }
-  }
-  return bestIdx;
-}
-
-// ── Main entry point ──
+/** Internal cache type: location key → array of hourly slots. */
+type WeatherCache = Map<string, GHourSlot[]>;
 
 const locKey = (lat: number, lon: number) =>
   `${lat.toFixed(2)},${lon.toFixed(2)}`;
 
-/**
- * Build an Open-Meteo URL for a batch weather request.
- *
- * usePast=true  → historical-forecast-api.open-meteo.com (past dates, ECMWF reanalysis)
- * usePast=false → api.open-meteo.com (up to 16 days ahead)
- *
- * When usePaidApi is true the request is proxied through /v1/cycling/forecast
- * so API keys stay server-side.
- */
-function buildOpenMeteoUrl(
-  lats: string,
-  lons: string,
+/** Parse a time string as UTC milliseconds (appends "Z" if absent). */
+function parseTimeMs(t: string): number {
+  return new Date(t.endsWith("Z") ? t : t + "Z").getTime();
+}
+
+function ssKey(loc: string): string {
+  return `om-${loc}`;
+}
+function getCachedSlots(loc: string): GHourSlot[] | null {
+  try {
+    const raw = sessionStorage.getItem(ssKey(loc));
+    if (!raw) return null;
+    return JSON.parse(raw) as GHourSlot[];
+  } catch {
+    return null;
+  }
+}
+
+function setCachedSlots(loc: string, slots: GHourSlot[]): void {
+  try {
+    sessionStorage.setItem(ssKey(loc), JSON.stringify(slots));
+  } catch {
+    // sessionStorage full or unavailable — skip silently
+  }
+}
+
+function isoDate(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((res) => setTimeout(res, ms));
+}
+
+// ── Open-Meteo response parsing ───────────────────────────────────────────────
+
+interface OMHourlyData {
+  time: string[];
+  temperature_2m: (number | null)[];
+  apparent_temperature: (number | null)[];
+  precipitation_probability?: (number | null)[];
+  precipitation: (number | null)[];
+  rain: (number | null)[];
+  weathercode: (number | null)[];
+  windspeed_10m: (number | null)[];
+  winddirection_10m: (number | null)[];
+  windgusts_10m: (number | null)[];
+  relativehumidity_2m: (number | null)[];
+  cloudcover: (number | null)[];
+  is_day: (0 | 1 | null)[];
+}
+
+interface OMResponse {
+  hourly: OMHourlyData;
+}
+
+function parseOMHourly(data: OMResponse, hasPrecipProb: boolean): GHourSlot[] {
+  const h = data.hourly;
+  const times = h.time ?? [];
+  const slots: GHourSlot[] = [];
+  for (let i = 0; i < times.length; i++) {
+    // OM returns times without "Z" when timezone=UTC — append it.
+    const startMs = new Date(times[i] + "Z").getTime();
+    if (!Number.isFinite(startMs)) continue;
+    const temp = h.temperature_2m[i] ?? 0;
+    slots.push({
+      startMs,
+      weather: {
+        temperature: temp,
+        apparentTemperature: h.apparent_temperature[i] ?? temp,
+        precipitationProbability: hasPrecipProb
+          ? (h.precipitation_probability?.[i] ?? 0)
+          : 0,
+        precipitationProbabilityAvailable: hasPrecipProb,
+        precipitation: h.precipitation[i] ?? 0,
+        rain: h.rain[i] ?? 0,
+        weatherCode: h.weathercode[i] ?? 0,
+        windSpeed: h.windspeed_10m[i] ?? 0,
+        windDirection: h.winddirection_10m[i] ?? 0,
+        windGusts: h.windgusts_10m[i] ?? 0,
+        humidity: h.relativehumidity_2m[i] ?? 0,
+        cloudCover: h.cloudcover[i] ?? 0,
+        isDay: (h.is_day[i] ?? 1) === 1,
+        forecastHour: times[i] + "Z",
+      },
+    });
+  }
+  return slots;
+}
+
+// ── Batch fetch helpers ───────────────────────────────────────────────────────
+
+interface LocEntry {
+  lat: number;
+  lon: number;
+  key: string;
+}
+
+async function fetchForecastBatch(
+  locs: LocEntry[],
+): Promise<Map<string, GHourSlot[]>> {
+  const latStr = locs.map((l) => l.lat).join(",");
+  const lonStr = locs.map((l) => l.lon).join(",");
+  const url =
+    `${FORECAST_API}?latitude=${latStr}&longitude=${lonStr}` +
+    `&hourly=${HOURLY_PARAMS}` +
+    `&forecast_days=16&past_days=${FORECAST_PAST_DAYS}` +
+    `&timezone=UTC`;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return new Map();
+    const data = (await resp.json()) as OMResponse | OMResponse[];
+    const arr = Array.isArray(data) ? data : [data];
+    const result = new Map<string, GHourSlot[]>();
+    for (let i = 0; i < locs.length; i++) {
+      const item = arr[i];
+      if (!item?.hourly) continue;
+      result.set(locs[i].key, parseOMHourly(item, true));
+    }
+    return result;
+  } catch {
+    return new Map();
+  }
+}
+
+async function fetchArchiveBatch(
+  locs: LocEntry[],
   startDate: string,
   endDate: string,
-  usePast: boolean,
-  usePaidApi: boolean,
-): string {
-  if (usePaidApi) {
-    const mode = usePast ? "historical" : "forecast";
-    return (
-      `/v1/cycling/forecast` +
-      `?lat=${lats}&lon=${lons}&mode=${mode}` +
-      `&start_date=${startDate}&end_date=${endDate}`
-    );
-  }
-  const host = usePast
-    ? "historical-forecast-api.open-meteo.com"
-    : "api.open-meteo.com";
-  return (
-    `https://${host}/v1/forecast` +
-    `?latitude=${lats}&longitude=${lons}` +
-    `&minutely_15=${_MINUTELY_15_FIELDS}` +
-    `&hourly=${_HOURLY_FIELDS}` +
-    `&daily=sunrise,sunset` +
-    `&models=best_match` +
+): Promise<Map<string, GHourSlot[]>> {
+  const latStr = locs.map((l) => l.lat).join(",");
+  const lonStr = locs.map((l) => l.lon).join(",");
+  const url =
+    `${ARCHIVE_API}?latitude=${latStr}&longitude=${lonStr}` +
+    `&hourly=${ARCHIVE_HOURLY_PARAMS}` +
     `&start_date=${startDate}&end_date=${endDate}` +
-    `&timeformat=iso8601`
-  );
+    `&timezone=UTC`;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return new Map();
+    const data = (await resp.json()) as OMResponse | OMResponse[];
+    const arr = Array.isArray(data) ? data : [data];
+    const result = new Map<string, GHourSlot[]>();
+    for (let i = 0; i < locs.length; i++) {
+      const item = arr[i];
+      if (!item?.hourly) continue;
+      result.set(locs[i].key, parseOMHourly(item, false));
+    }
+    return result;
+  } catch {
+    return new Map();
+  }
 }
+
+// ── Nearest slot lookup ───────────────────────────────────────────────────────
+
+function findNearestSlot(
+  slots: GHourSlot[],
+  targetMs: number,
+): GHourSlot | null {
+  if (slots.length === 0) return null;
+  let best: GHourSlot | null = null;
+  let bestDiff = Infinity;
+  for (const slot of slots) {
+    const diff = Math.abs(slot.startMs - targetMs);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = slot;
+    }
+  }
+  // Accept only if within ±2 hours.
+  return bestDiff <= 2 * 3_600_000 ? best : null;
+}
+
+// ── Sunrise/sunset ────────────────────────────────────────────────────────────
+
+/**
+ * Extracts sunrise/sunset events from a weather cache.
+ * Currently returns an empty array; sunrise/sunset are not cached separately.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function extractSunriseSunset(
+  _cache: WeatherCache,
+): SunriseSunsetEntry[] {
+  return [];
+}
+
+// ── Main fetch entry point ────────────────────────────────────────────────────
 
 export async function fetchSplitWeather(
   splits: { lat: number; lon: number; endTimeIso: string }[],
-  usePaidApi = false,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _usePaidApi = false,
   onBatchComplete?: (
     results: (SplitWeather | null)[],
-    cache: Map<string, WeatherCacheEntry>,
+    cache: WeatherCache,
   ) => void,
 ): Promise<{
   results: (SplitWeather | null)[];
-  cache: Map<string, WeatherCacheEntry>;
+  cache: WeatherCache;
 }> {
-  if (splits.length === 0) return { results: [], cache: new Map() };
-
-  const now = new Date();
-  const maxForecastDate = new Date(now);
-  maxForecastDate.setDate(maxForecastDate.getDate() + 16);
-  const BATCH = 50;
-
-  /** Fetch with automatic retry on 429 (respects Retry-After). */
-  async function fetchWithRetry(url: string): Promise<Response | null> {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      let resp: Response;
-      try {
-        resp = await fetch(url);
-      } catch {
-        return null; // network error
-      }
-      if (resp.status !== 429) return resp;
-      const retryAfter = parseInt(resp.headers.get("Retry-After") ?? "65", 10);
-      await new Promise<void>((r) =>
-        setTimeout(r, Math.min(retryAfter, 120) * 1000),
-      );
-    }
-    return null;
+  if (splits.length === 0) {
+    return { results: [], cache: new Map() };
   }
 
-  // Partition into historical (past), forecast (within window), or beyond window.
-  // Zero-coordinate entries are skipped (no location data — remain null).
-  const historicalIdx: number[] = [];
-  const forecastIdx: number[] = [];
-  for (let i = 0; i < splits.length; i++) {
-    const s = splits[i];
-    if (s.lat === 0 && s.lon === 0) continue;
-    const d = new Date(s.endTimeIso);
-    if (d < now) historicalIdx.push(i);
-    else if (d <= maxForecastDate) forecastIdx.push(i);
-    // beyond maxForecastDate → stays null
-  }
-
+  const now = Date.now();
   const results: (SplitWeather | null)[] = new Array(splits.length).fill(null);
-  const cache = new Map<string, WeatherCacheEntry>();
+  const cache: WeatherCache = new Map();
 
-  // ── Shared batch processor ──
-  async function processBatch(indices: number[], usePast: boolean) {
-    if (indices.length === 0) return;
+  // ── Collect unique locations and classify by time range ──
+  interface LocInfo extends LocEntry {
+    needsForecast: boolean;
+    needsArchive: boolean;
+    archiveMinMs: number;
+    archiveMaxMs: number;
+  }
 
-    const uniqueLocs = new Map<
-      string,
-      { lat: number; lon: number; minDate: Date; maxDate: Date }
-    >();
-    for (const i of indices) {
-      const s = splits[i];
-      const key = locKey(s.lat, s.lon);
-      const d = new Date(s.endTimeIso);
-      const existing = uniqueLocs.get(key);
-      if (!existing) {
-        uniqueLocs.set(key, {
-          lat: parseFloat(s.lat.toFixed(2)),
-          lon: parseFloat(s.lon.toFixed(2)),
-          minDate: d,
-          maxDate: d,
-        });
-      } else {
-        if (d < existing.minDate) existing.minDate = d;
-        if (d > existing.maxDate) existing.maxDate = d;
+  const locMap = new Map<string, LocInfo>();
+  for (const s of splits) {
+    if (s.lat === 0 && s.lon === 0) continue;
+    const key = locKey(s.lat, s.lon);
+    const tMs = parseTimeMs(s.endTimeIso);
+    if (!Number.isFinite(tMs)) continue;
+    const inForecast =
+      tMs >= now - FORECAST_PAST_MS && tMs <= now + FORECAST_AHEAD_MS;
+    const inArchive = tMs < now - FORECAST_PAST_MS;
+    const existing = locMap.get(key);
+    if (!existing) {
+      locMap.set(key, {
+        lat: parseFloat(s.lat.toFixed(2)),
+        lon: parseFloat(s.lon.toFixed(2)),
+        key,
+        needsForecast: inForecast,
+        needsArchive: inArchive,
+        archiveMinMs: inArchive ? tMs : Infinity,
+        archiveMaxMs: inArchive ? tMs : -Infinity,
+      });
+    } else {
+      if (inForecast) existing.needsForecast = true;
+      if (inArchive) {
+        existing.needsArchive = true;
+        if (tMs < existing.archiveMinMs) existing.archiveMinMs = tMs;
+        if (tMs > existing.archiveMaxMs) existing.archiveMaxMs = tMs;
       }
     }
-    const locEntries = [...uniqueLocs.entries()];
+  }
 
-    for (let i = 0; i < locEntries.length; i += BATCH) {
-      const batch = locEntries.slice(i, i + BATCH);
-      const lats = batch.map(([, v]) => v.lat).join(",");
-      const lons = batch.map(([, v]) => v.lon).join(",");
-      let bMin = batch[0][1].minDate;
-      let bMax = batch[0][1].maxDate;
-      for (const [, v] of batch) {
-        if (v.minDate < bMin) bMin = v.minDate;
-        if (v.maxDate > bMax) bMax = v.maxDate;
+  // ── Populate from sessionStorage cache first ──
+  const uncachedForecast: LocInfo[] = [];
+  const uncachedArchive: LocInfo[] = [];
+
+  for (const loc of locMap.values()) {
+    const cached = getCachedSlots(loc.key);
+    if (cached) {
+      cache.set(loc.key, cached);
+      for (let i = 0; i < splits.length; i++) {
+        if (locKey(splits[i].lat, splits[i].lon) !== loc.key) continue;
+        const nearest = findNearestSlot(
+          cached,
+          parseTimeMs(splits[i].endTimeIso),
+        );
+        if (nearest) results[i] = nearest.weather;
       }
-      const url = buildOpenMeteoUrl(
-        lats,
-        lons,
-        toDateStr(bMin),
-        toDateStr(bMax),
-        usePast,
-        usePaidApi,
-      );
-      const resp = await fetchWithRetry(url);
-      if (resp?.ok) {
-        const data = await resp.json();
-        if (batch.length === 1) {
-          const r = data as OpenMeteoResponse;
-          if (r?.minutely_15 && r?.hourly)
-            cache.set(batch[0][0], {
-              minutely15: r.minutely_15,
-              hourly: r.hourly,
-              daily: r.daily,
-            });
-        } else {
-          const arr = data as OpenMeteoResponse[];
-          for (let j = 0; j < batch.length; j++) {
-            if (arr[j]?.minutely_15 && arr[j]?.hourly)
-              cache.set(batch[j][0], {
-                minutely15: arr[j].minutely_15,
-                hourly: arr[j].hourly,
-                daily: arr[j].daily,
-              });
-          }
+    } else {
+      if (loc.needsForecast) uncachedForecast.push(loc);
+      if (loc.needsArchive) uncachedArchive.push(loc);
+    }
+  }
+
+  // Fire callback with any cached data before network requests begin.
+  if (
+    (uncachedForecast.length > 0 || uncachedArchive.length > 0) &&
+    onBatchComplete
+  ) {
+    onBatchComplete([...results], cache);
+  }
+
+  // ── Fetch forecast batches (sequential, BATCH_SIZE locations each) ──
+  for (let i = 0; i < uncachedForecast.length; i += BATCH_SIZE) {
+    if (i > 0) await delay(BATCH_DELAY_MS);
+    const batch = uncachedForecast.slice(i, i + BATCH_SIZE);
+    const fetched = await fetchForecastBatch(batch);
+    for (const [key, slots] of fetched) {
+      setCachedSlots(key, slots);
+      cache.set(key, slots);
+      for (let j = 0; j < splits.length; j++) {
+        if (locKey(splits[j].lat, splits[j].lon) !== key) continue;
+        const nearest = findNearestSlot(
+          slots,
+          parseTimeMs(splits[j].endTimeIso),
+        );
+        if (nearest) results[j] = nearest.weather;
+      }
+    }
+    onBatchComplete?.([...results], cache);
+  }
+
+  // ── Fetch archive batches ──
+  if (uncachedArchive.length > 0) {
+    const archiveMinMs = Math.min(
+      ...uncachedArchive.map((l) => l.archiveMinMs),
+    );
+    const archiveMaxMs = Math.max(
+      ...uncachedArchive.map((l) => l.archiveMaxMs),
+    );
+    const startDate = isoDate(archiveMinMs);
+    const endDate = isoDate(archiveMaxMs);
+
+    for (let i = 0; i < uncachedArchive.length; i += BATCH_SIZE) {
+      if (i > 0) await delay(BATCH_DELAY_MS);
+      const batch = uncachedArchive.slice(i, i + BATCH_SIZE);
+      const fetched = await fetchArchiveBatch(batch, startDate, endDate);
+      for (const [key, slots] of fetched) {
+        setCachedSlots(key, slots);
+        cache.set(key, slots);
+        for (let j = 0; j < splits.length; j++) {
+          if (locKey(splits[j].lat, splits[j].lon) !== key) continue;
+          const nearest = findNearestSlot(
+            slots,
+            parseTimeMs(splits[j].endTimeIso),
+          );
+          if (nearest) results[j] = nearest.weather;
         }
       }
-
-      // Map results for indices whose location was in this batch.
-      const batchKeys = new Set(batch.map(([k]) => k));
-      for (const idx of indices) {
-        if (results[idx] !== null) continue; // already mapped
-        const s = splits[idx];
-        const key = locKey(s.lat, s.lon);
-        if (!batchKeys.has(key)) continue;
-        const entry = cache.get(key);
-        if (!entry) continue;
-        const targetMs = new Date(s.endTimeIso).getTime();
-        const mi = findBestMinutely15(entry.minutely15, targetMs);
-        const hi = findBestHourly(entry.hourly, targetMs);
-        if (mi !== -1 && hi !== -1)
-          results[idx] = mapWeatherSlot(entry.minutely15, mi, entry.hourly, hi);
-      }
-
-      onBatchComplete?.(results, cache);
-
-      // Small courtesy delay between batches to avoid burst rate-limiting.
-      if (i + BATCH < locEntries.length) {
-        await new Promise<void>((r) => setTimeout(r, 500));
-      }
+      onBatchComplete?.([...results], cache);
     }
   }
-
-  await Promise.all([
-    processBatch(historicalIdx, true),
-    processBatch(forecastIdx, false),
-  ]);
 
   return { results, cache };
 }
@@ -474,7 +512,7 @@ export async function fetchSplitWeatherPairs(
     endLon: number;
     endTimeIso: string;
   }[],
-  usePaidApi = false,
+  _usePaidApi = false,
 ): Promise<SplitWeatherPair[]> {
   if (splits.length === 0) return [];
 
@@ -484,7 +522,7 @@ export async function fetchSplitWeatherPairs(
     { lat: s.endLat, lon: s.endLon, endTimeIso: s.endTimeIso },
   ]);
 
-  const { results, cache } = await fetchSplitWeather(flat, usePaidApi);
+  const { results, cache } = await fetchSplitWeather(flat);
 
   return splits.map((s, i) => {
     const start = results[i * 2] ?? null;
@@ -493,12 +531,12 @@ export async function fetchSplitWeatherPairs(
     let tempMin: number | undefined;
     let tempMax: number | undefined;
     if (start || end) {
-      const startMs = parseApiTimeMs(s.startTimeIso);
-      const endMs = parseApiTimeMs(s.endTimeIso);
+      const startMs = parseTimeMs(s.startTimeIso);
+      const endMs = parseTimeMs(s.endTimeIso);
       const temps: number[] = [];
       if (start) temps.push(start.temperature);
       if (end) temps.push(end.temperature);
-      // Scan minutely_15 slots for both endpoint locations to capture intermediate temps.
+      // Scan hourly slots for both endpoint locations to capture intermediate temps.
       const seen = new Set<string>();
       for (const k of [
         locKey(s.startLat, s.startLon),
@@ -506,13 +544,11 @@ export async function fetchSplitWeatherPairs(
       ]) {
         if (seen.has(k)) continue;
         seen.add(k);
-        const entry = cache.get(k);
-        if (!entry) continue;
-        const m = entry.minutely15;
-        for (let j = 0; j < m.time.length; j++) {
-          const tMs = parseApiTimeMs(m.time[j]);
-          if (tMs >= startMs && tMs <= endMs) {
-            temps.push(m.temperature_2m[j]);
+        const slots = cache.get(k);
+        if (!slots) continue;
+        for (const slot of slots) {
+          if (slot.startMs >= startMs && slot.startMs <= endMs) {
+            temps.push(slot.weather.temperature);
           }
         }
       }
@@ -545,8 +581,8 @@ interface HourlyCourseCoord {
  * course by linearly interpolating along the GPX track within each split.
  *
  * For a given slot `h` that falls within split [startMs, endMs]:
- *   frac  = (h − startMs) / (endMs − startMs)
- *   km    = startKm + frac × (endKm − startKm)
+ *   frac  = (h - startMs) / (endMs - startMs)
+ *   km    = startKm + frac × (endKm - startKm)
  *   latlon = interpolateLatLon(track, km)
  *
  * The first and last point of each split are always included (at their exact
@@ -606,40 +642,6 @@ export function computeHourlyCoursePoints(
 }
 
 /**
- * Extract all sunrise and sunset events from a weather cache, sorted by time.
- *
- * Each cached location carries a `daily` block with UTC-based sunrise/sunset
- * ISO strings (Open-Meteo returns daily times matching the per-request timezone;
- * since we use no timezone param, they are in UTC).  All locations are merged
- * and deduplicated by calendar day + event type so overlapping batch ranges
- * don't produce duplicate lines on the chart.
- */
-export function extractSunriseSunset(
-  cache: Map<string, WeatherCacheEntry>,
-): SunriseSunsetEntry[] {
-  const seen = new Set<string>(); // "sunrise-2025-07-15" etc.
-  const entries: SunriseSunsetEntry[] = [];
-  for (const entry of cache.values()) {
-    const d = entry.daily;
-    if (!d) continue;
-    for (let i = 0; i < d.time.length; i++) {
-      const day = d.time[i]; // "YYYY-MM-DD"
-      for (const type of ["sunrise", "sunset"] as const) {
-        const raw = type === "sunrise" ? d.sunrise[i] : d.sunset[i];
-        if (!raw) continue;
-        const key = `${type}-${day}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const ms = new Date(raw.endsWith("Z") ? raw : raw + "Z").getTime();
-        if (Number.isFinite(ms)) entries.push({ type, ms });
-      }
-    }
-  }
-  entries.sort((a, b) => a.ms - b.ms);
-  return entries;
-}
-
-/**
  * Fetch weather for a list of hourly course coordinate points, returning the
  * same list with `weather` attached. Points for which no weather is available
  * (outside 16-day window or missing coords) are omitted from the result.
@@ -649,7 +651,6 @@ export function extractSunriseSunset(
  */
 export async function fetchHourlyCourseWeather(
   points: HourlyCourseCoord[],
-  usePaidApi = false,
   onProgress?: (
     partial: import("../types").HourlyWeatherPoint[],
     ss: SunriseSunsetEntry[],
@@ -673,7 +674,7 @@ export async function fetchHourlyCourseWeather(
 
   const { results, cache } = await fetchSplitWeather(
     points.map((p) => ({ lat: p.lat, lon: p.lon, endTimeIso: p.timeIso })),
-    usePaidApi,
+    false,
     onProgress
       ? (partialResults, partialCache) => {
           const partial = mapResults(partialResults);

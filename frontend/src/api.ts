@@ -21,6 +21,11 @@ async function authHeader(): Promise<Record<string, string>> {
 
 // ── Auth sync ─────────────────────────────────────────────────────────────────
 
+export interface UserFlagsResponse {
+  enable_google_places: boolean;
+  enable_google_maps: boolean;
+}
+
 export interface SyncUserResponse {
   is_new_user: boolean;
   user: {
@@ -32,6 +37,7 @@ export interface SyncUserResponse {
     created_at: string;
     last_login_at: string;
   };
+  flags: UserFlagsResponse;
 }
 
 /**
@@ -44,6 +50,43 @@ export async function syncUser(accessToken: string): Promise<SyncUserResponse> {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   return response.data;
+}
+
+// ── User Settings ─────────────────────────────────────────────────────────────
+
+export async function fetchUserSettings(): Promise<Record<string, unknown>> {
+  const resp = await axios.get<{ settings: Record<string, unknown> }>(
+    "/v1/user_settings",
+    { headers: await authHeader() },
+  );
+  return resp.data.settings ?? {};
+}
+
+export async function putUserSettings(
+  settings: Record<string, unknown>,
+): Promise<void> {
+  await axios.put(
+    "/v1/user_settings",
+    { settings },
+    { headers: await authHeader() },
+  );
+}
+
+// ── Google Maps tile session ──────────────────────────────────────────────────
+
+export interface GoogleTileSessionResponse {
+  tile_url_template: string;
+  expiry: number;
+}
+
+export async function getGoogleTileSession(
+  type: "roadmap" | "satellite" | "terrain" | "dark",
+): Promise<GoogleTileSessionResponse> {
+  const resp = await axios.get<GoogleTileSessionResponse>(
+    "/v1/maps/google-tile-session",
+    { params: { type }, headers: await authHeader() },
+  );
+  return resp.data;
 }
 
 // ── Calculator ────────────────────────────────────────────────────────────────
@@ -70,8 +113,9 @@ export interface NearbyAmenityResult {
   address: string;
   street_line: string;
   has_locality: boolean;
-  hours?: Record<string, unknown> | null;
+  hours?: Array<{ mode: string; opens: string; closes: string }> | null;
   raw_hours?: string | null;
+  place_id?: string | null;
 }
 
 export async function getNearbyStops(
@@ -92,6 +136,24 @@ export async function getNearbyStops(
   const resp = await axios.get<NearbyAmenityResult[]>(
     "/v1/cycling/nearby_stops",
     { params, signal, headers: await authHeader() },
+  );
+  return resp.data;
+}
+
+export async function searchPlacesText(
+  query: string,
+  lat: number,
+  lon: number,
+  radiusM: number,
+  signal?: AbortSignal,
+): Promise<NearbyAmenityResult[]> {
+  const resp = await axios.get<NearbyAmenityResult[]>(
+    "/v1/cycling/places_text_search",
+    {
+      params: { query, lat, lon, radius_m: radiusM },
+      signal,
+      headers: await authHeader(),
+    },
   );
   return resp.data;
 }

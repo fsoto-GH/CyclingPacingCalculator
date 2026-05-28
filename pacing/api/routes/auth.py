@@ -21,13 +21,20 @@ from sqlalchemy.orm import Session
 from pacing.api.auth.deps import CurrentUser, get_current_user
 from pacing.api.database import get_db
 from pacing.api.models.user import User
+from pacing.api.models.user_flags import UserFlags
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
+
+
+class FlagsResponse(BaseModel):
+    enable_google_places: bool
+    enable_google_maps: bool
 
 
 class SyncResponse(BaseModel):
     is_new_user: bool
     user: dict
+    flags: FlagsResponse
 
 
 @router.post("/sync", response_model=SyncResponse)
@@ -67,4 +74,19 @@ def sync_user(
     db.commit()
     db.refresh(user)
 
-    return SyncResponse(is_new_user=is_new, user=user.to_dict())
+    # Ensure a user_flags row exists (creates with all flags False for new users).
+    flags_row = db.query(UserFlags).filter(UserFlags.user_id == current_user.id).first()
+    if flags_row is None:
+        flags_row = UserFlags(user_id=current_user.id)
+        db.add(flags_row)
+        db.commit()
+        db.refresh(flags_row)
+
+    return SyncResponse(
+        is_new_user=is_new,
+        user=user.to_dict(),
+        flags=FlagsResponse(
+            enable_google_places=flags_row.enable_google_places,
+            enable_google_maps=flags_row.enable_google_maps,
+        ),
+    )

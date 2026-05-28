@@ -62,12 +62,19 @@ import {
 import type { HourlyWeatherPoint } from "../types";
 import { useAppSettings } from "../AppSettingsContext";
 import type { AuthUser } from "../AppSettingsContext";
+import { AmenityContext } from "../amenityContext";
 import { SERVER_FUNCTIONS_ENABLED } from "../config";
 import tzlookup from "tz-lookup";
-import { getCachedGeocode, reverseGeocode } from "../calculator/geocode";
+import {
+  getCachedGeocode,
+  reverseGeocode,
+  forwardGeocode,
+  parseHighPrecisionCoordinateAddress,
+} from "../calculator/geocode";
 import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
 import InsertZone from "./InsertZone";
+import { GradeDistributionBar } from "./GradeTooltip";
 const CourseMap = lazy(() => import("./CourseMap"));
 
 /** Thin wrapper that defers the two props that change on every keystroke so
@@ -90,6 +97,8 @@ const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
 const ConfirmModal = lazy(() => import("./ConfirmModal"));
 const ProjectionsView = lazy(() => import("./ProjectionsView.tsx"));
 const GpxSearchModal = lazy(() => import("./GpxSearchModal"));
+const GpxExportModal = lazy(() => import("./GpxExportModal"));
+const UserSettingsModal = lazy(() => import("./UserSettingsModal"));
 const RacePlanModal = lazy(() => import("./RacePlanModal"));
 import { EXAMPLES } from "../examples";
 import TimezoneSelect, { browserTimezone } from "./TimezoneSelect";
@@ -209,7 +218,12 @@ const INITIAL_FORM: CourseFormState = {
 /** Migrate a rest stop from the old text-based format to the new DayHoursEntry format. */
 function migrateRestStop(rs: any): RestStopFormType {
   // Already new format
-  if (rs.allDays && rs.perDay) return rs as RestStopFormType;
+  if (rs.allDays && rs.perDay) {
+    // Drop legacy backup field if present
+    const { backup: _backup, ...rest } = rs;
+    void _backup;
+    return rest as RestStopFormType;
+  }
 
   const defaults = makeDefaultDayHours();
   const allDays =
@@ -221,7 +235,6 @@ function migrateRestStop(rs: any): RestStopFormType {
   })) as RestStopFormType["perDay"];
 
   return {
-    backup: rs.backup ?? false,
     enabled: rs.enabled ?? false,
     name: rs.name ?? "",
     address: rs.address ?? "",
@@ -293,6 +306,19 @@ function loadSavedForm(): CourseFormState {
           delete split.rest_stop.differentTimezone;
           delete split.rest_stop.timezone;
           split.rest_stop = migrateRestStop(split.rest_stop);
+        }
+        // Ensure intermediate_stop exists (added in a later version)
+        if (!split.intermediate_stop) {
+          split.intermediate_stop = {
+            enabled: false,
+            distance: "",
+            name: "",
+            address: "",
+            alt: "",
+            sameHoursEveryDay: true,
+            allDays: makeDefaultDayHours(),
+            perDay: Array.from({ length: 7 }, () => makeDefaultDayHours()),
+          };
         }
         // Ensure split-level TZ fields exist
         if (split.differentTimezone === undefined)
@@ -541,6 +567,7 @@ export default function CourseForm() {
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [gpxSearchOpen, setGpxSearchOpen] = useState(false);
+  const [showGpxExportModal, setShowGpxExportModal] = useState(false);
   const [racePlanOpen, setRacePlanOpen] = useState(false);
   const [racePlanSavedVersion, setRacePlanSavedVersion] = useState(0);
   const [activePlan, setActivePlan] = useState<RacePlanSummary | null>(() =>
@@ -599,19 +626,11 @@ export default function CourseForm() {
     urlName?: string;
   } | null>(null);
   const [criteriaModalOpen, setCriteriaModalOpen] = useState(false);
-  const [etaMargins, setEtaMargins] = useState({ open: "15", close: "7" });
-  const [etaMarginsOpen, setEtaMarginsOpen] = useState(false);
   const [showCourseResultsGrid, setShowCourseResultsGrid] = useState(false);
   const [pendingUnitSystem, setPendingUnitSystem] = useState<UnitSystem | null>(
     null,
   );
-  const etaMarginsRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const el = etaMarginsRef.current;
-    if (!el) return;
-    if (etaMarginsOpen && !el.open) el.showModal();
-    else if (!etaMarginsOpen && el.open) el.close();
-  }, [etaMarginsOpen]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoNameDialog, setAutoNameDialog] = useState<{
     open: boolean;
     namedItems: string[];
@@ -721,6 +740,73 @@ export default function CourseForm() {
   useEffect(() => {
     if (mapNavTarget) setMapNavTarget(null);
   }, [mapNavTarget]);
+
+  // ── Auto-geocode rest stop addresses that are missing coordinates ──────────
+  // Build a stable key from the subset of splits that need geocoding.  When
+  // the key changes we fire a sequential forward-geocode loop (respects the
+  // built-in 1100 ms rate limiter in forwardGeocode).
+  const geocodeQueueKey = useMemo(() => {
+    const items: string[] = [];
+    form.segments.forEach((seg, si) => {
+      seg.splits.forEach((split, sj) => {
+        const rs = split.rest_stop;
+        if (!rs.enabled || !rs.address.trim()) return;
+        if (rs.lat != null || rs.lon != null) return;
+        if (parseHighPrecisionCoordinateAddress(rs.address)) return;
+        items.push(`${si}:${sj}:${rs.address.trim()}`);
+      });
+    });
+    return items.join("|");
+  }, [form.segments]);
+
+  useEffect(() => {
+    if (!geocodeQueueKey) return;
+    const toGeocode: { si: number; sj: number; address: string }[] = [];
+    form.segments.forEach((seg, si) => {
+      seg.splits.forEach((split, sj) => {
+        const rs = split.rest_stop;
+        if (!rs.enabled || !rs.address.trim()) return;
+        if (rs.lat != null || rs.lon != null) return;
+        if (parseHighPrecisionCoordinateAddress(rs.address)) return;
+        toGeocode.push({ si, sj, address: rs.address.trim() });
+      });
+    });
+    if (toGeocode.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const { si, sj, address } of toGeocode) {
+        if (cancelled) break;
+        const result = await forwardGeocode(address);
+        if (cancelled || !result) continue;
+        setForm((prev) => {
+          const nextSegs = prev.segments.map((seg, i) => {
+            if (i !== si) return seg;
+            return {
+              ...seg,
+              splits: seg.splits.map((split, j) => {
+                if (j !== sj) return split;
+                if (split.rest_stop.lat != null || split.rest_stop.lon != null)
+                  return split;
+                if (split.rest_stop.address.trim() !== address) return split;
+                return {
+                  ...split,
+                  rest_stop: {
+                    ...split.rest_stop,
+                    lat: result.lat,
+                    lon: result.lon,
+                  },
+                };
+              }),
+            };
+          });
+          return { ...prev, segments: nextSegs };
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [geocodeQueueKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Zoom-to-segment/split from form buttons — drives CourseMap's zoomTarget prop.
   const [mapZoomTarget, setMapZoomTarget] = useState<{
@@ -852,6 +938,10 @@ export default function CourseForm() {
         setSavePlanPublic(is_public);
         setSavePlanError("This plan no longer exists — save it as a new plan.");
         setSavePlanOpen(true);
+      } else if (status === 403) {
+        setUpdatePlanError(
+          "You don't have permission to update this plan. Are you signed in as the right account?",
+        );
       } else {
         setUpdatePlanError("Failed to update plan — try again.");
       }
@@ -929,8 +1019,22 @@ export default function CourseForm() {
       ? "api"
       : "client";
 
-  const { paidApisEnabled, user } = useAppSettings();
+  const { user, userSettings } = useAppSettings();
   const { login, logout } = useAuth();
+  const { setSelectedTypes, setRadiusM } = React.useContext(AmenityContext);
+
+  // Keep AmenityContext in sync when settings load/update from DB.
+  useEffect(() => {
+    if (userSettings.stopTypes?.length)
+      setSelectedTypes(new Set(userSettings.stopTypes));
+    if (userSettings.stopRadiusM != null) setRadiusM(userSettings.stopRadiusM);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    // Join to a stable string so array identity doesn't cause infinite loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    userSettings.stopTypes?.join(","),
+    userSettings.stopRadiusM,
+  ]);
 
   // Persist form to localStorage, debounced so fast typing (notes, description)
   // doesn't serialize and write the entire form on every keystroke.
@@ -987,6 +1091,16 @@ export default function CourseForm() {
     setTouched(new Set());
     setActivePlan(null);
   }, []);
+
+  // Reset form and active plan when the user logs out so a subsequent login
+  // cannot see or accidentally overwrite a previous user's plan.
+  const prevUserIdRef = useRef<string | undefined>(user?.id);
+  useEffect(() => {
+    if (prevUserIdRef.current !== undefined && user === null) {
+      handleReset();
+    }
+    prevUserIdRef.current = user?.id;
+  }, [user, handleReset]);
 
   const handleConfirmReset = useCallback(() => {
     handleReset();
@@ -1757,6 +1871,61 @@ export default function CourseForm() {
     };
   }, [hourlyWeather, gpxProfiles]);
 
+  // Course-level aggregated GPX grade stats (used in the course summary grid).
+  const courseGpx = useMemo(() => {
+    if (!gpxProfiles) return null;
+    const allProfiles = gpxProfiles
+      .flat()
+      .filter((p): p is SplitGpxProfile => p != null);
+    if (allProfiles.length === 0) return null;
+    const bucketKeys = [
+      "b2",
+      "b4",
+      "b6",
+      "b8",
+      "b10",
+      "b12",
+      "b14",
+      "b16",
+      "b18",
+      "b18plus",
+      "bn2",
+      "bn4",
+      "bn6",
+      "bn8",
+      "bn10",
+      "bn12",
+      "bn14",
+      "bn16",
+      "bn18",
+      "bn18plus",
+    ] as const;
+    const totalDistKm = allProfiles.reduce(
+      (sum, p) => sum + (p.endKm - p.startKm),
+      0,
+    );
+    if (totalDistKm === 0) return null;
+    const bucketSumKm = Object.fromEntries(
+      bucketKeys.map((k) => [k, 0]),
+    ) as Record<(typeof bucketKeys)[number], number>;
+    for (const p of allProfiles) {
+      const splitDistKm = p.endKm - p.startKm;
+      for (const k of bucketKeys) {
+        bucketSumKm[k] += (p.gradeBuckets[k] / 100) * splitDistKm;
+      }
+    }
+    return {
+      gradeBuckets: Object.fromEntries(
+        bucketKeys.map((k) => [
+          k,
+          Math.round((bucketSumKm[k] / totalDistKm) * 100),
+        ]),
+      ) as Record<(typeof bucketKeys)[number], number>,
+      minGradePct: Math.min(...allProfiles.map((p) => p.minGradePct)),
+      maxGradePct: Math.max(...allProfiles.map((p) => p.maxGradePct)),
+    };
+  }, [gpxProfiles]);
+
   const weatherAvailable = useMemo(() => {
     if (!gpxProfiles || !result) return false;
     const maxForecast = new Date();
@@ -1778,7 +1947,7 @@ export default function CourseForm() {
     if (coords.length === 0) return;
 
     setWeatherLoading(true);
-    fetchHourlyCourseWeather(coords, paidApisEnabled, (partial, ss) => {
+    fetchHourlyCourseWeather(coords, (partial, ss) => {
       setHourlyWeather(partial);
       setSunriseSunset(ss);
     })
@@ -1793,10 +1962,11 @@ export default function CourseForm() {
   }, [result, gpxProfiles, gpxTrack]);
 
   // Memoized — avoids re-running the 30k-point RDP on every render.
-  const bannerGainM = useMemo(
-    () => (gpxTrack ? computeElevGainLoss(gpxTrack).gainM : 0),
-    [gpxTrack],
-  );
+  const { bannerGainM, bannerLossM } = useMemo(() => {
+    if (!gpxTrack) return { bannerGainM: 0, bannerLossM: 0 };
+    const { gainM, lossM } = computeElevGainLoss(gpxTrack);
+    return { bannerGainM: gainM, bannerLossM: lossM };
+  }, [gpxTrack]);
 
   // Per-split cumulative distances in user units (null when no GPX).
   // Used by SplitForm to show "X of Y mi (Z mi left/over)" label.
@@ -2412,9 +2582,6 @@ export default function CourseForm() {
             if (rs.alt.trim() && !isValidHttpUrl(rs.alt.trim())) {
               e[`${rp}-alt`] = "Must be a valid http/https URL";
             }
-            if (typeof rs.backup !== "boolean") {
-              e[`${rp}-backup`] = "Must be true or false";
-            }
             const hoursValid = rs.sameHoursEveryDay
               ? isValidDayHoursEntry(rs.allDays)
               : rs.perDay.every((day) => isValidDayHoursEntry(day));
@@ -2503,6 +2670,23 @@ export default function CourseForm() {
             if (!split.rest_stop.name.trim()) e[`${rp}-name`] = "Required";
             if (!split.rest_stop.address.trim())
               e[`${rp}-address`] = "Required";
+            if (
+              split.rest_stop.alt?.trim() &&
+              !isValidHttpUrl(split.rest_stop.alt.trim())
+            )
+              e[`${rp}-alt`] = "Must be a valid http/https URL";
+          }
+          if (split.intermediate_stop?.enabled) {
+            const ip = `${pp}-interm-rs`;
+            if (!split.intermediate_stop.name.trim())
+              e[`${ip}-name`] = "Required";
+            if (!split.intermediate_stop.address.trim())
+              e[`${ip}-address`] = "Required";
+            if (
+              split.intermediate_stop.alt?.trim() &&
+              !isValidHttpUrl(split.intermediate_stop.alt.trim())
+            )
+              e[`${ip}-alt`] = "Must be a valid http/https URL";
           }
         });
       });
@@ -2607,6 +2791,20 @@ export default function CourseForm() {
         const si = Number(splitRs[1]);
         const sj = Number(splitRs[2]);
         return `${segLabel(si)}, ${splitLabel(si, sj)} rest stop ${splitRs[3]}`;
+      }
+
+      const splitIntermRs = id.match(/^seg(\d+)-split(\d+)-interm-rs-(.+)$/);
+      if (splitIntermRs) {
+        const si = Number(splitIntermRs[1]);
+        const sj = Number(splitIntermRs[2]);
+        const fieldMap: Record<string, string> = {
+          name: "name",
+          address: "address",
+          alt: "alt URL",
+          hours: "open hours",
+        };
+        const field = fieldMap[splitIntermRs[3]] ?? splitIntermRs[3];
+        return `${segLabel(si)}, ${splitLabel(si, sj)} intermediate stop ${field}`;
       }
 
       const split = id.match(/^seg(\d+)-split(\d+)-(.+)$/);
@@ -2921,6 +3119,15 @@ export default function CourseForm() {
                   <span className="nav-user-name">{user.name}</span>
                   <button
                     type="button"
+                    className="nav-btn nav-settings-btn"
+                    onClick={() => setSettingsOpen(true)}
+                    title="Settings"
+                    aria-label="Settings"
+                  >
+                    <i className="fa-solid fa-gear" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
                     className="signout-btn"
                     onClick={logout}
                   >
@@ -3133,16 +3340,29 @@ export default function CourseForm() {
                   )}
                 </div>
                 {user ? (
-                  <button
-                    type="button"
-                    className="signout-btn"
-                    onClick={() => {
-                      logout();
-                      setNavOpen(false);
-                    }}
-                  >
-                    Sign out
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="nav-btn"
+                      onClick={() => {
+                        setSettingsOpen(true);
+                        setNavOpen(false);
+                      }}
+                    >
+                      <i className="fa-solid fa-gear" aria-hidden="true" />
+                      Settings
+                    </button>
+                    <button
+                      type="button"
+                      className="signout-btn"
+                      onClick={() => {
+                        logout();
+                        setNavOpen(false);
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
@@ -3200,17 +3420,29 @@ export default function CourseForm() {
                   )}
                 </span>
                 <span className="gpx-file-name">{gpxFileName}</span>
-                <span className="gpx-file-stats">
-                  {form.unitSystem === "imperial"
-                    ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
-                    : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
+                <div className="gpx-file-stats">
+                  <span className="split-header-meta-item split-header-meta-item--dist">
+                    {form.unitSystem === "imperial"
+                      ? `${(gpxTrack[gpxTrack.length - 1].cumDist / 1.60934).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`
+                      : `${gpxTrack[gpxTrack.length - 1].cumDist.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`}
+                  </span>
                   {" · "}
-                  {form.unitSystem === "imperial"
-                    ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
-                    : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
+                  <span className="split-header-meta-item split-header-meta-item--gain">
+                    {form.unitSystem === "imperial"
+                      ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
+                      : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
+                  </span>
                   {" · "}
-                  {gpxTrack.length.toLocaleString()} pts
-                </span>
+                  <span className="split-header-meta-item split-header-meta-item--loss">
+                    {form.unitSystem === "imperial"
+                      ? `⬇ ${Math.round(bannerLossM * 3.28084).toLocaleString()} ft`
+                      : `⬇ ${Math.round(bannerLossM).toLocaleString()} m`}
+                  </span>
+                  {" · "}
+                  <span className="split-header-meta-item">
+                    {gpxTrack.length.toLocaleString()} pts
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
@@ -3264,6 +3496,7 @@ export default function CourseForm() {
                     splitBoundariesKm={splitBoundariesKm}
                     formSegments={form.segments}
                     unitSystem={form.unitSystem}
+                    mode={form.mode}
                     gpxProfiles={gpxProfiles}
                     onMarkerClick={handleMapMarkerClick}
                     courseName={form.name?.trim() || undefined}
@@ -3403,7 +3636,7 @@ export default function CourseForm() {
                   onClick={() => fileInputRef.current?.click()}
                   title="Import a previously exported JSON course"
                 >
-                  <i className="fas fa-download"></i> Import JSON
+                  <i className="fas fa-download"></i> Import
                 </button>
               )}
               {activeTab === "projections" &&
@@ -3425,6 +3658,16 @@ export default function CourseForm() {
                     )}
                   </button>
                 )}
+              {activeTab === "projections" && gpxTrack && (
+                <button
+                  type="button"
+                  className="segments-toggle-btn"
+                  onClick={() => setShowGpxExportModal(true)}
+                  title="Export GPX splits for this course"
+                >
+                  <i className="fa-solid fa-download"></i> GPX
+                </button>
+              )}
               <button
                 type="button"
                 className="segments-toggle-btn segments-toggle-btn--export"
@@ -3725,6 +3968,11 @@ export default function CourseForm() {
                   onClose={() => setCriteriaModalOpen(false)}
                 />
               )}
+              <UserSettingsModal
+                open={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                unitSystem={form.unitSystem}
+              />
               <ConfirmModal
                 open={confirmExampleOpen}
                 title="Load example?"
@@ -3800,6 +4048,21 @@ export default function CourseForm() {
                     handleLoadRacePlan(loadedForm, plan);
                     setRacePlanOpen(false);
                   }}
+                />
+              )}
+              {gpxTrack && showGpxExportModal && (
+                <GpxExportModal
+                  open={showGpxExportModal}
+                  onClose={() => setShowGpxExportModal(false)}
+                  segments={form.segments}
+                  gpxTrack={gpxTrack}
+                  splitBoundariesKm={splitBoundariesKm ?? []}
+                  gpxProfiles={gpxProfiles ?? []}
+                  unitSystem={form.unitSystem}
+                  gpxWaypoints={gpxWaypoints}
+                  rwgpsPois={rwgpsPois}
+                  rwgpsCoursePoints={rwgpsCoursePoints}
+                  defaultFileName={form.name?.trim() || "Course"}
                 />
               )}
             </Suspense>
@@ -4139,25 +4402,6 @@ export default function CourseForm() {
                           <i className="fa-solid fa-tags"></i> Auto-Name
                         </button>
                       )}
-                      <span className="segments-toolbar-sep" />
-                      <button
-                        type="button"
-                        className="segments-toggle-btn"
-                        onClick={() => setCriteriaModalOpen(true)}
-                        title="Configure stop types and search radius used by all split nearby-stop searches"
-                      >
-                        <i className="fa-solid fa-magnifying-glass-location"></i>{" "}
-                        Stop Criteria
-                      </button>
-                      <button
-                        type="button"
-                        className="segments-toggle-btn"
-                        onClick={() => setEtaMarginsOpen(true)}
-                        title="Configure the time windows used for 'near open' and 'near close' ETA badges"
-                      >
-                        <i className="fa-regular fa-hourglass-half"></i> ETA
-                        Margins
-                      </button>
                     </div>
                   </div>
                   {/* Pagination controls — always present so page-size preference persists */}
@@ -4312,8 +4556,8 @@ export default function CourseForm() {
                               undefined
                             }
                             segmentResult={result?.segment_details[i] ?? null}
-                            etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
-                            etaMarginClose={parseInt(etaMargins.close, 10) || 7}
+                            etaMarginOpen={userSettings.etaMarginOpen}
+                            etaMarginClose={userSettings.etaMarginClose}
                             onZoomToSegment={
                               gpxTrack
                                 ? () => handleZoomToSegment(i)
@@ -4323,18 +4567,6 @@ export default function CourseForm() {
                               gpxTrack
                                 ? (splitIdx: number) =>
                                     handleZoomToSplit(i, splitIdx)
-                                : undefined
-                            }
-                            splitBoundariesKm={splitBoundariesKm?.[i] ?? null}
-                            gpxWaypoints={
-                              gpxWaypoints.length > 0 ? gpxWaypoints : undefined
-                            }
-                            rwgpsPois={
-                              rwgpsPois.length > 0 ? rwgpsPois : undefined
-                            }
-                            rwgpsCoursePoints={
-                              rwgpsCoursePoints.length > 0
-                                ? rwgpsCoursePoints
                                 : undefined
                             }
                           />
@@ -4733,6 +4965,32 @@ export default function CourseForm() {
                               </dd>
                             </div>
                           )}
+                          {courseGpx && (
+                            <>
+                              <div style={{ gridColumn: "1 / -1" }}>
+                                <dt title="% of course distance in each absolute-grade bucket">
+                                  Grade Distribution
+                                </dt>
+                                <dd>
+                                  <GradeDistributionBar
+                                    gradeBuckets={courseGpx.gradeBuckets}
+                                  />
+                                </dd>
+                              </div>
+                              <div>
+                                <dt title="Steepest descent grade across the course">
+                                  Min Grade
+                                </dt>
+                                <dd>{courseGpx.minGradePct.toFixed(1)}%</dd>
+                              </div>
+                              <div>
+                                <dt title="Steepest ascent grade across the course">
+                                  Max Grade
+                                </dt>
+                                <dd>{courseGpx.maxGradePct.toFixed(1)}%</dd>
+                              </div>
+                            </>
+                          )}
                         </dl>
                       </div>
                     )}
@@ -4841,8 +5099,8 @@ export default function CourseForm() {
                     gpxProfiles={gpxProfiles}
                     splitCumulativeDists={splitCumulativeDists}
                     gpxTotalDist={gpxTotalDistUser}
-                    etaMarginOpen={parseInt(etaMargins.open, 10) || 15}
-                    etaMarginClose={parseInt(etaMargins.close, 10) || 7}
+                    etaMarginOpen={userSettings.etaMarginOpen}
+                    etaMarginClose={userSettings.etaMarginClose}
                     splitWeather={splitWeather}
                     hourlyWeather={hourlyWeather}
                     onZoomToSegment={handleZoomToSegment}
@@ -4852,97 +5110,6 @@ export default function CourseForm() {
               </div>
             )}
           </div>
-
-          {/* ETA Margins dialog */}
-          <dialog
-            ref={etaMarginsRef}
-            className="legend-modal"
-            onClose={() => setEtaMarginsOpen(false)}
-          >
-            <div className="legend-header">
-              <h2>ETA Margins</h2>
-              <button
-                className="legend-close"
-                onClick={() => setEtaMarginsOpen(false)}
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="legend-body">
-              <p style={{ marginTop: 0, marginBottom: "1rem" }}>
-                Time windows (in minutes) for the &ldquo;Near open&rdquo; and
-                &ldquo;Near close&rdquo; ETA badges on rest stops.
-              </p>
-              <div className="fields-grid">
-                <div className="field">
-                  <label htmlFor="eta-margin-open">Near Open (min)</label>
-                  <input
-                    id="eta-margin-open"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={etaMargins.open}
-                    onChange={(e) =>
-                      setEtaMargins((m) => ({ ...m, open: e.target.value }))
-                    }
-                  />
-                  {(() => {
-                    const v = parseInt(etaMargins.open, 10);
-                    if (
-                      etaMargins.open.trim() === "" ||
-                      isNaN(v) ||
-                      v < 0 ||
-                      !Number.isInteger(v)
-                    )
-                      return (
-                        <span className="field-error">
-                          Must be a non-negative integer
-                        </span>
-                      );
-                    return null;
-                  })()}
-                </div>
-                <div className="field">
-                  <label htmlFor="eta-margin-close">Near Close (min)</label>
-                  <input
-                    id="eta-margin-close"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={etaMargins.close}
-                    onChange={(e) =>
-                      setEtaMargins((m) => ({ ...m, close: e.target.value }))
-                    }
-                  />
-                  {(() => {
-                    const v = parseInt(etaMargins.close, 10);
-                    if (
-                      etaMargins.close.trim() === "" ||
-                      isNaN(v) ||
-                      v < 0 ||
-                      !Number.isInteger(v)
-                    )
-                      return (
-                        <span className="field-error">
-                          Must be a non-negative integer
-                        </span>
-                      );
-                    return null;
-                  })()}
-                </div>
-              </div>
-            </div>
-            <div className="legend-footer">
-              <button
-                type="button"
-                className="action-btn action-btn-export"
-                onClick={() => setEtaMarginsOpen(false)}
-              >
-                Done
-              </button>
-            </div>
-          </dialog>
 
           {/* Quick-setup dialog */}
           <dialog

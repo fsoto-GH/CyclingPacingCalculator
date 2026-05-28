@@ -8,22 +8,6 @@ Before Mishigami 2025—a 1,121-mile race across Michigan—I needed a way to mo
 
 I built this calculator to answer those questions. It powered my race plan for Mishigami, where I finished 2nd place—the first Chicagoan ever to complete the race in under 4 days.
 
-While the race is over, I continue to enhance this project. Since the race, the calculator has gained:
-
-- GPX route loading with per-split elevation analysis (gain, loss, grade, surface, steep %)
-- A full-course elevation profile chart with segment color overlays and interactive zoom
-- An interactive Leaflet course map with full track visualization, color-coded segments, and split endpoint markers
-- A nearby rest stop search powered by the OpenStreetMap Overpass API
-- Automatic timezone detection from GPX coordinates
-- Planning & Projections tabs — edit in Planning, view calculated results in Projections
-- Transit segments — fixed-duration non-cycling legs (ferry, shuttle, train)
-- Insert Segment zones — hover between segments to reveal a one-click insert zone
-- Imperial / metric unit toggle with in-place conversion
-- Validation status icon with a click-to-open error dialog
-- Real-time auto-calculation as you type (no Calculate button)
-- Named courses, segments, and splits with auto-naming from city labels
-- Segment pagination and Quick Setup for large courses
-
 This repository contains:
 
 - **A React + Vite frontend** — a full-featured web UI for the calculator, runs entirely in the browser (no server required for normal use).
@@ -36,32 +20,55 @@ This repository contains:
 
 The frontend is a single-page React app located in [`frontend/`](./frontend). It runs the pacing calculator **entirely in the browser** — no API call is needed.
 
-### Features
+### Core features (always available)
 
-- Multi-segment, multi-split course builder with Distance and Target Distance modes
-- Imperial / metric toggle
-- Rest stop open hours with timezone-aware ETA badges (🟢 Open / 🟡 Near / 🔴 Closed)
-- Collapsible segments, splits, and results
-- Segment pagination — page through large courses (5 / 10 / 20 segments per page)
-- Quick Setup dialog — rapidly build uniform segments with a single dialog
-- Example courses (including the Mishigami Challenge and Trans Am Classic)
-- Import / export course definitions as JSON
-- GPX route loading with per-split elevation analysis (gain, loss, grade, surface)
-- Full-course elevation profile chart with segment color overlays and interactive split zoom
-- Interactive Leaflet course map with color-coded segments, split endpoint markers, and rest stop pins
-- GPX split export — download a trimmed GPX for any individual split from the Projections tab
-- OSM-powered nearby stop search at each split endpoint via the Overpass API
-- Nearby city labels on split distance inputs via the Nominatim reverse geocoding API
-- Auto-Name feature — populate segment and split names from resolved city labels using templates
-- Automatic timezone detection from GPX coordinates (no API call)
-- Start time interpreted in course timezone with a hint shown when it differs from the browser timezone
-- Transit segments — fixed elapsed time + distance for non-cycling travel, shown with a fast-forward icon
-- Planning tab for editing; Projections tab for calculated results per segment and split
-- Insert Segment zones — hover-revealed zones between segments for one-click insertion
-- Imperial / metric unit toggle — converts all distance and speed inputs in place
-- Validation status icon (green ✓ / orange !) left of the course name; click to view all errors
+- Multi-segment, multi-split course builder with **Distance** and **Target Distance** modes
+- Per-split sub-split breakdown: **Hour** (split at each elapsed hour), **Even** (divide into N chunks), **Fixed** (chunk at a set distance), **Custom** (explicit comma-separated distances)
+- Imperial / metric unit toggle with in-place conversion of all inputs
+- Speed decay (`Speed Δ`) and per-segment speed / decay overrides
+- Down-time ratio to model non-moving time (snack stops, traffic lights, etc.)
+- Sleep time per segment — contributes to elapsed time but not moving time
+- Transit segments — fixed elapsed-time + distance for non-cycling travel (ferry, shuttle, train), shown with a ⏩ icon
+- Rest stop open hours with per-day schedule (Hours / 24h / Closed), timezone-aware ETA badges (🟢 Open / 🟡 Near Close / 🔴 Closed)
+- ETA margin settings — configurable time windows (minutes) for Near Open / Near Close badge thresholds
+- **Planning** tab for editing; **Projections** tab for calculated results
 - Real-time auto-calculation (no Calculate button needed)
+- Validation status icon (green ✓ / orange !) in the course name header; click to view all errors
+- Segment pagination — page through large courses at 5 / 10 / 20 segments per page
+- Quick Setup dialog — build uniform segments (equal splits, same speed) in one dialog
+- Insert Segment zones — hover-revealed zones between segments for one-click insertion
+- Collapsible segments and splits; expand/collapse all buttons in the toolbar
+- Named courses, segments, and splits with Auto-Name from resolved city labels
+- Import / export course definitions as JSON
+- Example courses (Mishigami Challenge, Trans Am Classic, and two simpler demos)
 - Form state persisted to **localStorage**; GPX file persisted to **IndexedDB**
+
+### GPX & route features
+
+- GPX file upload — parsed entirely in the browser, no server upload
+- **RideWithGPS** route loading — paste a route URL or ID to import directly from RWGPS (requires Docker backend)
+- Per-split elevation analysis: gain / loss, average grade, % steep (> 5 %), dominant surface
+- Full-course elevation profile chart with segment color overlays and interactive split zoom
+- GPX split export — download a trimmed GPX for any individual split from the Projections tab
+- OSM-powered nearby stop search at each split endpoint via the Overpass API (no API key)
+- Nearby city labels on split inputs via Nominatim reverse geocoding
+- Automatic timezone detection from GPS coordinates using tz-lookup (no API call)
+
+### Map features
+
+- Interactive Leaflet course map with color-coded segment polylines, split markers, and rest stop pins
+- Five free tile layers always available: **Standard** (OSM), **Topographic** (OpenTopoMap), **CyclOSM**, **Carto Dark Matter**, **Carto Positron**
+- Wind direction overlay on split endpoint and transit segment maps
+- Split endpoint map — full-screen Leaflet map at each split with nearby stop search and marker placement
+- Transit segment map — same map panel for transit legs
+- Default map style preference — saved to user settings (localStorage or DB when signed in)
+
+### Weather forecast
+
+- **Fetch Forecast** button in the Projections toolbar loads hourly weather for every split endpoint using **Open-Meteo** (free, no API key required)
+- Displays temperature (°C/°F), feels-like, precipitation probability, wind speed/direction/gusts, humidity, cloud cover, and a WMO weather icon for each split
+- Requires a loaded GPX and a start time within the 16-day forecast window; button is hidden otherwise
+- Results cached in sessionStorage per location; supports historical data (Open-Meteo archive) for past course dates
 
 ### Run the frontend locally (dev mode)
 
@@ -86,13 +93,85 @@ Both are restored automatically on page load. If you export a course JSON and la
 
 ### Query parameters
 
-| Parameter  | Values         | Default  | Description                                                                           |
-| ---------- | -------------- | -------- | ------------------------------------------------------------------------------------- |
-| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a request to the FastAPI backend |
+| Parameter  | Values         | Default  | Description                                                                        |
+| ---------- | -------------- | -------- | ---------------------------------------------------------------------------------- |
+| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a POST to the FastAPI backend |
 
-Example: `http://localhost:5173/?engine=api`
+> **Note:** The TypeScript client calculator and Python API calculator may not be fully in parity. `client` mode is the actively developed path.
 
-When `engine=api` is active, the Calculate button label renders in gold to indicate the API path is being used. _Note: Functionality in the API is no longer fully in parity with the backend, so functionality on the front end is no longer guaranteed_
+---
+
+## 🔐 Server Functions (`VITE_ENABLE_SERVER_FUNCTIONS`)
+
+This flag is set at **build time** in `.env` (or as a Docker build-arg). It controls whether server-dependent features are compiled into the app.
+
+```dotenv
+VITE_ENABLE_SERVER_FUNCTIONS=true   # enables server features
+VITE_ENABLE_SERVER_FUNCTIONS=false  # default — fully serverless
+```
+
+### When `false` (default)
+
+The app runs entirely in the browser. No account, no login, no external auth required. All core pacing, GPX, weather (if key provided), and map features work. Settings are saved to localStorage only.
+
+### When `true` — additional features enabled
+
+These features require the FastAPI backend (Docker) to be running:
+
+#### Google Sign-In
+
+- A **Sign In with Google** button appears in the nav bar (Supabase OAuth)
+- Signing in syncs user settings to the database and restores them on any device
+
+#### User Settings modal (⚙ gear icon in nav)
+
+Only visible to signed-in users. Provides:
+
+- **ETA Margins** — set the time windows (minutes) for Near Open / Near Close ETA badges. Persisted to your account.
+- **Stop Search Criteria** — configure search radius and amenity type checkboxes for the Overpass nearby-stop search. Type selections persist; Google Places text search (when enabled) is session-only.
+- **Default Map Style** — choose the starting tile layer for all map views. Google tile layers only appear here when your account has `enable_google_maps` set.
+
+#### My Race Plans
+
+- **Save as…** — save the current course as a named plan in the cloud
+- **Open** (race plans icon in toolbar) — browse, rename, delete, and load your saved plans
+- Plans can be shared by URL; public plans are visible to anyone with the link
+- The course name header shows a **dirty indicator** (●) when unsaved changes exist
+
+#### RideWithGPS route search
+
+- A **Search** tab in the GPX import dialog lets you search your RWGPS routes and collections by name
+- Requires a RideWithGPS OAuth connection (one-click connect button in the modal)
+- Backend handles the OAuth flow; token stored in localStorage
+
+#### Google Maps tile layers (per-user flag)
+
+When your account has `enable_google_maps` enabled by an admin, four additional tile layers become available in all map views: **Google Maps**, **Google Satellite**, **Google Terrain**, **Google Dark**. These require a server-side session token fetched from the backend.
+
+#### Google Places nearby-stop search (per-user flag)
+
+When your account has `enable_google_places` enabled, a **Google Places text search** field appears in the Nearby Stops panel and in the Settings modal. This replaces the Overpass type-checkbox search with a free-text query (e.g. "Walmart, bike shop"). Session-only — not persisted.
+
+---
+
+## 🔑 Environment Variables
+
+| Variable                       | Where used     | Required     | Description                                                             |
+| ------------------------------ | -------------- | ------------ | ----------------------------------------------------------------------- |
+| `VITE_ENABLE_SERVER_FUNCTIONS` | Frontend build | No           | Set `true` to enable auth, race plans, RWGPS search, Google maps/places |
+| `VITE_SUPABASE_URL`            | Frontend build | If SF=true   | Supabase project URL for Google OAuth                                   |
+| `VITE_SUPABASE_ANON_KEY`       | Frontend build | If SF=true   | Supabase anon/public key                                                |
+| `VITE_GOOGLE_CLIENT_ID`        | Frontend build | If SF=true   | Google OAuth client ID (also used for Sign-In button)                   |
+| `GOOGLE_CLIENT_ID`             | Backend        | If SF=true   | Same Google OAuth client ID (backend validation)                        |
+| `GOOGLE_CLIENT_SECRET`         | Backend        | If SF=true   | Google OAuth client secret                                              |
+| `GOOGLE_PLACES_API_KEY`        | Backend        | No           | Enables Google Places nearby-stop search for flagged users              |
+| `RIDEWITHGPS_API_KEY`          | Backend        | No           | Enables RideWithGPS route search and OAuth                              |
+| `RIDEWITHGPS_CLIENT_ID`        | Backend        | No           | RideWithGPS OAuth client ID                                             |
+| `RIDEWITHGPS_CLIENT_SECRET`    | Backend        | No           | RideWithGPS OAuth client secret                                         |
+| `SUPABASE_URL`                 | Backend        | If SF=true   | Supabase project URL (for token verification)                           |
+| `DATABASE_URL_LOCAL`           | Backend        | If IS_LOCAL  | PostgreSQL connection string for local DB                               |
+| `DATABASE_URL_SUPABASE`        | Backend        | If !IS_LOCAL | PostgreSQL connection string for Supabase DB                            |
+| `IS_LOCAL`                     | Backend        | No           | `true` = use local Docker DB; `false` = use Supabase DB                 |
 
 ---
 
@@ -130,7 +209,7 @@ docker compose up -d --build
 
 Then open `http://localhost:8000`. That's it — the frontend and API are both served from the same container.
 
-> **Note:** `--build` is required the first time, or any time you change **Python** code. For frontend changes, you must also rebuild the Docker image (via `--build`) since the React app is compiled into the image at build time — the volume mount in `docker-compose.yml` intentionally excludes `static/` to prevent a stale host build from overwriting the image-baked frontend.
+> **Note:** `--build` is required the first time, or any time you change **Python** code or **frontend** code. The React app is compiled into the image at build time — the volume mount in `docker-compose.yml` intentionally excludes `static/` to prevent a stale host build from overwriting the image-baked frontend.
 
 ### Updating the frontend while using Docker Compose
 
@@ -222,7 +301,20 @@ See the Swagger UI at `/docs` for the full request/response schema.
 
 ---
 
-## 🗺️ GPX Route Loading
+## � RideWithGPS Route Loading
+
+With the Docker backend running, you can import routes directly from RideWithGPS without downloading a GPX file first:
+
+1. Open the GPX import dialog and switch to the **Search** tab.
+2. Connect your RWGPS account via the one-click OAuth flow (token stored in localStorage).
+3. Browse routes and collections, or search by name.
+4. Select a route — the backend fetches the track points and the frontend processes them identically to a GPX upload.
+
+RWGPS routes include course points (cue sheet entries) and POIs, which appear as waypoints on the course map.
+
+---
+
+## �🗺️ GPX Route Loading
 
 You can load a `.gpx` file exported from Garmin, Komoot, RideWithGPS, Strava, or any standard GPS device. The file is parsed entirely in the browser — no server upload occurs.
 
@@ -258,12 +350,11 @@ Each expanded split shows:
 - Average grade %
 - Percentage of distance with grade > 5 % (marked 🟡 steep)
 - Dominant surface (e.g. `asphalt`, `gravel`)
-- An embedded OpenStreetMap iframe centred on the split endpoint with a pin
 - Nearest city label (fetched in the background via Nominatim with 1 req/s rate limiting)
 
 ### GPX split export
 
-From the **Results** section, each segment has an **Export GPX splits** button that opens a modal listing all splits with their elevation statistics. You can select individual splits or the full segment and download a trimmed GPX. The exported file contains course waypoints only — any device-specific extensions or metadata from the original file are not preserved.
+From the **Projections** tab, each segment has an **Export GPX splits** button that opens a modal listing all splits with their elevation statistics. You can select individual splits or the full segment and download a trimmed GPX. The exported file contains course waypoints only — any device-specific extensions or metadata from the original file are not preserved.
 
 ### GPX distance indicators
 
@@ -283,9 +374,9 @@ When a GPX is loaded, each split endpoint gains a **"Find Nearby Stops"** button
 The query is kept deliberately lean:
 
 - **Nodes only** — `way` elements are skipped. The overwhelming majority of gas stations, convenience stores, pharmacies, and cafés are mapped as OSM nodes, so the query covers nearly all useful results at a fraction of the server cost.
-- **1 km radius** — balances coverage against response size (area scales with r²).
+- **Configurable radius** — default 1 km (0.5 mi); adjustable from 0.5 mi up to 25 mi in the Settings modal or Nearby Stops panel.
 - **`[timeout:10][maxsize:1048576]`** — the server aborts rather than streaming an oversized payload.
-- **Amenity filter**: `fuel`, `supermarket`, `convenience`, `pharmacy`, `fast_food`, `cafe`, `restaurant`.
+- **Default amenity types**: `fuel`, `supermarket`, `convenience`, `pharmacy`, `fast_food`, `cafe`, `restaurant`. Configurable in Settings.
 
 ### Results display
 
@@ -305,9 +396,54 @@ OSM `opening_hours` strings are parsed with a lightweight built-in parser that h
 
 Clicking a result pre-fills the rest stop form: name, address, and parsed open hours (if available) are applied. The split's open-hours ETA badge then immediately reflects the imported schedule.
 
-### Future improvement
+---
 
-The Overpass API is a community dataset and coverage varies by region. A potential upgrade would integrate the **Google Places API** or **HERE Places API**, which offer richer commercial data (phone numbers, photos, real-time open/closed status) at the cost of an API key and per-request billing.
+## ☁️ Weather Forecast
+
+The **Forecast** button in the Projections toolbar fetches hourly weather data for each split endpoint using the [Open-Meteo API](https://open-meteo.com) — a free, open-source weather service requiring no API key.
+
+### Data returned per split
+
+Temperature, feels-like temperature, precipitation probability, total precipitation, wind speed / direction / gusts, relative humidity, cloud cover, day/night flag, and a WMO weather code with icon and label.
+
+### Coverage
+
+| Situation                    | Data source         | Range         |
+| ---------------------------- | ------------------- | ------------- |
+| Course starts in the past    | Open-Meteo Archive  | Historical    |
+| Course starts within 16 days | Open-Meteo Forecast | Up to 16 days |
+| Course starts beyond 16 days | Not available       | Button hidden |
+
+Long routes are split into batches of up to 50 unique locations per request. Each batch is fetched sequentially with a short delay to respect the free-tier rate limits (600 requests/min, 5,000/hour). Weather loads progressively — each batch populates the chart as it arrives. Results are cached in sessionStorage per location, so re-fetching the same route within a session is instant.
+
+---
+
+## 🗺️ Map Tile Layers
+
+All three map views (course map, split endpoint map, transit segment map) support multiple tile layers switchable via a dropdown.
+
+### Always available (no account required)
+
+| Key             | Label             | Provider         |
+| --------------- | ----------------- | ---------------- |
+| `osm`           | Standard          | OpenStreetMap    |
+| `topo`          | Topographic       | OpenTopoMap      |
+| `cyclosm`       | CyclOSM           | OpenStreetMap FR |
+| `cartoDark`     | Carto Dark Matter | CARTO            |
+| `cartoPositron` | Carto Positron    | CARTO            |
+
+### Available when `enable_google_maps` is set on your account
+
+| Key               | Label            |
+| ----------------- | ---------------- |
+| `googleRoadmap`   | Google Maps      |
+| `googleSatellite` | Google Satellite |
+| `googleTerrain`   | Google Terrain   |
+| `googleDark`      | Google Dark      |
+
+Google tile layers require a server-side session token fetched from `/v1/cycling/google-tile-session`. They are hidden in the tile layer picker when the flag is not set.
+
+The **Default Map Style** setting (in the Settings modal for signed-in users, or saved to localStorage for serverless mode) applies the chosen layer as the startup style in all map views.
 
 ---
 
@@ -327,11 +463,14 @@ When a GPX file is loaded, each split's endpoint timezone is **automatically det
 
 The results table checks each rest stop's open hours against the predicted arrival time in the _correct_ timezone for that split. Badges show:
 
-| Badge     | Meaning                                          |
-| --------- | ------------------------------------------------ |
-| 🟢 Open   | Arriving well within open hours (>30 min margin) |
-| 🟡 Near   | Arriving within 30 minutes of opening or closing |
-| 🔴 Closed | Arriving outside open hours                      |
+| Badge         | Meaning                                                          |
+| ------------- | ---------------------------------------------------------------- |
+| 🟢 Open       | Arriving well within open hours (beyond both margin thresholds)  |
+| 🟡 Near Open  | Arriving within the configured Near Open window (default 15 min) |
+| 🟡 Near Close | Arriving within the configured Near Close window (default 7 min) |
+| 🔴 Closed     | Arriving outside open hours                                      |
+
+The Near Open / Near Close thresholds are configurable in the Settings modal (or saved to localStorage in serverless mode).
 
 ### Timezone shifts in results
 
@@ -424,16 +563,22 @@ Examples are defined as plain TypeScript objects in [`frontend/src/examples.ts`]
 
 ---
 
-## 🌍 APIs & External Services Used
+## 🌍 APIs & External Services
 
-The frontend uses the following third-party APIs and services. All are free and open, and no API key is required for any of them.
-
-| Service           | Used for                                                               | Docs / Policy                                                                                                     |
-| ----------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **OpenStreetMap** | Map tiles in the embedded split-endpoint iframe                        | [osmfoundation.org](https://osmfoundation.org/wiki/Tile_Usage_Policy)                                             |
-| **Overpass API**  | Nearby rest stop / amenity search at split endpoints                   | [overpass-api.de](https://overpass-api.de)                                                                        |
-| **Nominatim**     | Reverse geocoding — nearest city label per split                       | [nominatim.org](https://nominatim.org) · [Usage Policy](https://operations.osmfoundation.org/policies/nominatim/) |
-| **tz-lookup**     | Browser-side timezone detection from GPS coordinates (no network call) | [npmjs.com/package/tz-lookup](https://www.npmjs.com/package/tz-lookup)                                            |
+| Service               | Used for                                                               | Key required?                 |
+| --------------------- | ---------------------------------------------------------------------- | ----------------------------- |
+| **OpenStreetMap**     | OSM tile layer, Overpass nearby-stop search, Nominatim city labels     | No                            |
+| **OpenTopoMap**       | Topographic tile layer                                                 | No                            |
+| **CyclOSM**           | Cycling-focused tile layer                                             | No                            |
+| **CARTO**             | Dark Matter and Positron tile layers                                   | No                            |
+| **Overpass API**      | Nearby rest stop / amenity search                                      | No                            |
+| **Nominatim**         | Reverse geocoding — nearest city label per split                       | No                            |
+| **tz-lookup**         | Browser-side timezone detection from GPS coordinates (no network call) | No                            |
+| **Open-Meteo**        | Hourly weather forecast and archive per split                          | No                            |
+| **Google Maps Tiles** | Satellite, terrain, roadmap, dark tile layers (per-user feature flag)  | Backend-managed               |
+| **Google Places**     | Free-text nearby stop search (per-user feature flag)                   | `GOOGLE_PLACES_API_KEY`       |
+| **RideWithGPS**       | Route search and direct GPX import                                     | `RIDEWITHGPS_API_KEY` + OAuth |
+| **Supabase**          | Google OAuth, user settings DB, race plan storage                      | `VITE_SUPABASE_*` keys        |
 
 ### Nominatim rate limiting
 

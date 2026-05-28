@@ -30,11 +30,18 @@ import type {
   UnitSystem,
   SegmentForm,
   SplitGpxProfile,
+  Mode,
 } from "../types";
-import type { RestStopForm } from "../types";
+import type { RestStopForm, IntermediateRestStopForm } from "../types";
 import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
 import { distanceLabel, SEGMENT_COLORS } from "../utils";
-import { MAP_TILE_LAYERS, MapTileLayerKey } from "../calculator/mapTileLayers";
+import {
+  MAP_TILE_LAYERS,
+  MapTileLayerKey,
+  GOOGLE_TILE_LAYER_KEYS,
+} from "../calculator/mapTileLayers";
+import { getGoogleTileUrlTemplate } from "../calculator/googleTileSession";
+import { useAppSettings } from "../AppSettingsContext";
 import type { SunriseSunsetEntry } from "../calculator/weather";
 const ElevationProfile = lazy(() => import("./ElevationProfile"));
 const TemperatureChart = lazy(() => import("./TemperatureChart"));
@@ -44,11 +51,10 @@ interface RouteMarker {
   lon: number;
   label: string;
   distanceStr: string;
-  role: "start" | "split" | "finish" | "stop";
+  role: "start" | "split" | "finish" | "stop" | "intermediate";
   segIdx: number;
   splitIdx: number;
   notes?: string;
-  backup?: boolean;
 }
 
 interface CourseMapProps {
@@ -71,6 +77,8 @@ interface CourseMapProps {
   segmentBoundaryTimes?: string[];
   /** Sunrise and sunset events for the course date range. */
   sunriseSunset?: SunriseSunsetEntry[];
+  /** Course calculation mode — needed to resolve intermediate stop positions. */
+  mode?: Mode;
 }
 
 /** Keep one point per 50 m of travel — reduces 30k-point tracks to ~2-3k. */
@@ -96,6 +104,7 @@ const MARKER_COLORS: Record<RouteMarker["role"], string> = {
   split: "#60a5fa", // blue
   finish: "#f87171", // red
   stop: "#a855f7", // purple — rest stops
+  intermediate: "#f59e0b", // amber — intermediate stops
 };
 
 /** Forward azimuth in degrees (0 = north, clockwise). */
@@ -319,12 +328,95 @@ function SplitMarker({
         <strong>{m.label}</strong>
         <br />
         {m.distanceStr}
+        <br />
+        <div className="split-map-popup-links">
+          <a
+            href={`https://www.google.com/maps?q=${m.lat},${m.lon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Google Maps ↗
+          </a>
+          {" · "}
+          <a
+            href={`https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=15/${m.lat}/${m.lon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            OSM ↗
+          </a>
+        </div>
         {m.notes && (
           <>
             <br />
             <em style={{ color: "#999", fontSize: "0.85em" }}>{m.notes}</em>
           </>
         )}
+        {canNav && (
+          <>
+            <br />
+            <button
+              className="map-popup-nav-btn"
+              onClick={() => {
+                map.closePopup();
+                onMarkerClick(m.segIdx, m.splitIdx);
+              }}
+            >
+              ↓ Go to split
+            </button>
+          </>
+        )}
+      </Popup>
+    </Marker>
+  );
+}
+
+function StopMarkerBase({
+  m,
+  pinClass,
+  onMarkerClick,
+}: {
+  m: RouteMarker;
+  pinClass: string;
+  onMarkerClick?: (segIdx: number, splitIdx: number) => void;
+}) {
+  const map = useMap();
+  const icon = useMemo(
+    () =>
+      divIcon({
+        html: `<div class="${pinClass}"><i class="fa-solid fa-location-dot"></i></div>`,
+        className: "",
+        iconSize: [20, 28],
+        iconAnchor: [10, 27],
+        popupAnchor: [0, -24],
+      }),
+    [pinClass],
+  );
+  const canNav = onMarkerClick != null && m.splitIdx >= 0;
+  return (
+    <Marker position={[m.lat, m.lon]} icon={icon}>
+      <Popup>
+        <strong>{m.label}</strong>
+        <br />
+        {m.distanceStr}
+        <br />
+        <div className="split-map-popup-links">
+          <a
+            href={`https://www.google.com/maps?q=${m.lat},${m.lon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Google Maps ↗
+          </a>
+          {" · "}
+          <a
+            href={`https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=17/${m.lat}/${m.lon}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            OSM ↗
+          </a>
+        </div>
         {canNav && (
           <>
             <br />
@@ -351,41 +443,28 @@ function StopMarker({
   m: RouteMarker;
   onMarkerClick?: (segIdx: number, splitIdx: number) => void;
 }) {
-  const map = useMap();
-  const icon = useMemo(
-    () =>
-      divIcon({
-        html: `<div class="split-rest-stop-pin${m.backup ? " stop-marker-backup" : ""}"><i class="fa-solid fa-location-dot"></i></div>`,
-        className: "",
-        iconSize: [20, 28],
-        iconAnchor: [10, 27],
-        popupAnchor: [0, -24],
-      }),
-    [m.backup],
-  );
-  const canNav = onMarkerClick != null && m.splitIdx >= 0;
   return (
-    <Marker position={[m.lat, m.lon]} icon={icon}>
-      <Popup>
-        <strong>{m.label}</strong>
-        <br />
-        {m.distanceStr}
-        {canNav && (
-          <>
-            <br />
-            <button
-              className="map-popup-nav-btn"
-              onClick={() => {
-                map.closePopup();
-                onMarkerClick(m.segIdx, m.splitIdx);
-              }}
-            >
-              ↓ Go to split
-            </button>
-          </>
-        )}
-      </Popup>
-    </Marker>
+    <StopMarkerBase
+      m={m}
+      pinClass="split-rest-stop-pin"
+      onMarkerClick={onMarkerClick}
+    />
+  );
+}
+
+function IntermediateStopMarker({
+  m,
+  onMarkerClick,
+}: {
+  m: RouteMarker;
+  onMarkerClick?: (segIdx: number, splitIdx: number) => void;
+}) {
+  return (
+    <StopMarkerBase
+      m={m}
+      pinClass="split-intermediate-stop-pin"
+      onMarkerClick={onMarkerClick}
+    />
   );
 }
 
@@ -421,6 +500,7 @@ export default function CourseMap({
   courseTz,
   segmentBoundaryTimes,
   sunriseSunset,
+  mode = "distance",
 }: CourseMapProps) {
   const dLabel = distanceLabel(unitSystem);
   const toUserDist =
@@ -540,14 +620,53 @@ export default function CourseMap({
           segIdx: si,
           splitIdx: sj,
           role: "stop",
-          backup: rs.backup,
+        });
+      }
+    }
+
+    // Intermediate stop markers
+    const KM_PER_MI = 1.60934;
+    for (let si = 0; si < splitBoundariesKm.length; si++) {
+      const segBounds = splitBoundariesKm[si];
+      for (let sj = 0; sj < segBounds.length; sj++) {
+        const iStop: IntermediateRestStopForm | undefined =
+          formSegments[si]?.splits[sj]?.intermediate_stop;
+        if (!iStop?.enabled || !iStop.name) continue;
+        const [startKm] = segBounds[sj];
+        const hasOwnCoords = iStop.lat != null && iStop.lon != null;
+        let posKm: number | null = null;
+        if (!hasOwnCoords) {
+          const d = parseFloat(iStop.distance);
+          if (!isNaN(d)) {
+            const dKm = d * (unitSystem === "imperial" ? KM_PER_MI : 1);
+            posKm = mode === "target_distance" ? dKm : startKm + dKm;
+          }
+        }
+        const coord = hasOwnCoords
+          ? { lat: iStop.lat!, lon: iStop.lon! }
+          : posKm != null
+            ? interpolateLatLon(gpxTrack, posKm)
+            : null;
+        if (!coord) continue;
+        const distStr =
+          posKm != null
+            ? `${toUserDist(posKm).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`
+            : iStop.address || `Seg ${si + 1} · Split ${sj + 1}`;
+        result.push({
+          lat: coord.lat,
+          lon: coord.lon,
+          label: `🔶 ${iStop.name}`,
+          distanceStr: distStr,
+          segIdx: si,
+          splitIdx: sj,
+          role: "intermediate",
         });
       }
     }
 
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpxTrack, splitBoundariesKm, formSegments, unitSystem]);
+  }, [gpxTrack, splitBoundariesKm, formSegments, unitSystem, mode]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -555,8 +674,16 @@ export default function CourseMap({
   const [showMarkers, setShowMarkers] = useState(true);
   const [showSplitMarkers, setShowSplitMarkers] = useState(true);
   const [showRestStops, setShowRestStops] = useState(false);
+  const [showIntermediateStops, setShowIntermediateStops] = useState(false);
   const [showWindOverlay, setShowWindOverlay] = useState(false);
-  const [mapStyle, setMapStyle] = useState<MapTileLayerKey>("osm");
+  const { enableGoogleMaps, userSettings } = useAppSettings();
+  const [mapStyle, setMapStyle] = useState<MapTileLayerKey>(() => {
+    const def = userSettings.defaultMapStyle ?? "osm";
+    return GOOGLE_TILE_LAYER_KEYS.has(def) && !enableGoogleMaps ? "osm" : def;
+  });
+  const [resolvedGoogleUrl, setResolvedGoogleUrl] = useState<string | null>(
+    null,
+  );
   const [selectedSegIdx, setSelectedSegIdx] = useState<number | null>(null);
   const [hoverKm, setHoverKm] = useState<number | null>(null);
   const [hoverWeatherPt, setHoverWeatherPt] =
@@ -586,6 +713,33 @@ export default function CourseMap({
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
+
+  useEffect(() => {
+    if (!GOOGLE_TILE_LAYER_KEYS.has(mapStyle)) {
+      setResolvedGoogleUrl(null);
+      return;
+    }
+    const type =
+      mapStyle === "googleRoadmap"
+        ? "roadmap"
+        : mapStyle === "googleSatellite"
+          ? "satellite"
+          : mapStyle === "googleDark"
+            ? "dark"
+            : "terrain";
+    setResolvedGoogleUrl(null);
+    let cancelled = false;
+    getGoogleTileUrlTemplate(type)
+      .then((url) => {
+        if (!cancelled) setResolvedGoogleUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setMapStyle("osm");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mapStyle]);
 
   // When a segment is deleted the selected segment index may no longer be
   // valid — reset it so handleClickKm doesn't accumulate stale state.
@@ -726,6 +880,10 @@ export default function CourseMap({
     ? SEGMENT_COLORS[finishMarker.segIdx % SEGMENT_COLORS.length]
     : null;
 
+  const activeTileUrl = GOOGLE_TILE_LAYER_KEYS.has(mapStyle)
+    ? resolvedGoogleUrl
+    : MAP_TILE_LAYERS[mapStyle].url;
+
   return (
     <div className="course-map-outer">
       <div className="course-map-container" ref={containerRef}>
@@ -737,11 +895,15 @@ export default function CourseMap({
             title="Map style"
             aria-label="Map style"
           >
-            {(Object.keys(MAP_TILE_LAYERS) as MapTileLayerKey[]).map((key) => (
-              <option key={key} value={key}>
-                {MAP_TILE_LAYERS[key].label}
-              </option>
-            ))}
+            {(Object.keys(MAP_TILE_LAYERS) as MapTileLayerKey[])
+              .filter(
+                (key) => !GOOGLE_TILE_LAYER_KEYS.has(key) || enableGoogleMaps,
+              )
+              .map((key) => (
+                <option key={key} value={key}>
+                  {MAP_TILE_LAYERS[key].label}
+                </option>
+              ))}
           </select>
           {document.fullscreenEnabled && (
             <button
@@ -794,7 +956,7 @@ export default function CourseMap({
             aria-label={showMarkers ? "Hide mile markers" : "Show mile markers"}
             style={{ opacity: showMarkers ? 1 : 0.5 }}
           >
-            <i className="fa-solid fa-flag" />
+            <i className="fa-solid fa-map-location-dot" />
           </button>
           <button
             className="map-split-markers-btn"
@@ -822,7 +984,27 @@ export default function CourseMap({
                 ? "Hide rest stop markers"
                 : "Show rest stop markers"
             }
-            style={{ opacity: showRestStops ? 1 : 0.5 }}
+            style={{ opacity: showRestStops ? 1 : 0.5, color: "#a855f7" }}
+          >
+            <i className="fa-solid fa-location-dot" />
+          </button>
+          <button
+            className="map-stop-btn"
+            onClick={() => setShowIntermediateStops((v) => !v)}
+            title={
+              showIntermediateStops
+                ? "Hide intermediate stop markers"
+                : "Show intermediate stop markers"
+            }
+            aria-label={
+              showIntermediateStops
+                ? "Hide intermediate stop markers"
+                : "Show intermediate stop markers"
+            }
+            style={{
+              opacity: showIntermediateStops ? 1 : 0.5,
+              color: "#f59e0b",
+            }}
           >
             <i className="fa-solid fa-location-dot" />
           </button>
@@ -855,12 +1037,14 @@ export default function CourseMap({
           {showMarkers && (
             <ZoomableMarkers gpxTrack={gpxTrack} unitSystem={unitSystem} />
           )}
-          <TileLayer
-            key={mapStyle}
-            url={MAP_TILE_LAYERS[mapStyle].url}
-            attribution={MAP_TILE_LAYERS[mapStyle].attribution}
-            maxZoom={MAP_TILE_LAYERS[mapStyle].maxZoom}
-          />
+          {activeTileUrl != null && (
+            <TileLayer
+              key={mapStyle}
+              url={activeTileUrl}
+              attribution={MAP_TILE_LAYERS[mapStyle].attribution}
+              maxZoom={MAP_TILE_LAYERS[mapStyle].maxZoom}
+            />
+          )}
           {/* Ghost track — always visible; covers sections with no splits assigned */}
           <Polyline
             positions={polyline as LatLngExpression[]}
@@ -885,6 +1069,14 @@ export default function CourseMap({
             m.role === "stop" ? (
               showRestStops ? (
                 <StopMarker key={i} m={m} onMarkerClick={onMarkerClick} />
+              ) : null
+            ) : m.role === "intermediate" ? (
+              showIntermediateStops ? (
+                <IntermediateStopMarker
+                  key={i}
+                  m={m}
+                  onMarkerClick={onMarkerClick}
+                />
               ) : null
             ) : showSplitMarkers ? (
               <SplitMarker

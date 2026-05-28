@@ -252,31 +252,7 @@ const ElevationProfile = memo(function ElevationProfile({
           }}
         >
           <defs>
-            {/* Neutral base gradient — used for the full elevation fill.
-                 When segment colours are present this becomes a subtle backing;
-                 when there are no segments it acts as the primary fill. */}
-            <linearGradient id="elevGradBase" x1="0" y1="0" x2="0" y2="1">
-              <stop
-                offset="5%"
-                stopColor="#94a3b8"
-                stopOpacity={segmentColors?.length ? 0.18 : 0.45}
-              />
-              <stop offset="95%" stopColor="#94a3b8" stopOpacity={0.04} />
-            </linearGradient>
-            {/* Per-segment gradient defs — referenced by ReferenceArea below */}
-            {segmentColors?.map(({ color }, i) => (
-              <linearGradient
-                key={i}
-                id={`elevSegGrad${i}`}
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
-                <stop offset="5%" stopColor={color} stopOpacity={0.55} />
-                <stop offset="95%" stopColor={color} stopOpacity={0.07} />
-              </linearGradient>
-            ))}
+            {/* No gradient defs needed — using flat fills directly */}
           </defs>
           <XAxis
             dataKey="dist"
@@ -298,6 +274,7 @@ const ElevationProfile = memo(function ElevationProfile({
             width={unitSystem === "imperial" ? 46 : 38}
           />
           <Tooltip
+            isAnimationActive={false}
             content={
               <CustomTooltip unitSystem={unitSystem} hoverKmRef={lastHoverKm} />
             }
@@ -310,14 +287,14 @@ const ElevationProfile = memo(function ElevationProfile({
           {/* Per-segment colour overlays — map over the original array so the
                gradient index i always matches the def id `elevSegGrad${i}`,
                even when the view is zoomed and only a subset are visible. */}
-          {segmentColors?.map(({ startKm, endKm }, i) =>
+          {segmentColors?.map(({ startKm, endKm, color }, i) =>
             endKm > viewStart && startKm < viewEnd ? (
               <ReferenceArea
                 key={`sc-${i}-${startKm}-${endKm}`}
                 x1={Math.max(startKm, viewStart)}
                 x2={Math.min(endKm, viewEnd)}
-                fill={`url(#elevSegGrad${i})`}
-                fillOpacity={1}
+                fill={color}
+                fillOpacity={0.28}
                 stroke="none"
                 ifOverflow="visible"
               />
@@ -338,7 +315,8 @@ const ElevationProfile = memo(function ElevationProfile({
             dataKey="ele"
             stroke={segmentColors?.length ? "#64748b" : "#4361ee"}
             strokeWidth={1.5}
-            fill="url(#elevGradBase)"
+            fill={segmentColors?.length ? "#94a3b8" : "#4361ee"}
+            fillOpacity={0.18}
             dot={false}
             isAnimationActive={false}
           />

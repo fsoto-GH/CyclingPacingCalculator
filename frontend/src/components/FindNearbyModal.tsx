@@ -2,9 +2,11 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { AmenityContext } from "../amenityContext";
 import {
   AMENITY_LIST,
+  AMENITY_FA_ICONS,
   AMENITY_ICONS,
   AMENITY_LABELS,
 } from "../calculator/overpass";
+import { useAppSettings } from "../AppSettingsContext";
 import type { UnitSystem } from "../types";
 
 // Preset radius steps per unit system.
@@ -45,7 +47,7 @@ interface FindNearbyModalProps {
   unitSystem: UnitSystem;
   onClose: () => void;
   /** Called with the saved params so the caller can immediately re-search. */
-  onSave?: (radiusM: number, types: Set<string>, custom: string) => void;
+  onSave?: (radiusM: number, types: Set<string>, textQuery: string) => void;
 }
 
 export default function FindNearbyModal({
@@ -55,18 +57,20 @@ export default function FindNearbyModal({
 }: FindNearbyModalProps) {
   const {
     selectedTypes,
-    customTypes,
+    textQuery,
     radiusM,
     setSelectedTypes,
-    setCustomTypes,
+    setTextQuery,
     setRadiusM,
   } = useContext(AmenityContext);
+  const { enableGooglePlaces } = useAppSettings();
   const steps = stepsForUnit(unitSystem);
   const [sliderIndex, setSliderIndex] = useState(() =>
     closestStepIndex(radiusM, steps),
   );
   const currentRadiusM = steps[sliderIndex];
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Open the native dialog on mount
   useEffect(() => {
@@ -86,8 +90,14 @@ export default function FindNearbyModal({
   }
 
   function handleSave() {
+    const hasText = enableGooglePlaces && textQuery.trim().length > 0;
+    if (!hasText && selectedTypes.size === 0) {
+      setValidationError("Select at least one stop type.");
+      return;
+    }
+    setValidationError(null);
     setRadiusM(currentRadiusM);
-    onSave?.(currentRadiusM, selectedTypes, customTypes);
+    onSave?.(currentRadiusM, selectedTypes, textQuery);
     onClose();
   }
 
@@ -150,6 +160,7 @@ export default function FindNearbyModal({
             type="button"
             className="action-btn action-btn-export fnm-select-all-btn"
             onClick={handleSelectAll}
+            disabled={textQuery.trim().length > 0}
           >
             {AMENITY_LIST.every((t) => selectedTypes.has(t))
               ? "Deselect All"
@@ -158,14 +169,25 @@ export default function FindNearbyModal({
         </div>
         <div className="fnm-checks">
           {AMENITY_LIST.map((type) => (
-            <label key={type} className="fnm-check-label">
+            <label
+              key={type}
+              className={`fnm-check-label${textQuery.trim().length > 0 ? " fnm-check-label--disabled" : ""}`}
+            >
               <input
                 type="checkbox"
                 checked={selectedTypes.has(type)}
                 onChange={(e) => handleToggle(type, e.target.checked)}
+                disabled={textQuery.trim().length > 0}
               />
               <span className="fnm-check-icon">
-                {AMENITY_ICONS[type] ?? "📍"}
+                {AMENITY_FA_ICONS[type] ? (
+                  <i
+                    className={`fa-solid ${AMENITY_FA_ICONS[type]}`}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  (AMENITY_ICONS[type] ?? "📍")
+                )}
               </span>
               <span className="fnm-check-text">
                 {AMENITY_LABELS[type] ?? type}
@@ -174,25 +196,31 @@ export default function FindNearbyModal({
           ))}
         </div>
 
-        <div className="fnm-custom-section">
-          <label className="fnm-custom-label" htmlFor="fnm-custom-input">
-            Additional types{" "}
-            <span className="fnm-custom-hint">
-              (comma-separated OSM amenity tags)
-            </span>
-          </label>
-          <input
-            id="fnm-custom-input"
-            type="text"
-            className="fnm-custom-input"
-            value={customTypes}
-            onChange={(e) => setCustomTypes(e.target.value)}
-            placeholder="e.g. toilets, atm, bicycle_rental"
-          />
-        </div>
+        {enableGooglePlaces && (
+          <div className="fnm-text-search-section">
+            <label className="fnm-custom-label" htmlFor="fnm-text-query-input">
+              Google Places text search
+              <span className="fnm-custom-hint">
+                {" "}
+                — disables type checkboxes
+              </span>
+            </label>
+            <input
+              id="fnm-text-query-input"
+              type="text"
+              className="fnm-custom-input"
+              value={textQuery}
+              onChange={(e) => setTextQuery(e.target.value)}
+              placeholder="e.g. Walmart, Starbucks, bike shop"
+            />
+          </div>
+        )}
       </div>
 
       <div className="legend-footer">
+        {validationError && (
+          <p className="fnm-validation-error">{validationError}</p>
+        )}
         <button
           type="button"
           className="action-btn action-btn-export"

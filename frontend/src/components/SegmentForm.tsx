@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, lazy, Suspense } from "react";
 
-const GpxExportModal = lazy(() => import("./GpxExportModal"));
 const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
 import type {
   SegmentForm,
@@ -9,7 +8,6 @@ import type {
   Mode,
   SplitGpxProfile,
   GpxTrackPoint,
-  GpxWaypoint,
   SplitDetail,
   SegmentDetail,
   SubSplitMode,
@@ -86,13 +84,6 @@ interface SegmentFormProps {
   etaMarginClose?: number;
   onZoomToSegment?: () => void;
   onZoomToSplit?: (splitIdx: number) => void;
-  splitBoundariesKm?: [number, number][] | null;
-  /** Original GPX <wpt> waypoints from the loaded track, to include on export */
-  gpxWaypoints?: GpxWaypoint[];
-  /** RideWithGPS Points of Interest for the loaded route */
-  rwgpsPois?: GpxWaypoint[];
-  /** RideWithGPS course/cue points for the loaded route */
-  rwgpsCoursePoints?: GpxWaypoint[];
 }
 
 export default function SegmentFormComponent({
@@ -131,10 +122,6 @@ export default function SegmentFormComponent({
   etaMarginClose = 7,
   onZoomToSegment,
   onZoomToSplit,
-  splitBoundariesKm,
-  gpxWaypoints,
-  rwgpsPois,
-  rwgpsCoursePoints,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -166,7 +153,6 @@ export default function SegmentFormComponent({
     pendingDeletedSplitDistanceCount,
     setPendingDeletedSplitDistanceCount,
   ] = useState(0);
-  const [showExportModal, setShowExportModal] = useState(false);
   const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
   const [targetSplitSignal, setTargetSplitSignal] = useState(0);
   const [transitJumpPulse, setTransitJumpPulse] = useState(false);
@@ -354,13 +340,26 @@ export default function SegmentFormComponent({
               : 0;
           // Aggregate grade buckets (distance-weighted)
           const bucketKeys = [
-            "b0_3",
-            "b3_6",
-            "b6_9",
-            "b9_12",
-            "b12_15",
-            "b15_18",
+            "b2",
+            "b4",
+            "b6",
+            "b8",
+            "b10",
+            "b12",
+            "b14",
+            "b16",
+            "b18",
             "b18plus",
+            "bn2",
+            "bn4",
+            "bn6",
+            "bn8",
+            "bn10",
+            "bn12",
+            "bn14",
+            "bn16",
+            "bn18",
+            "bn18plus",
           ] as const;
           const bucketSumKm = Object.fromEntries(
             bucketKeys.map((k) => [k, 0]),
@@ -629,16 +628,6 @@ export default function SegmentFormComponent({
             </label>
           </div>
           <div className="split-action-buttons">
-            {gpxTrack && (
-              <button
-                type="button"
-                className="split-action-btn"
-                title="Export GPX splits for this segment"
-                onClick={() => setShowExportModal(true)}
-              >
-                <i className="fa-solid fa-download"></i> GPX
-              </button>
-            )}
             {onZoomToSegment && (
               <button
                 type="button"
@@ -646,7 +635,7 @@ export default function SegmentFormComponent({
                 title="Zoom course map to this segment"
                 onClick={() => onZoomToSegment()}
               >
-                <i className="fa-regular fa-map"></i>
+                <i className="fa-solid fa-route"></i>
               </button>
             )}
             {canDeleteSegment && (
@@ -821,11 +810,11 @@ export default function SegmentFormComponent({
 
               <button
                 type="button"
-                className="optional-toggle"
+                className="section-action-row"
                 onClick={() => setShowOptional(!showOptional)}
               >
                 <span className={`chevron${showOptional ? " open" : ""}`}>
-                  <i className="fas fa-chevron-right" />
+                  ▶
                 </span>
                 Optional overrides
               </button>
@@ -935,6 +924,7 @@ export default function SegmentFormComponent({
                       expandAllSignal={undefined}
                       splitResult={splitResults?.[j] ?? null}
                       courseSplitMode={courseSplitMode}
+                      mode={mode}
                       canShiftUp={j > 0}
                       canShiftDown={j < value.splits.length - 1}
                       canMoveToPrevSeg={
@@ -1029,24 +1019,6 @@ export default function SegmentFormComponent({
           setPendingDeletedSplitDistanceCount(0);
         }}
       />
-      {gpxTrack && showExportModal && (
-        <Suspense fallback={null}>
-          <GpxExportModal
-            open={showExportModal}
-            onClose={() => setShowExportModal(false)}
-            segIndex={segIndex}
-            segName={value.name}
-            splits={value.splits}
-            gpxTrack={gpxTrack}
-            splitBoundariesKm={splitBoundariesKm ?? []}
-            gpxProfiles={gpxProfiles ?? []}
-            unitSystem={unitSystem}
-            gpxWaypoints={gpxWaypoints}
-            rwgpsPois={rwgpsPois}
-            rwgpsCoursePoints={rwgpsCoursePoints}
-          />
-        </Suspense>
-      )}
     </div>
   );
 }

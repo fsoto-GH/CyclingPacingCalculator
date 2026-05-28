@@ -1,10 +1,13 @@
-import type { SplitForm, RestStopForm } from "./types";
+import type {
+  SplitForm,
+  RestStopForm,
+  IntermediateRestStopForm,
+} from "./types";
 import { makeDefaultDayHours } from "./types";
 import { browserTimezone } from "./components/TimezoneSelect";
 
 export const DEFAULT_REST_STOP: RestStopForm = {
   enabled: false,
-  backup: false,
   name: "",
   address: "",
   alt: "",
@@ -31,6 +34,35 @@ function cloneRestStop(): RestStopForm {
   };
 }
 
+export const DEFAULT_INTERMEDIATE_REST_STOP: IntermediateRestStopForm = {
+  enabled: false,
+  distance: "",
+  name: "",
+  address: "",
+  alt: "",
+  sameHoursEveryDay: true,
+  allDays: makeDefaultDayHours(),
+  perDay: [
+    makeDefaultDayHours(),
+    makeDefaultDayHours(),
+    makeDefaultDayHours(),
+    makeDefaultDayHours(),
+    makeDefaultDayHours(),
+    makeDefaultDayHours(),
+    makeDefaultDayHours(),
+  ],
+};
+
+function cloneIntermediateRestStop(): IntermediateRestStopForm {
+  return {
+    ...DEFAULT_INTERMEDIATE_REST_STOP,
+    allDays: { ...DEFAULT_INTERMEDIATE_REST_STOP.allDays },
+    perDay: DEFAULT_INTERMEDIATE_REST_STOP.perDay.map((d) => ({
+      ...d,
+    })) as IntermediateRestStopForm["perDay"],
+  };
+}
+
 export const DEFAULT_SPLIT: SplitForm = {
   distance: "",
   sub_split_mode: "hour",
@@ -40,6 +72,7 @@ export const DEFAULT_SPLIT: SplitForm = {
   last_sub_split_threshold: "20",
   sub_split_distances: "",
   rest_stop: cloneRestStop(),
+  intermediate_stop: cloneIntermediateRestStop(),
   down_time: "",
   moving_speed: "",
   adjustment_time: "",
@@ -53,5 +86,6 @@ export function makeDefaultSplit(): SplitForm {
   return {
     ...DEFAULT_SPLIT,
     rest_stop: cloneRestStop(),
+    intermediate_stop: cloneIntermediateRestStop(),
   };
 }

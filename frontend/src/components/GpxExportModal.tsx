@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type {
   GpxTrackPoint,
   GpxWaypoint,
@@ -12,7 +12,7 @@ import {
   buildGpxString,
   findNearestTrackPoint,
 } from "../calculator/gpxParser";
-import { distanceLabel } from "../utils";
+import { distanceLabel, SEGMENT_COLORS } from "../utils";
 
 /** Build a human-readable hours description from a RestStopForm for GPX export. */
 function buildRestStopDescription(rs: RestStopForm): string {
@@ -32,30 +32,36 @@ function buildRestStopDescription(rs: RestStopForm): string {
     .join(", ");
 }
 
+interface SegmentExportInfo {
+  name?: string | null;
+  splits: SplitFormType[];
+}
+
 interface GpxExportModalProps {
   open: boolean;
   onClose: () => void;
-  segIndex: number;
-  segName?: string;
-  splits: SplitFormType[];
+  /** All segments in the course, each with their splits. */
+  segments: SegmentExportInfo[];
   gpxTrack: GpxTrackPoint[];
-  splitBoundariesKm: [number, number][];
-  gpxProfiles: SplitGpxProfile[];
+  /** [segIdx][splitIdx] → [startKm, endKm] */
+  splitBoundariesKm: ([number, number] | undefined)[][];
+  /** [segIdx][splitIdx] → profile stats */
+  gpxProfiles: (SplitGpxProfile | undefined | null)[][];
   unitSystem: UnitSystem;
   /** Original GPX <wpt> waypoints from the loaded track file */
   gpxWaypoints?: GpxWaypoint[];
-  /** RideWithGPS Points of Interest (only present when route was loaded from RwGPS) */
+  /** RideWithGPS Points of Interest */
   rwgpsPois?: GpxWaypoint[];
-  /** RideWithGPS course/cue points (only present when route was loaded from RwGPS) */
+  /** RideWithGPS course/cue points */
   rwgpsCoursePoints?: GpxWaypoint[];
+  /** Default file name (course name) */
+  defaultFileName?: string;
 }
 
 export default function GpxExportModal({
   open,
   onClose,
-  segIndex,
-  segName,
-  splits,
+  segments,
   gpxTrack,
   splitBoundariesKm,
   gpxProfiles,
@@ -63,28 +69,35 @@ export default function GpxExportModal({
   gpxWaypoints,
   rwgpsPois,
   rwgpsCoursePoints,
+  defaultFileName = "Course",
 }: GpxExportModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const selectAllRef = useRef<HTMLInputElement>(null);
-  const [checked, setChecked] = useState<boolean[]>(() =>
-    splits.map(() => true),
+  const courseSelectAllRef = useRef<HTMLInputElement>(null);
+  const segSelectRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // checked[segIdx][splitIdx]
+  const [checked, setChecked] = useState<boolean[][]>(() =>
+    segments.map((seg) => seg.splits.map(() => true)),
   );
   const [exporting, setExporting] = useState(false);
   const [includeRwgpsPois, setIncludeRwgpsPois] = useState(true);
   const [includeRwgpsCoursePoints, setIncludeRwgpsCoursePoints] =
     useState(false);
-  const defaultName = segName?.trim() || `Segment ${segIndex + 1}`;
-  const [fileName, setFileName] = useState(defaultName);
-
-  // Keep filename in sync if the segment name/index changes while modal is open
+  // collapsed[si] = true means that segment's splits are hidden
+  const [collapsed, setCollapsed] = useState<boolean[]>(() =>
+    segments.map(() => true),
+  );
+  // Re-init checked + collapsed when the modal is opened or structure changes
   useEffect(() => {
-    setFileName(segName?.trim() || `Segment ${segIndex + 1}`);
-  }, [segName, segIndex]);
+    if (open) {
+      setChecked(segments.map((seg) => seg.splits.map(() => true)));
+      setCollapsed(segments.map(() => true));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
-  // Re-init checked array when split count changes
-  useEffect(() => {
-    setChecked(splits.map(() => true));
-  }, [splits.length]);
+  const toggleCollapsed = (si: number) =>
+    setCollapsed((prev) => prev.map((v, i) => (i === si ? !v : v)));
 
   // Open/close the native dialog
   useEffect(() => {
@@ -94,24 +107,75 @@ export default function GpxExportModal({
     else if (!open && el.open) el.close();
   }, [open]);
 
-  // Update indeterminate state on select-all checkbox
-  useEffect(() => {
-    const el = selectAllRef.current;
-    if (!el) return;
-    const all = checked.every(Boolean);
-    const none = checked.every((v) => !v);
-    el.indeterminate = !all && !none;
-    el.checked = all;
+  // --- Tri-state helpers ---
+  const segState = useCallback(
+    (si: number): "all" | "some" | "none" => {
+      const cs = checked[si] ?? [];
+      if (cs.length === 0) return "none";
+      if (cs.every(Boolean)) return "all";
+      if (cs.some(Boolean)) return "some";
+      return "none";
+    },
+    [checked],
+  );
+
+  const courseState: "all" | "some" | "none" = useMemo(() => {
+    const flat = checked.flat();
+    if (flat.length === 0) return "none";
+    if (flat.every(Boolean)) return "all";
+    if (flat.some(Boolean)) return "some";
+    return "none";
   }, [checked]);
 
-  const allChecked = checked.every(Boolean);
-  const anyChecked = checked.some(Boolean);
+  // Update indeterminate on course-level checkbox
+  useEffect(() => {
+    const el = courseSelectAllRef.current;
+    if (!el) return;
+    el.indeterminate = courseState === "some";
+    el.checked = courseState === "all";
+  }, [courseState]);
 
-  // True when checked splits have at least one unchecked gap between them,
-  // e.g. splits 1 and 3 selected but not 2. The merged track will have a
-  // positional jump at that gap.
-  const hasGap = (() => {
-    const indices = checked.reduce<number[]>(
+  // Update indeterminate on segment-level checkboxes
+  useEffect(() => {
+    segments.forEach((_, si) => {
+      const el = segSelectRefs.current[si];
+      if (!el) return;
+      const s = segState(si);
+      el.indeterminate = s === "some";
+      el.checked = s === "all";
+    });
+  });
+
+  // --- Toggle handlers ---
+  const toggleAll = () => {
+    const toAll = courseState !== "all";
+    setChecked(segments.map((seg) => seg.splits.map(() => toAll)));
+  };
+
+  const toggleSegment = (si: number) => {
+    const toAll = segState(si) !== "all";
+    setChecked((prev) =>
+      prev.map((cs, i) => (i === si ? cs.map(() => toAll) : cs)),
+    );
+  };
+
+  const toggleSplit = (si: number, sj: number) => {
+    setChecked((prev) =>
+      prev.map((cs, i) =>
+        i === si ? cs.map((v, j) => (j === sj ? !v : v)) : cs,
+      ),
+    );
+  };
+
+  // --- Derived values ---
+  const flatChecked = useMemo(() => checked.flat(), [checked]);
+  const totalSplits = flatChecked.length;
+  const selectedCount = flatChecked.filter(Boolean).length;
+  const anyChecked = selectedCount > 0;
+
+  // Gap: selected splits are non-contiguous in the flat (course-order) list
+  const hasGap = useMemo(() => {
+    const indices = flatChecked.reduce<number[]>(
       (acc, v, i) => (v ? [...acc, i] : acc),
       [],
     );
@@ -119,11 +183,7 @@ export default function GpxExportModal({
       if (indices[k] - indices[k - 1] > 1) return true;
     }
     return false;
-  })();
-
-  const toggleAll = () => setChecked(checked.map(() => !allChecked));
-  const toggleOne = (i: number) =>
-    setChecked(checked.map((v, j) => (j === i ? !v : v)));
+  }, [flatChecked]);
 
   const elevUnit = unitSystem === "imperial" ? "ft" : "m";
   const toElevUnit = (m: number) =>
@@ -135,111 +195,139 @@ export default function GpxExportModal({
     unitSystem === "imperial" ? km / 1.60934 : km;
   const dLabel = distanceLabel(unitSystem);
 
-  // Aggregate stats for selected splits
-  const aggregates = (() => {
+  // Aggregate stats across all selected splits
+  const aggregates = useMemo(() => {
     let distKmTotal = 0;
     let gainMTotal = 0;
     let lossMTotal = 0;
-    splits.forEach((_, j) => {
-      if (!checked[j]) return;
-      const boundary = splitBoundariesKm[j];
-      if (boundary) distKmTotal += boundary[1] - boundary[0];
-      const profile = gpxProfiles[j];
-      if (profile) {
-        gainMTotal += profile.elevGainM;
-        lossMTotal += profile.elevLossM;
-      }
+    segments.forEach((_, si) => {
+      (checked[si] ?? []).forEach((v, sj) => {
+        if (!v) return;
+        const boundary = splitBoundariesKm[si]?.[sj];
+        if (boundary) distKmTotal += boundary[1] - boundary[0];
+        const profile = gpxProfiles[si]?.[sj];
+        if (profile) {
+          gainMTotal += profile.elevGainM;
+          lossMTotal += profile.elevLossM;
+        }
+      });
     });
     return { distKmTotal, gainMTotal, lossMTotal };
-  })();
+  }, [checked, segments, splitBoundariesKm, gpxProfiles]);
 
-  // Collect rest stops from selected splits as course points.
-  // Snap each waypoint to the nearest track point within its split boundary
-  // so Garmin devices (which require course points to lie on a track point)
-  // will render the marker correctly.
-  const waypoints: GpxWaypoint[] = (() => {
-    const result: GpxWaypoint[] = [];
-    splits.forEach((split, j) => {
-      if (!checked[j]) return;
-      const rs = split.rest_stop;
-      if (!rs.enabled || rs.lat == null || rs.lon == null) return;
-      const boundary = splitBoundariesKm[j];
-      const snapped =
-        boundary && gpxTrack.length > 0
-          ? findNearestTrackPoint(
-              gpxTrack,
-              rs.lat,
-              rs.lon,
-              boundary[0],
-              boundary[1],
-            )
-          : null;
-      const waypoint: GpxWaypoint = {
-        name: `${rs.name} (${split.name?.trim() || `Split ${j + 1}`})`,
-        lat: snapped?.lat ?? rs.lat,
-        lon: snapped?.lon ?? rs.lon,
-        description: buildRestStopDescription(rs),
-        symbol: "food",
-      };
-      result.push(waypoint);
-    });
-    return result;
-  })();
-
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     if (exporting || !anyChecked) return;
     setExporting(true);
-    setTimeout(() => {
-      try {
-        // Collect points from all selected splits in order and merge into
-        // one continuous track (single <trkseg>) so importers like Garmin
-        // treat it as one route.
-        const mergedPoints = splits.flatMap((_, j) => {
-          if (!checked[j]) return [];
-          const boundary = splitBoundariesKm[j];
+    try {
+      // Merge selected splits in course order into one continuous track
+      const mergedPoints = segments.flatMap((_, si) =>
+        (checked[si] ?? []).flatMap((v, sj) => {
+          if (!v) return [];
+          const boundary = splitBoundariesKm[si]?.[sj];
           if (!boundary) return [];
           return sliceTrackPoints(gpxTrack, boundary[0], boundary[1]);
-        });
+        }),
+      );
 
-        const trackName = fileName.trim() || defaultName;
-        const allWaypoints = [
-          ...waypoints,
-          ...(gpxWaypoints ?? []),
-          ...(includeRwgpsPois ? (rwgpsPois ?? []) : []),
-          ...(includeRwgpsCoursePoints ? (rwgpsCoursePoints ?? []) : []),
-        ];
-        const gpx = buildGpxString(
-          [{ name: trackName, points: mergedPoints }],
-          trackName,
-          allWaypoints,
-        );
-        const blob = new Blob([gpx], { type: "application/gpx+xml" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${trackName.replace(/[^a-z0-9_\-. ]/gi, "_")}.gpx`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } finally {
-        setExporting(false);
+      // Collect rest stop waypoints from selected splits
+      const restStopWaypoints: GpxWaypoint[] = segments.flatMap((seg, si) =>
+        seg.splits.flatMap((split, sj) => {
+          if (!checked[si]?.[sj]) return [];
+          const rs = split.rest_stop;
+          if (!rs.enabled || rs.lat == null || rs.lon == null) return [];
+          const boundary = splitBoundariesKm[si]?.[sj];
+          const snapped =
+            boundary && gpxTrack.length > 0
+              ? findNearestTrackPoint(
+                  gpxTrack,
+                  rs.lat,
+                  rs.lon,
+                  boundary[0],
+                  boundary[1],
+                )
+              : null;
+          const segLabel = seg.name?.trim() || `Segment ${si + 1}`;
+          const splitLabel = split.name?.trim() || `Split ${sj + 1}`;
+          return [
+            {
+              name: `${rs.name} (${segLabel} / ${splitLabel})`,
+              lat: snapped?.lat ?? rs.lat,
+              lon: snapped?.lon ?? rs.lon,
+              description: buildRestStopDescription(rs),
+              symbol: "food",
+            } satisfies GpxWaypoint,
+          ];
+        }),
+      );
+
+      const trackName = defaultFileName.trim() || "Course";
+      const safeFileName = trackName.replace(/[^a-z0-9_\-. ]/gi, "_");
+      const allWaypoints = [
+        ...restStopWaypoints,
+        ...(gpxWaypoints ?? []),
+        ...(includeRwgpsPois ? (rwgpsPois ?? []) : []),
+        ...(includeRwgpsCoursePoints ? (rwgpsCoursePoints ?? []) : []),
+      ];
+      const gpx = buildGpxString(
+        [{ name: trackName, points: mergedPoints }],
+        trackName,
+        allWaypoints,
+      );
+      const blob = new Blob([gpx], { type: "application/gpx+xml" });
+
+      if ("showOpenFilePicker" in self) {
+        try {
+          const handle = await (
+            window as Window &
+              typeof globalThis & {
+                showSaveFilePicker: (
+                  opts: unknown,
+                ) => Promise<FileSystemFileHandle>;
+              }
+          ).showSaveFilePicker({
+            suggestedName: `${safeFileName}.gpx`,
+            startIn: "downloads",
+            types: [
+              {
+                description: "GPX File",
+                accept: { "application/gpx+xml": [".gpx"] },
+              },
+            ],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return;
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          // Unexpected error — fall through to legacy download.
+        }
       }
-    }, 0);
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeFileName}.gpx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   }, [
     exporting,
     anyChecked,
-    splits,
+    segments,
     checked,
     splitBoundariesKm,
     gpxTrack,
-    fileName,
-    defaultName,
-    waypoints,
+    defaultFileName,
     gpxWaypoints,
     rwgpsPois,
     rwgpsCoursePoints,
     includeRwgpsPois,
     includeRwgpsCoursePoints,
   ]);
+
   return (
     <dialog ref={dialogRef} className="gpx-export-modal" onClose={onClose}>
       <div className="gpx-export-header">
@@ -258,9 +346,8 @@ export default function GpxExportModal({
         <p className="gpx-export-hint">
           Select splits to include. Selected splits are merged into a single
           continuous track for GPS and route importer compatibility. Rest stops
-          with valid coordinates are added as waypoints, with coordinates
-          snapped to the nearest track point within each split to ensure
-          compatibility.
+          with valid coordinates are added as waypoints, snapped to the nearest
+          track point within each split.
         </p>
 
         <table className="gpx-export-table">
@@ -268,7 +355,7 @@ export default function GpxExportModal({
             <tr>
               <th>
                 <input
-                  ref={selectAllRef}
+                  ref={courseSelectAllRef}
                   type="checkbox"
                   aria-label="Select all splits"
                   onChange={toggleAll}
@@ -281,42 +368,88 @@ export default function GpxExportModal({
             </tr>
           </thead>
           <tbody>
-            {splits.map((split, j) => {
-              const boundary = splitBoundariesKm[j];
-              const distKm = boundary ? boundary[1] - boundary[0] : null;
-              const distDisplay =
-                distKm != null
-                  ? `${toDistUnit(distKm).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${dLabel}`
-                  : "—";
-              const profile = gpxProfiles[j];
-              const gainDisplay = profile
-                ? `${toElevUnit(profile.elevGainM)} ${elevUnit}`
-                : "—";
-              const lossDisplay = profile
-                ? `${toElevUnit(profile.elevLossM)} ${elevUnit}`
-                : "—";
-              const label = split.name?.trim() || `Split ${j + 1}`;
-
+            {segments.map((seg, si) => {
+              const segLabel = seg.name?.trim() || `Segment ${si + 1}`;
               return (
-                <tr
-                  key={j}
-                  className={checked[j] ? "gpx-export-row-checked" : ""}
-                  onClick={() => toggleOne(j)}
-                >
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={checked[j] ?? false}
-                      onChange={() => toggleOne(j)}
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label={`Include ${label}`}
-                    />
-                  </td>
-                  <td className="gpx-export-split-name">{label}</td>
-                  <td>{distDisplay}</td>
-                  <td className="gpx-export-gain">{gainDisplay}</td>
-                  <td className="gpx-export-loss">{lossDisplay}</td>
-                </tr>
+                <>
+                  {/* Segment header row */}
+                  <tr
+                    key={`seg-${si}`}
+                    className="gpx-export-row-segment"
+                    onClick={() => toggleCollapsed(si)}
+                  >
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <input
+                        ref={(el) => {
+                          segSelectRefs.current[si] = el;
+                        }}
+                        type="checkbox"
+                        aria-label={`Select all splits in ${segLabel}`}
+                        onChange={() => toggleSegment(si)}
+                        defaultChecked
+                      />
+                    </td>
+                    <td className="gpx-export-seg-name" colSpan={4}>
+                      <span
+                        className="gpx-export-seg-chevron"
+                        style={{
+                          color: SEGMENT_COLORS[si % SEGMENT_COLORS.length],
+                        }}
+                      >
+                        <i
+                          className={`fas fa-chevron-${collapsed[si] ? "right" : "down"}`}
+                        />
+                      </span>
+                      {segLabel}
+                    </td>
+                  </tr>
+
+                  {/* Split rows — hidden when segment is collapsed */}
+                  {!collapsed[si] &&
+                    seg.splits.map((split, sj) => {
+                      const boundary = splitBoundariesKm[si]?.[sj];
+                      const distKm = boundary
+                        ? boundary[1] - boundary[0]
+                        : null;
+                      const profile = gpxProfiles[si]?.[sj];
+                      const label = split.name?.trim() || `Split ${sj + 1}`;
+                      return (
+                        <tr
+                          key={`split-${si}-${sj}`}
+                          className={`gpx-export-row-split${checked[si]?.[sj] ? " gpx-export-row-checked" : ""}`}
+                          onClick={() => toggleSplit(si, sj)}
+                        >
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={checked[si]?.[sj] ?? false}
+                              onChange={() => toggleSplit(si, sj)}
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label={`Include ${label}`}
+                            />
+                          </td>
+                          <td className="gpx-export-split-name gpx-export-split-name--indented">
+                            {label}
+                          </td>
+                          <td>
+                            {distKm != null
+                              ? `${toDistUnit(distKm).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${dLabel}`
+                              : "—"}
+                          </td>
+                          <td className="gpx-export-gain">
+                            {profile
+                              ? `${toElevUnit(profile.elevGainM)} ${elevUnit}`
+                              : "—"}
+                          </td>
+                          <td className="gpx-export-loss">
+                            {profile
+                              ? `${toElevUnit(profile.elevLossM)} ${elevUnit}`
+                              : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </>
               );
             })}
           </tbody>
@@ -365,7 +498,7 @@ export default function GpxExportModal({
       <div className="gpx-export-footer">
         <div className="gpx-export-footer-info">
           <span className="gpx-export-count">
-            {checked.filter(Boolean).length} of {splits.length} splits selected
+            {selectedCount} of {totalSplits} splits selected
           </span>
           {anyChecked ? (
             <span className="gpx-export-aggregates">
@@ -388,24 +521,6 @@ export default function GpxExportModal({
               No splits selected
             </span>
           )}
-          <div className="gpx-export-filename-row">
-            <label
-              htmlFor="gpx-export-filename"
-              className="gpx-export-filename-label"
-            >
-              File name
-            </label>
-            <input
-              id="gpx-export-filename"
-              className="gpx-export-filename-input"
-              type="text"
-              value={fileName}
-              onChange={(e) => setFileName(e.target.value)}
-              spellCheck={false}
-              placeholder={defaultName}
-            />
-            <span className="gpx-export-ext">.gpx</span>
-          </div>
         </div>
         <button
           type="button"
@@ -415,10 +530,12 @@ export default function GpxExportModal({
         >
           {exporting ? (
             <>
-              <span className="btn-spinner" /> Exporting…
+              <span className="btn-spinner" /> Saving…
             </>
           ) : (
-            "Export"
+            <>
+              <i className="fa-solid fa-floppy-disk" /> Save
+            </>
           )}
         </button>
       </div>

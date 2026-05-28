@@ -24,6 +24,7 @@ class UserFlags(Base):
 
     user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     enable_google_places: Mapped[bool] = mapped_column(Boolean, default=False)
+    enable_google_maps: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )

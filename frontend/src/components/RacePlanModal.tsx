@@ -56,6 +56,17 @@ export default function RacePlanModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchKey]);
 
+  // Debounce: sync pendingSearch → search 400 ms after the user stops typing.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (pendingSearch !== search) {
+        setPage(1);
+        setSearch(pendingSearch);
+      }
+    }, 400);
+    return () => clearTimeout(id);
+  }, [pendingSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadPlans = useCallback(async () => {
     setLoading(true);
     setError(null);

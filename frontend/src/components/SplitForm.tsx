@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense, useMemo } from "react";
 import type {
   SplitForm,
   SubSplitMode,
@@ -7,8 +7,11 @@ import type {
   GpxTrackPoint,
   SplitDetail,
   SubSplitDetail,
+  Mode,
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
+import { interpolateLatLon } from "../calculator/gpxParser";
+import { DEFAULT_INTERMEDIATE_REST_STOP } from "../defaults";
 import {
   buildDetailedNearDetail,
   checkArrivalVsHoursDetailed,
@@ -74,6 +77,8 @@ interface SplitFormProps {
   segColor?: string;
   /** Course-level sub-split mode default; splits may override. */
   courseSplitMode: SubSplitMode;
+  /** Course calculation mode (distance vs target_distance). */
+  mode: Mode;
   canShiftUp?: boolean;
   canShiftDown?: boolean;
   canMoveToPrevSeg?: boolean;
@@ -114,6 +119,7 @@ export default function SplitFormComponent({
   showResults = false,
   segColor,
   courseSplitMode,
+  mode,
   canShiftUp,
   canShiftDown,
   canMoveToPrevSeg,
@@ -157,9 +163,12 @@ export default function SplitFormComponent({
     !!value.moving_speed ||
     !!value.down_time ||
     !!value.adjustment_time ||
-    value.differentTimezone ||
-    !!value.sub_split_override;
+    value.differentTimezone;
   const [showOptional, setShowOptional] = useState(hasOptionalValues);
+  const [showSubSplits, setShowSubSplits] = useState(
+    value.sub_split_override ?? false,
+  );
+  const [showResultSubSplits, setShowResultSubSplits] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
   const [confirmDeleteSplitOpen, setConfirmDeleteSplitOpen] = useState(false);
   const [jumpHighlight, setJumpHighlight] = useState(false);
@@ -258,13 +267,26 @@ export default function SplitFormComponent({
           avgGradePct: 0,
           steepPct: 0,
           gradeBuckets: {
-            b0_3: 0,
-            b3_6: 0,
-            b6_9: 0,
-            b9_12: 0,
-            b12_15: 0,
-            b15_18: 0,
+            b2: 0,
+            b4: 0,
+            b6: 0,
+            b8: 0,
+            b10: 0,
+            b12: 0,
+            b14: 0,
+            b16: 0,
+            b18: 0,
             b18plus: 0,
+            bn2: 0,
+            bn4: 0,
+            bn6: 0,
+            bn8: 0,
+            bn10: 0,
+            bn12: 0,
+            bn14: 0,
+            bn16: 0,
+            bn18: 0,
+            bn18plus: 0,
           },
           minGradePct: 0,
           maxGradePct: 0,
@@ -389,6 +411,34 @@ export default function SplitFormComponent({
     };
   })();
 
+  const intermHoursInfo = (() => {
+    const is = value.intermediate_stop;
+    if (!is?.enabled || !splitResult) return null;
+    const tz = splitEndTz ?? courseTz;
+    const dayIdx = dayIndexInTimezone(splitResult.end_time, tz);
+    const entry = is.sameHoursEveryDay ? is.allDays : is.perDay[dayIdx];
+    const status = checkArrivalVsHoursDetailed(
+      splitResult.end_time,
+      entry,
+      tz,
+      etaMarginOpen,
+      etaMarginClose,
+    );
+    if (!status) return null;
+    const hoursLabel = hoursLabelForEntry(entry);
+    const nearDetail =
+      status === "near-open" || status === "near-close"
+        ? buildDetailedNearDetail(status, splitResult.end_time, entry, tz)
+        : null;
+    const statusWords: Record<string, string> = {
+      open: "Open",
+      "near-open": "Near open",
+      "near-close": "Near close",
+      closed: "Closed",
+    };
+    return { status, statusWord: statusWords[status], hoursLabel, nearDetail };
+  })();
+
   // Timezone badge — shown whenever a split timezone override is active,
   // OR when the GPX profile detects a different tz (before onChange fires).
   const effectiveTz =
@@ -400,6 +450,62 @@ export default function SplitFormComponent({
   const tzBadgeAbbr = effectiveTz
     ? timezoneAbbreviationAt(new Date().toISOString(), effectiveTz)
     : null;
+
+  const KM_PER_MI = 1.60934;
+  // Threshold: the intermediate stop feature requires > 20 mi (32.187 km) between endpoints
+  const INTERMEDIATE_MIN_KM = 32.187;
+
+  // Split distance in km from GPX profile (or approximated from user input)
+  const splitDistKm = useMemo(() => {
+    if (displayProfile) return displayProfile.endKm - displayProfile.startKm;
+    const d = parseFloat(value.distance);
+    if (isNaN(d)) return 0;
+    return unitSystem === "imperial" ? d * KM_PER_MI : d;
+  }, [displayProfile, value.distance, unitSystem]);
+
+  // Whether the intermediate stop feature is available for this split
+  const intermediateAvailable = splitDistKm >= INTERMEDIATE_MIN_KM;
+
+  // Auto-populate distance when the intermediate stop is first enabled
+  const intermediateStop =
+    value.intermediate_stop ?? DEFAULT_INTERMEDIATE_REST_STOP;
+
+  // Compute the midpoint distance string in the appropriate mode/units
+  const computeIntermediateMidpoint = (): string => {
+    if (mode === "target_distance") {
+      // cumulative midpoint: (startUserDist + endUserDist) / 2
+      const endUser = cumulativeDist ?? 0;
+      const startUser = endUser - (splitDistUser ?? 0);
+      const mid = (startUser + endUser) / 2;
+      return mid.toFixed(2);
+    } else {
+      // relative midpoint: splitDistUser / 2
+      const mid =
+        (splitDistUser ??
+          splitDistKm / (unitSystem === "imperial" ? KM_PER_MI : 1)) / 2;
+      return mid.toFixed(2);
+    }
+  };
+
+  // km position along the GPX track for the intermediate stop
+  const intermediateKm = useMemo(() => {
+    if (!intermediateStop.enabled || !intermediateStop.distance.trim())
+      return null;
+    const d = parseFloat(intermediateStop.distance);
+    if (isNaN(d)) return null;
+    const dKm = d * (unitSystem === "imperial" ? KM_PER_MI : 1);
+    if (mode === "target_distance") {
+      return dKm; // cumulative km from track start
+    } else {
+      return (displayProfile?.startKm ?? 0) + dKm; // relative from split start
+    }
+  }, [
+    intermediateStop.enabled,
+    intermediateStop.distance,
+    mode,
+    unitSystem,
+    displayProfile?.startKm,
+  ]);
 
   return (
     <div
@@ -631,29 +737,31 @@ export default function SplitFormComponent({
 
       {!collapsed && (
         <div className="split-view-bar">
-          <div className="split-layout-toggles">
-            <button
-              type="button"
-              className={`split-layout-btn${showForm ? " active" : ""}`}
-              onClick={() => {
-                if (showForm && !showMap) return;
-                setShowForm((v) => !v);
-              }}
-            >
-              Form
-            </button>
-            <button
-              type="button"
-              className={`split-layout-btn${showMap ? " active" : ""}`}
-              disabled={!mapAvailable}
-              onClick={() => {
-                if (!showForm && showMap) return;
-                setShowMap((v) => !v);
-              }}
-            >
-              Map
-            </button>
-          </div>
+          {mapAvailable && (
+            <div className="split-layout-toggles">
+              <button
+                type="button"
+                className={`split-layout-btn${showForm ? " active" : ""}`}
+                onClick={() => {
+                  if (showForm && !showMap) return;
+                  setShowForm((v) => !v);
+                }}
+              >
+                Form
+              </button>
+              <button
+                type="button"
+                className={`split-layout-btn${showMap ? " active" : ""}`}
+                disabled={!mapAvailable}
+                onClick={() => {
+                  if (!showForm && showMap) return;
+                  setShowMap((v) => !v);
+                }}
+              >
+                Map
+              </button>
+            </div>
+          )}
           <div className="split-action-buttons">
             {onZoomToSplit && (
               <button
@@ -662,7 +770,7 @@ export default function SplitFormComponent({
                 title="Zoom course map to this split"
                 onClick={() => onZoomToSplit()}
               >
-                <i className="fa-regular fa-map"></i>
+                <i className="fa-solid fa-route"></i>
               </button>
             )}
             {(canMoveToNextSeg ||
@@ -793,9 +901,58 @@ export default function SplitFormComponent({
                     allowNegative
                   />
 
-                  {/* Sub-split override */}
+                  <div className="field field--full-width">
+                    <label htmlFor={`${prefix}-tz`}>
+                      Split Timezone
+                      {value.tzManuallySet && (
+                        <button
+                          type="button"
+                          className="tz-reset-btn"
+                          title="Clear manual override — re-enable auto-detection from GPX"
+                          onClick={() =>
+                            update({
+                              differentTimezone: false,
+                              tzManuallySet: false,
+                            })
+                          }
+                        >
+                          ✕ Reset to auto
+                        </button>
+                      )}
+                    </label>
+                    <TimezoneSelect
+                      id={`${prefix}-tz`}
+                      value={
+                        value.differentTimezone ? value.timezone : courseTz
+                      }
+                      onChange={(tz) =>
+                        update({
+                          differentTimezone: true,
+                          timezone: tz,
+                          tzManuallySet: true,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-splits */}
+              <button
+                type="button"
+                className="section-action-row"
+                onClick={() => setShowSubSplits(!showSubSplits)}
+              >
+                <span className={`chevron${showSubSplits ? " open" : ""}`}>
+                  ▶
+                </span>
+                Sub-splits
+              </button>
+
+              {showSubSplits && (
+                <div className="optional-fields fields-grid">
                   <div className="field">
-                    <label htmlFor={`${prefix}-ss-mode`}>Sub-Splits</label>
+                    <label htmlFor={`${prefix}-ss-mode`}>Mode</label>
                     <select
                       id={`${prefix}-ss-mode`}
                       value={
@@ -898,40 +1055,6 @@ export default function SplitFormComponent({
                         <FieldError fieldId={`${prefix}-ss-distances`} />
                       </div>
                     )}
-
-                  <div className="field field--full-width">
-                    <label htmlFor={`${prefix}-tz`}>
-                      Split Timezone
-                      {value.tzManuallySet && (
-                        <button
-                          type="button"
-                          className="tz-reset-btn"
-                          title="Clear manual override — re-enable auto-detection from GPX"
-                          onClick={() =>
-                            update({
-                              differentTimezone: false,
-                              tzManuallySet: false,
-                            })
-                          }
-                        >
-                          ✕ Reset to auto
-                        </button>
-                      )}
-                    </label>
-                    <TimezoneSelect
-                      id={`${prefix}-tz`}
-                      value={
-                        value.differentTimezone ? value.timezone : courseTz
-                      }
-                      onChange={(tz) =>
-                        update({
-                          differentTimezone: true,
-                          timezone: tz,
-                          tzManuallySet: true,
-                        })
-                      }
-                    />
-                  </div>
                 </div>
               )}
 
@@ -943,6 +1066,108 @@ export default function SplitFormComponent({
                 addressLoading={addressLoading}
                 etaInfo={etaInfo}
               />
+
+              {/* Intermediate rest stop — only available when split > 20 mi */}
+              {intermediateAvailable && (
+                <div className="rs-section">
+                  <div
+                    className={`rs-toggle-row${intermediateStop.enabled ? " open" : ""}`}
+                  >
+                    <div className="rs-header-name">
+                      <span className="rs-toggle-label">
+                        Intermediate Rest Stop
+                      </span>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        id={`${prefix}-interm-enabled`}
+                        type="checkbox"
+                        checked={intermediateStop.enabled}
+                        onChange={(e) => {
+                          const enabled = e.target.checked;
+                          const nextDistance =
+                            enabled && !intermediateStop.distance.trim()
+                              ? computeIntermediateMidpoint()
+                              : intermediateStop.distance;
+
+                          // Pre-populate the address with the track coordinate
+                          // on first enable so the geocoder/lat-lon path is
+                          // consistent from the start.
+                          let nextAddress = intermediateStop.address;
+                          if (
+                            enabled &&
+                            !intermediateStop.address.trim() &&
+                            gpxTrack
+                          ) {
+                            const d = parseFloat(nextDistance);
+                            if (!isNaN(d)) {
+                              const dKm =
+                                d * (unitSystem === "imperial" ? KM_PER_MI : 1);
+                              const midKm =
+                                mode === "target_distance"
+                                  ? dKm
+                                  : (displayProfile?.startKm ?? 0) + dKm;
+                              const pt = interpolateLatLon(gpxTrack, midKm);
+                              if (pt) {
+                                nextAddress = `${pt.lat.toFixed(6)}, ${pt.lon.toFixed(6)}`;
+                              }
+                            }
+                          }
+
+                          update({
+                            intermediate_stop: {
+                              ...intermediateStop,
+                              enabled,
+                              distance: nextDistance,
+                              address: nextAddress,
+                            },
+                          });
+                        }}
+                      />
+                      <span className="toggle-track" />
+                      <span className="toggle-thumb" />
+                    </label>
+                  </div>
+
+                  {intermediateStop.enabled && (
+                    <div className="rs-section-body">
+                      {/* Rest stop form for the intermediate stop */}
+                      <RestStopFormComponent
+                        prefix={`${prefix}-interm-rs`}
+                        hideToggle
+                        value={{
+                          enabled: true,
+                          name: intermediateStop.name,
+                          address: intermediateStop.address,
+                          alt: intermediateStop.alt,
+                          lat: intermediateStop.lat,
+                          lon: intermediateStop.lon,
+                          googlePlaceId: intermediateStop.googlePlaceId,
+                          sameHoursEveryDay: intermediateStop.sameHoursEveryDay,
+                          allDays: intermediateStop.allDays,
+                          perDay: intermediateStop.perDay,
+                        }}
+                        onChange={(rs) =>
+                          update({
+                            intermediate_stop: {
+                              ...intermediateStop,
+                              name: rs.name,
+                              address: rs.address,
+                              alt: rs.alt,
+                              lat: rs.lat,
+                              lon: rs.lon,
+                              googlePlaceId: rs.googlePlaceId,
+                              sameHoursEveryDay: rs.sameHoursEveryDay,
+                              allDays: rs.allDays,
+                              perDay: rs.perDay,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Notes */}
               <div className="field split-notes-field">
@@ -977,6 +1202,34 @@ export default function SplitFormComponent({
                   update({ rest_stop: { ...value.rest_stop, ...patch } })
                 }
                 onAddressLoading={setAddressLoading}
+                intermediateStop={value.intermediate_stop}
+                intermediateKm={intermediateKm}
+                onSelectIntermediateStop={(patch) =>
+                  update({
+                    intermediate_stop: { ...intermediateStop, ...patch },
+                  })
+                }
+                onPolylineClick={(absoluteKm, lat, lon) => {
+                  let formDist: number;
+                  if (mode === "target_distance") {
+                    formDist =
+                      absoluteKm / (unitSystem === "imperial" ? KM_PER_MI : 1);
+                  } else {
+                    const relKm = absoluteKm - (displayProfile?.startKm ?? 0);
+                    formDist =
+                      relKm / (unitSystem === "imperial" ? KM_PER_MI : 1);
+                  }
+                  update({
+                    intermediate_stop: {
+                      ...intermediateStop,
+                      enabled: true,
+                      distance: formDist.toFixed(3),
+                      address: `${lat.toFixed(6)}, ${lon.toFixed(6)}`,
+                      lat: undefined,
+                      lon: undefined,
+                    },
+                  });
+                }}
               />
             </Suspense>
           ) : null;
@@ -1077,100 +1330,185 @@ export default function SplitFormComponent({
                       </dd>
                     </div>
                   )}
-                {etaInfo && (
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <dt title="These are the hours for the rest stop at the estimated time of arrival.">
-                      Rest Stop Hours
-                    </dt>
-                    <dd>
-                      <span>{etaInfo.hoursLabel}</span>
-                      {etaInfo.nearDetail && (
-                        <span className="split-results-near-detail">
-                          {etaInfo.nearDetail}
-                        </span>
-                      )}
-                    </dd>
-                  </div>
-                )}
               </dl>
-              {value.rest_stop.enabled &&
-                (value.rest_stop.name ||
-                  value.rest_stop.address ||
-                  value.rest_stop.alt ||
-                  value.notes) && (
-                  <div className="split-results-rs-info">
-                    {value.rest_stop.name && (
-                      <div className="split-results-rs-name">
-                        {value.rest_stop.alt ? (
-                          <a
-                            href={value.rest_stop.alt}
-                            target="_blank"
-                            rel="noopener noreferrer"
+              {(() => {
+                const hasRest =
+                  value.rest_stop.enabled &&
+                  (value.rest_stop.name ||
+                    value.rest_stop.address ||
+                    value.rest_stop.alt ||
+                    value.notes ||
+                    etaInfo);
+                const hasInterm =
+                  value.intermediate_stop?.enabled &&
+                  (value.intermediate_stop.name ||
+                    value.intermediate_stop.address ||
+                    value.intermediate_stop.alt ||
+                    intermHoursInfo);
+                const stopCount = (hasRest ? 1 : 0) + (hasInterm ? 1 : 0);
+                if (!stopCount) return null;
+                return (
+                  <div className="split-results-stops">
+                    <div className="split-results-stops-header">
+                      <i className="fa-solid fa-map-pin" aria-hidden="true" />
+                      <span className="split-results-stops-label">Stops</span>
+                      <span className="split-results-stops-count">
+                        {stopCount} {stopCount === 1 ? "stop" : "stops"}
+                      </span>
+                    </div>
+
+                    {hasRest && (
+                      <div className="split-results-stop-row">
+                        <div className="split-results-stop-icon split-results-stop-icon--rest">
+                          <i
+                            className="fa-solid fa-location-dot"
+                            aria-hidden="true"
+                          />
+                        </div>
+                        <div className="split-results-stop-body">
+                          <span className="split-results-rs-badge">
+                            Rest Stop
+                          </span>
+                          {(value.rest_stop.name || value.rest_stop.alt) && (
+                            <div className="split-results-rs-name">
+                              {value.rest_stop.alt ? (
+                                <a
+                                  href={value.rest_stop.alt}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {value.rest_stop.name || value.rest_stop.alt}
+                                </a>
+                              ) : (
+                                value.rest_stop.name
+                              )}
+                            </div>
+                          )}
+                          {value.rest_stop.address && (
+                            <div className="split-results-rs-address">
+                              {value.rest_stop.address}
+                            </div>
+                          )}
+                          {value.notes && (
+                            <div className="split-results-rs-notes">
+                              {value.notes}
+                            </div>
+                          )}
+                        </div>
+                        {etaInfo && (
+                          <div
+                            className={`split-results-stop-hours split-results-stop-hours--${etaInfo.status}`}
                           >
-                            {value.rest_stop.name}
-                          </a>
-                        ) : (
-                          value.rest_stop.name
+                            <span className="split-results-stop-dot" />
+                            <span>{etaInfo.hoursLabel}</span>
+                            {etaInfo.nearDetail && (
+                              <span className="split-results-stop-near">
+                                {etaInfo.nearDetail}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
-                    {value.rest_stop.address && (
-                      <div className="split-results-rs-address">
-                        {value.rest_stop.address}
-                      </div>
-                    )}
-                    {!value.rest_stop.name && value.rest_stop.alt && (
-                      <div className="split-results-rs-address">
-                        <a
-                          href={value.rest_stop.alt}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {value.rest_stop.alt}
-                        </a>
-                      </div>
-                    )}
-                    {value.notes && (
-                      <div className="split-results-rs-notes">
-                        {value.notes}
+
+                    {hasInterm && (
+                      <div className="split-results-stop-row">
+                        <div className="split-results-stop-icon split-results-stop-icon--interm">
+                          <i
+                            className="fa-solid fa-location-dot"
+                            aria-hidden="true"
+                          />
+                        </div>
+                        <div className="split-results-stop-body">
+                          <span className="split-results-rs-badge split-results-rs-badge--interm">
+                            Intermediate Stop
+                          </span>
+                          {(value.intermediate_stop.name ||
+                            value.intermediate_stop.alt) && (
+                            <div className="split-results-rs-name">
+                              {value.intermediate_stop.alt ? (
+                                <a
+                                  href={value.intermediate_stop.alt}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {value.intermediate_stop.name ||
+                                    value.intermediate_stop.alt}
+                                </a>
+                              ) : (
+                                value.intermediate_stop.name
+                              )}
+                            </div>
+                          )}
+                          {value.intermediate_stop.address && (
+                            <div className="split-results-rs-address">
+                              {value.intermediate_stop.address}
+                            </div>
+                          )}
+                        </div>
+                        {intermHoursInfo && (
+                          <div
+                            className={`split-results-stop-hours split-results-stop-hours--${intermHoursInfo.status}`}
+                          >
+                            <span className="split-results-stop-dot" />
+                            <span>{intermHoursInfo.hoursLabel}</span>
+                            {intermHoursInfo.nearDetail && (
+                              <span className="split-results-stop-near">
+                                {intermHoursInfo.nearDetail}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
+                );
+              })()}
               {splitResult.sub_splits.length > 0 && (
-                <details className="split-sub-splits">
-                  <summary>
+                <>
+                  <button
+                    type="button"
+                    className="section-action-row"
+                    onClick={() => setShowResultSubSplits((v) => !v)}
+                  >
+                    <span
+                      className={`chevron${showResultSubSplits ? " open" : ""}`}
+                    >
+                      ▶
+                    </span>
                     Sub-splits ({splitResult.sub_splits.length})
-                  </summary>
-                  <table className="split-sub-splits-table">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>Dist</th>
-                        <th>Moving</th>
-                        <th>Down</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {splitResult.sub_splits.map(
-                        (ss: SubSplitDetail, i: number) => (
-                          <tr key={i}>
-                            <td>{i + 1}</td>
-                            <td>
-                              {ss.distance.toLocaleString(undefined, {
-                                minimumFractionDigits: 1,
-                                maximumFractionDigits: 1,
-                              })}{" "}
-                              {dLabel}
-                            </td>
-                            <td>{formatHours(ss.moving_time_hours)}</td>
-                            <td>{formatHours(ss.down_time_hours)}</td>
-                          </tr>
-                        ),
-                      )}
-                    </tbody>
-                  </table>
-                </details>
+                  </button>
+                  {showResultSubSplits && (
+                    <table className="split-sub-splits-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Dist</th>
+                          <th>Moving</th>
+                          <th>Down</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {splitResult.sub_splits.map(
+                          (ss: SubSplitDetail, i: number) => (
+                            <tr key={i}>
+                              <td>{i + 1}</td>
+                              <td>
+                                {ss.distance.toLocaleString(undefined, {
+                                  minimumFractionDigits: 1,
+                                  maximumFractionDigits: 1,
+                                })}{" "}
+                                {dLabel}
+                              </td>
+                              <td>{formatHours(ss.moving_time_hours)}</td>
+                              <td>{formatHours(ss.down_time_hours)}</td>
+                            </tr>
+                          ),
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </>
               )}
             </div>
           ) : (
