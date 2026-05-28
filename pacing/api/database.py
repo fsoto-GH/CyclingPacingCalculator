@@ -11,12 +11,12 @@ from pacing.api.config import settings
 # SQLite needs check_same_thread=False; PostgreSQL ignores it.
 connect_args = (
     {"check_same_thread": False}
-    if settings.database_url.startswith("sqlite")
+    if settings.active_database_url.startswith("sqlite")
     else {}
 )
 
 engine = create_engine(
-    settings.database_url,
+    settings.active_database_url,
     connect_args=connect_args,
     pool_pre_ping=True,
 )

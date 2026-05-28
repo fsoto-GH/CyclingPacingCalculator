@@ -25,3 +25,40 @@ declare module "opening_hours" {
   }
   export = OpeningHours;
 }
+
+interface GoogleCredentialResponse {
+  credential?: string;
+}
+
+interface GoogleAccountsIdConfig {
+  client_id: string;
+  callback: (response: GoogleCredentialResponse) => void;
+  nonce?: string;
+  use_fedcm_for_prompt?: boolean;
+  itp_support?: boolean;
+}
+
+interface GoogleSignInButtonConfig {
+  type?: "standard" | "icon";
+  theme?: "outline" | "filled_blue" | "filled_black";
+  size?: "large" | "medium" | "small";
+  text?: "signin_with" | "signup_with" | "continue_with" | "signin";
+  shape?: "rectangular" | "pill" | "circle" | "square";
+  logo_alignment?: "left" | "center";
+}
+
+interface Window {
+  google?: {
+    accounts?: {
+      id: {
+        initialize: (config: GoogleAccountsIdConfig) => void;
+        renderButton: (
+          parent: HTMLElement,
+          options: GoogleSignInButtonConfig,
+        ) => void;
+        prompt: () => void;
+        cancel: () => void;
+      };
+    };
+  };
+}

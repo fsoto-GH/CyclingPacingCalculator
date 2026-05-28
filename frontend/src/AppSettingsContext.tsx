@@ -1,12 +1,20 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
-  useCallback,
 } from "react";
-import { getAuthUser } from "./api";
-import { PAID_APIS_ENABLED } from "./config";
+import { syncUser, fetchUserSettings, putUserSettings } from "./api";
+import { SERVER_FUNCTIONS_ENABLED } from "./config";
+import {
+  type UserSettings,
+  SETTINGS_VERSION,
+  USER_SETTINGS_DEFAULTS,
+  loadSettingsFromStorage,
+  saveSettingsToStorage,
+} from "./userSettings";
+import { supabase } from "./supabaseClient";
 
 export interface AuthUser {
   id: string;
@@ -16,113 +24,175 @@ export interface AuthUser {
 }
 
 interface AppSettingsContextValue {
-  /** Master frontend switch for paid API controls. If false, force free APIs. */
-  paidApisFrontendEnabled: boolean;
-  setPaidApisFrontendEnabled: (enabled: boolean) => void;
-  /** Free vs. freemium mode toggle (only meaningful when paidApisFrontendEnabled=true). */
-  useFreemiumApis: boolean;
-  setUseFreemiumApis: (enabled: boolean) => void;
-  /** Effective paid API usage flag consumed by API routing call sites. */
+  /** True when paid/external APIs may be used (mirrors SERVER_FUNCTIONS_ENABLED). */
   paidApisEnabled: boolean;
   /** Currently authenticated user, or null if not signed in. */
   user: AuthUser | null;
   setUser: (user: AuthUser | null) => void;
-  /** True while the initial /v1/auth/me request is in flight. */
+  /** True while the initial Supabase session check is in flight. */
   authLoading: boolean;
+  /** True when the current user has Google Maps tile layers enabled. */
+  enableGoogleMaps: boolean;
+  /** True when the current user has Google Places search enabled. */
+  enableGooglePlaces: boolean;
+  /** Persisted user preferences (localStorage + DB for auth users). */
+  userSettings: UserSettings;
+  /** Update one or more settings fields. Writes through to localStorage and DB. */
+  updateUserSettings: (patch: Partial<UserSettings>) => void;
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue>({
-  paidApisFrontendEnabled: false,
-  setPaidApisFrontendEnabled: () => {},
-  useFreemiumApis: false,
-  setUseFreemiumApis: () => {},
   paidApisEnabled: false,
   user: null,
   setUser: () => {},
   authLoading: false,
+  enableGoogleMaps: false,
+  enableGooglePlaces: false,
+  userSettings: { ...USER_SETTINGS_DEFAULTS },
+  updateUserSettings: () => {},
 });
-
-const FRONTEND_ENABLE_KEY = "paidApisFrontendEnabled";
-const FREEMIUM_MODE_KEY = "useFreemiumApis";
-const LEGACY_PAID_APIS_KEY = "paidApisEnabled";
 
 export function AppSettingsProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [paidApisFrontendEnabled, _setPaidApisFrontendEnabled] =
-    useState<boolean>(() => {
-      try {
-        return localStorage.getItem(FRONTEND_ENABLE_KEY) === "true";
-      } catch {
-        return false;
-      }
-    });
-
-  const [useFreemiumApis, _setUseFreemiumApis] = useState<boolean>(() => {
-    try {
-      // Backward-compatible migration: if the new key doesn't exist yet,
-      // fall back to the legacy paidApisEnabled flag.
-      const next = localStorage.getItem(FREEMIUM_MODE_KEY);
-      if (next != null) return next === "true";
-      return localStorage.getItem(LEGACY_PAID_APIS_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
-
-  const paidApisEnabled = paidApisFrontendEnabled && useFreemiumApis;
+  const paidApisEnabled = SERVER_FUNCTIONS_ENABLED;
 
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(SERVER_FUNCTIONS_ENABLED);
+  const [enableGoogleMaps, setEnableGoogleMaps] = useState(false);
+  const [enableGooglePlaces, setEnableGooglePlaces] = useState(false);
+  const [userSettings, setUserSettingsState] = useState<UserSettings>(
+    loadSettingsFromStorage,
+  );
 
-  const setPaidApisFrontendEnabled = useCallback((enabled: boolean) => {
-    _setPaidApisFrontendEnabled(enabled);
-    try {
-      localStorage.setItem(FRONTEND_ENABLE_KEY, String(enabled));
-    } catch {
-      /* storage unavailable */
-    }
-  }, []);
-
-  const setUseFreemiumApis = useCallback((enabled: boolean) => {
-    _setUseFreemiumApis(enabled);
-    try {
-      localStorage.setItem(FREEMIUM_MODE_KEY, String(enabled));
-      // Keep legacy key in sync so older code paths remain consistent.
-      localStorage.setItem(LEGACY_PAID_APIS_KEY, String(enabled));
-    } catch {
-      /* storage unavailable */
-    }
-  }, []);
-
-  // Hydrate user from the server on mount (session cookie already set by browser)
+  // When an authenticated user signs in, pull their settings from the API.
+  // DB wins on conflict; merged result is written back to localStorage as cache.
   useEffect(() => {
-    if (!PAID_APIS_ENABLED || !paidApisFrontendEnabled) {
-      setUser(null);
-      setAuthLoading(false);
-      return;
-    }
+    if (!SERVER_FUNCTIONS_ENABLED || !user) return;
+    fetchUserSettings()
+      .then((raw) => {
+        if (!raw || Object.keys(raw).length === 0) return;
+        const merged: UserSettings = {
+          ...USER_SETTINGS_DEFAULTS,
+          ...(raw as Partial<UserSettings>),
+          settingsVersion: SETTINGS_VERSION,
+        };
+        setUserSettingsState(merged);
+        saveSettingsToStorage(merged);
+      })
+      .catch((err) => console.warn("[user_settings] fetch failed:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  const updateUserSettings = useCallback(
+    (patch: Partial<UserSettings>) => {
+      setUserSettingsState((prev) => {
+        const next: UserSettings = { ...prev, ...patch };
+        saveSettingsToStorage(next);
+        if (SERVER_FUNCTIONS_ENABLED && user) {
+          putUserSettings(next as unknown as Record<string, unknown>).catch(
+            (err) => console.error("[user_settings] upsert failed:", err),
+          );
+        }
+        return next;
+      });
+    },
+    // user is read inside the setState callback via closure — include it
+    // so the reference stays fresh after sign-in / sign-out.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id],
+  );
+
+  // Hydrate user from the Supabase session on mount, and keep in sync.
+  // Skipped entirely when SERVER_FUNCTIONS_ENABLED is false.
+  useEffect(() => {
+    if (!SERVER_FUNCTIONS_ENABLED) return;
 
     setAuthLoading(true);
-    getAuthUser()
-      .then((u) => setUser(u))
-      .catch(() => setUser(null))
-      .finally(() => setAuthLoading(false));
-  }, [paidApisFrontendEnabled]);
+
+    // Hydrate from existing session immediately.
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user ?? null;
+      setUser(
+        u
+          ? {
+              id: u.id,
+              email: u.email ?? "",
+              name:
+                (u.user_metadata?.full_name as string | undefined) ??
+                (u.user_metadata?.name as string | undefined) ??
+                u.email ??
+                "",
+              avatar_url:
+                (u.user_metadata?.avatar_url as string | undefined) ?? null,
+            }
+          : null,
+      );
+      if (data.session?.access_token) {
+        syncUser(data.session.access_token)
+          .then((res) => {
+            setEnableGoogleMaps(res.flags.enable_google_maps);
+            setEnableGooglePlaces(res.flags.enable_google_places);
+          })
+          .catch(() => {});
+      }
+      setAuthLoading(false);
+    });
+
+    // Keep in sync for sign-in / sign-out events.
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        const u = session?.user ?? null;
+        setUser(
+          u
+            ? {
+                id: u.id,
+                email: u.email ?? "",
+                name:
+                  (u.user_metadata?.full_name as string | undefined) ??
+                  (u.user_metadata?.name as string | undefined) ??
+                  u.email ??
+                  "",
+                avatar_url:
+                  (u.user_metadata?.avatar_url as string | undefined) ?? null,
+              }
+            : null,
+        );
+        if (!u) {
+          setEnableGoogleMaps(false);
+          setEnableGooglePlaces(false);
+        }
+
+        // Upsert the user in our local DB on every fresh sign-in.
+        if (event === "SIGNED_IN" && session?.access_token) {
+          syncUser(session.access_token)
+            .then((res) => {
+              setEnableGoogleMaps(res.flags.enable_google_maps);
+              setEnableGooglePlaces(res.flags.enable_google_places);
+            })
+            .catch((err) => console.error("[auth] sync failed:", err));
+        }
+      },
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   return (
     <AppSettingsContext.Provider
       value={{
-        paidApisFrontendEnabled,
-        setPaidApisFrontendEnabled,
-        useFreemiumApis,
-        setUseFreemiumApis,
         paidApisEnabled,
         user,
         setUser,
         authLoading,
+        enableGoogleMaps,
+        enableGooglePlaces,
+        userSettings,
+        updateUserSettings,
       }}
     >
       {children}

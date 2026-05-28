@@ -8,10 +8,12 @@ from fastapi.responses import FileResponse
 from pacing.api.config import settings
 from pacing.api.database import Base, engine
 from pacing.api.routes.calculator import v1_calculator
-from pacing.api.auth import router as auth_router
-from pacing.api.routes.cycling import nearby_stops, forecast
+from pacing.api.routes.cycling import nearby_stops, forecast, google_tiles
+from pacing.api.routes.cycling import search_along_route
 from pacing.api.routes.cycling.gpx import oauth as gpx_oauth
 from pacing.api.routes.cycling.race_plan import router as race_plan_router
+from pacing.api.routes import auth as auth_router
+from pacing.api.routes import user_settings as user_settings_router
 
 # Ensure all ORM models are registered with the metadata before create_all.
 import pacing.api.models  # noqa: F401
@@ -29,18 +31,21 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
-    allow_credentials=True,   # Required for httpOnly cookie auth
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(v1_calculator.router)
 app.include_router(auth_router.router)
+app.include_router(v1_calculator.router)
 app.include_router(nearby_stops.router)
+app.include_router(search_along_route.router)
 app.include_router(forecast.router)
+app.include_router(google_tiles.router)
 app.include_router(gpx_oauth.router)
 app.include_router(race_plan_router.router)
+app.include_router(user_settings_router.router)
 
 # ── SPA fallback ──────────────────────────────────────────────────────────────
 _static_dir = os.path.join(os.path.dirname(__file__), "..", "..", "static")

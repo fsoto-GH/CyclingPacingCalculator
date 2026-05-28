@@ -1,13 +1,19 @@
+import { supabase } from "../supabaseClient";
 import { useAppSettings } from "../AppSettingsContext";
 
-/** Initiates Google OAuth login by navigating to the backend auth route. */
+/** Initiates Google OAuth login via Supabase Auth. */
 export function login() {
-  window.location.href = "/v1/auth/google";
+  supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin,
+    },
+  });
 }
 
-/** Calls the backend logout endpoint and clears the user from context. */
+/** Signs out the current user via Supabase Auth. */
 export async function logoutRequest(): Promise<void> {
-  await fetch("/v1/auth/logout", { method: "POST", credentials: "include" });
+  await supabase.auth.signOut();
 }
 
 /**

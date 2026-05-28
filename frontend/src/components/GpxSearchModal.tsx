@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GpxTrackPoint, UnitSystem } from "../types";
+import type { GpxTrackPoint, GpxWaypoint, UnitSystem } from "../types";
 import { getRwgpsToken, clearRwgpsAuth, startRwgpsOAuth } from "../rwgpsAuth";
 
 const RWGPS_BASE = "https://ridewithgps.com";
@@ -37,6 +37,20 @@ interface RwgpsTrackPoint {
   d: number; // cumulative dist m
 }
 
+interface RwgpsCoursePointRaw {
+  x: number;
+  y: number;
+  n?: string; // instruction text
+  t?: string; // type label ("Left", "Food", etc.)
+}
+
+interface RwgpsPOIRaw {
+  lat: number;
+  lng: number;
+  name?: string;
+  description?: string;
+}
+
 interface GpxSearchModalProps {
   open: boolean;
   onClose: () => void;
@@ -48,6 +62,8 @@ interface GpxSearchModalProps {
     trackPoints: GpxTrackPoint[],
     routeName: string,
     routeId: number,
+    pois: GpxWaypoint[],
+    coursePoints: GpxWaypoint[],
   ) => void;
 }
 
@@ -152,17 +168,46 @@ async function fetchCollectionRoutes(
   return [];
 }
 
+interface RwgpsRouteDetail extends RwgpsRouteSummary {
+  track_points: RwgpsTrackPoint[];
+  course_points?: RwgpsCoursePointRaw[];
+  points_of_interest?: RwgpsPOIRaw[];
+}
+
 async function fetchRouteDetail(
   token: string,
   id: number,
-): Promise<RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] }> {
+): Promise<RwgpsRouteDetail> {
   const data = (await fetchJson(
     token,
     `${RWGPS_BASE}/api/v1/routes/${id}.json`,
-  )) as {
-    route: RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] };
-  };
+  )) as { route: RwgpsRouteDetail };
   return data.route;
+}
+
+function mapRwgpsWaypoints(detail: RwgpsRouteDetail): {
+  pois: GpxWaypoint[];
+  coursePoints: GpxWaypoint[];
+} {
+  const pois: GpxWaypoint[] = (detail.points_of_interest ?? [])
+    .filter((p) => p.lat != null && p.lng != null)
+    .map((p) => ({
+      lat: p.lat,
+      lon: p.lng,
+      name: p.name?.trim() || "Point of Interest",
+      description: p.description?.trim() || undefined,
+      symbol: "food" as const,
+    }));
+  const coursePoints: GpxWaypoint[] = (detail.course_points ?? [])
+    .filter((p) => p.x != null && p.y != null)
+    .map((p) => ({
+      lat: p.y,
+      lon: p.x,
+      name: (p.n?.trim() || p.t?.trim()) ?? "Course Point",
+      description: p.t?.trim() || undefined,
+      symbol: "food" as const,
+    }));
+  return { pois, coursePoints };
 }
 
 export default function GpxSearchModal({
@@ -178,9 +223,9 @@ export default function GpxSearchModal({
 
   const [mode, setMode] = useState<SearchMode>("collections");
   const [routeIdInput, setRouteIdInput] = useState("");
-  const [routeIdPreview, setRouteIdPreview] = useState<
-    (RwgpsRouteSummary & { track_points: RwgpsTrackPoint[] }) | null
-  >(null);
+  const [routeIdPreview, setRouteIdPreview] = useState<RwgpsRouteDetail | null>(
+    null,
+  );
 
   const [collections, setCollections] = useState<RwgpsCollection[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<
@@ -195,6 +240,7 @@ export default function GpxSearchModal({
   const [loading, setLoading] = useState(false);
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [rwgpsToken, setRwgpsToken] = useState<string | null>(() =>
     getRwgpsToken(),
@@ -225,8 +271,22 @@ export default function GpxSearchModal({
     else if (!open && el.open) el.close();
   }, [open]);
 
+  // Reset UI state when the modal opens or the caller changes the target route.
+  // Does NOT re-fetch — existing collection data is reused.
   useEffect(() => {
-    if (!open || !rwgpsToken) return;
+    if (!open) return;
+    setMode(initialMode);
+    setRouteIdInput(initialRouteId != null ? String(initialRouteId) : "");
+    setRouteIdPreview(null);
+    setNameFilter("");
+    setPage(1);
+    setError(null);
+  }, [open, initialMode, initialRouteId]);
+
+  // Fetch collections only when the token changes (new connection) or the user
+  // explicitly refreshes. Not triggered by opening/closing the modal.
+  useEffect(() => {
+    if (!rwgpsToken) return;
 
     const load = async () => {
       setLoading(true);
@@ -234,8 +294,11 @@ export default function GpxSearchModal({
       try {
         const c = await fetchCollections(rwgpsToken);
         setCollections(c);
-        const first = c[0] ?? null;
-        setSelectedCollectionId(first?.id ?? null);
+        setSelectedCollectionId((prev) => {
+          // Keep existing selection if still valid; otherwise default to first.
+          if (prev != null && c.some((col) => col.id === prev)) return prev;
+          return c[0]?.id ?? null;
+        });
         setCollectionRoutes([]);
       } catch (e: unknown) {
         setError((e as Error).message ?? "Failed to load collections.");
@@ -246,16 +309,11 @@ export default function GpxSearchModal({
       }
     };
 
-    setMode(initialMode);
-    setRouteIdInput(initialRouteId != null ? String(initialRouteId) : "");
-    setRouteIdPreview(null);
-    setNameFilter("");
-    setPage(1);
     load();
-  }, [open, rwgpsToken, initialMode, initialRouteId]);
+  }, [rwgpsToken, refreshKey]);
 
   useEffect(() => {
-    if (!open || !rwgpsToken || mode !== "route-id" || initialRouteId == null) {
+    if (!rwgpsToken || mode !== "route-id" || initialRouteId == null) {
       return;
     }
     if (routeIdInput !== String(initialRouteId)) return;
@@ -276,10 +334,10 @@ export default function GpxSearchModal({
       .finally(() => {
         setLoadingId(null);
       });
-  }, [open, rwgpsToken, mode, initialRouteId, routeIdInput, routeIdPreview]);
+  }, [rwgpsToken, mode, initialRouteId, routeIdInput, routeIdPreview]);
 
   useEffect(() => {
-    if (!open || !rwgpsToken || !selectedCollection) return;
+    if (!rwgpsToken || !selectedCollection) return;
 
     const load = async () => {
       setLoading(true);
@@ -298,7 +356,7 @@ export default function GpxSearchModal({
     setPage(1);
     setNameFilter("");
     load();
-  }, [open, rwgpsToken, selectedCollection]);
+  }, [rwgpsToken, selectedCollection, refreshKey]);
 
   useEffect(() => {
     if (page > pageCount) {
@@ -325,6 +383,8 @@ export default function GpxSearchModal({
     setCollections([]);
     setSelectedCollectionId(null);
     setCollectionRoutes([]);
+    setRouteIdPreview(null);
+    setError(null);
   }
 
   function handleFilterChange(val: string) {
@@ -350,7 +410,8 @@ export default function GpxSearchModal({
         ele: p.e,
         cumDist: p.d / 1000,
       }));
-      onSelect(track, detail.name, detail.id);
+      const { pois, coursePoints } = mapRwgpsWaypoints(detail);
+      onSelect(track, detail.name, detail.id, pois, coursePoints);
       onClose();
     } catch (e: unknown) {
       setError((e as Error).message ?? `Failed to load route ${id}.`);
@@ -422,6 +483,16 @@ export default function GpxSearchModal({
                 onClick={handleDisconnect}
               >
                 Disconnect
+              </button>
+              <button
+                type="button"
+                className="gpx-refresh-btn"
+                onClick={() => setRefreshKey((k) => k + 1)}
+                disabled={loading}
+                title="Refresh collections"
+                aria-label="Refresh collections"
+              >
+                <i className={`fas fa-rotate${loading ? " fa-spin" : ""}`} />
               </button>
             </span>
           ) : (

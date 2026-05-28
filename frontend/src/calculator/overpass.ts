@@ -12,7 +12,7 @@ import type { DayHoursEntry } from "../types";
 import { getNearbyStops } from "../api";
 
 // Define the fixed-length tuple type
-type WeekHours = [
+export type WeekHours = [
   DayHoursEntry, // Mon
   DayHoursEntry, // Tue
   DayHoursEntry, // Wed
@@ -38,10 +38,11 @@ export interface NearbyAmenity {
   hours: WeekHours | null;
   /** Raw OSM opening_hours string, for display/debugging */
   rawHours: string | null;
+  /** Google Places place ID, when the result came from the Google backend. */
+  placeId: string | null;
 }
 
 export const AMENITY_LIST = [
-  "bench",
   "cafe",
   "convenience",
   "fast_food",
@@ -51,8 +52,6 @@ export const AMENITY_LIST = [
   "ice_cream",
   "pharmacy",
   "restaurant",
-  "vending_machine",
-  "drinking_water",
 ] as const;
 
 export const AMENITY_ICONS: Record<string, string> = {
@@ -63,11 +62,21 @@ export const AMENITY_ICONS: Record<string, string> = {
   fast_food: "🍔",
   cafe: "☕",
   restaurant: "🍽️",
-  drinking_water: "💧",
-  vending_machine: "🏧",
-  bench: "🪑",
   ice_cream: "🍦",
   food_court: "🍱",
+};
+
+/** Font Awesome solid icon names for each amenity type */
+export const AMENITY_FA_ICONS: Record<string, string> = {
+  fuel: "fa-gas-pump",
+  supermarket: "fa-cart-shopping",
+  convenience: "fa-store",
+  pharmacy: "fa-pills",
+  fast_food: "fa-burger",
+  cafe: "fa-mug-saucer",
+  restaurant: "fa-utensils",
+  ice_cream: "fa-ice-cream",
+  food_court: "fa-utensils",
 };
 
 export const AMENITY_LABELS: Record<string, string> = {
@@ -78,9 +87,6 @@ export const AMENITY_LABELS: Record<string, string> = {
   fast_food: "Fast Food",
   cafe: "Café",
   restaurant: "Restaurant",
-  drinking_water: "Water",
-  vending_machine: "Vending Machine",
-  bench: "Bench",
   ice_cream: "Ice Cream",
   food_court: "Food Court",
 };
@@ -93,9 +99,6 @@ export const AMENITY_COLORS: Record<string, string> = {
   fast_food: "#fbbf24",
   cafe: "#fbbf24",
   restaurant: "#fbbf24",
-  drinking_water: "#38bdf8",
-  vending_machine: "#a78bfa",
-  bench: "#94a3b8",
   ice_cream: "#f9a8d4",
   food_court: "#fbbf24",
 };
@@ -301,8 +304,9 @@ export async function queryNearbyAmenities(
       address: r.address,
       streetLine: r.street_line,
       hasLocality: r.has_locality,
-      hours: null, // backend doesn't parse OSM hours yet
+      hours: r.hours ? (r.hours as WeekHours) : null,
       rawHours: r.raw_hours ?? null,
+      placeId: r.place_id ?? null,
     }));
   }
 
@@ -371,6 +375,7 @@ out;
             hasLocality,
             hours,
             rawHours,
+            placeId: null,
           };
         });
 

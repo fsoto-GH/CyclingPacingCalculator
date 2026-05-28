@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, lazy, Suspense } from "react";
 
-const GpxExportModal = lazy(() => import("./GpxExportModal"));
 const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
 import type {
   SegmentForm,
@@ -22,6 +21,7 @@ import {
 import { buildSegmentTimezoneSequence } from "../timeMath";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
+import { SteepBadge } from "./GradeTooltip";
 import SplitFormComponent from "./SplitForm";
 import RestStopFormComponent from "./RestStopForm";
 import { FieldError } from "./FieldError";
@@ -84,7 +84,6 @@ interface SegmentFormProps {
   etaMarginClose?: number;
   onZoomToSegment?: () => void;
   onZoomToSplit?: (splitIdx: number) => void;
-  splitBoundariesKm?: [number, number][] | null;
 }
 
 export default function SegmentFormComponent({
@@ -123,7 +122,6 @@ export default function SegmentFormComponent({
   etaMarginClose = 7,
   onZoomToSegment,
   onZoomToSplit,
-  splitBoundariesKm,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -155,7 +153,6 @@ export default function SegmentFormComponent({
     pendingDeletedSplitDistanceCount,
     setPendingDeletedSplitDistanceCount,
   ] = useState(0);
-  const [showExportModal, setShowExportModal] = useState(false);
   const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
   const [targetSplitSignal, setTargetSplitSignal] = useState(0);
   const [transitJumpPulse, setTransitJumpPulse] = useState(false);
@@ -341,11 +338,60 @@ export default function SegmentFormComponent({
             totalDistKm > 0
               ? Math.round((totalSteepKm / totalDistKm) * 100)
               : 0;
+          // Aggregate grade buckets (distance-weighted)
+          const bucketKeys = [
+            "b2",
+            "b4",
+            "b6",
+            "b8",
+            "b10",
+            "b12",
+            "b14",
+            "b16",
+            "b18",
+            "b18plus",
+            "bn2",
+            "bn4",
+            "bn6",
+            "bn8",
+            "bn10",
+            "bn12",
+            "bn14",
+            "bn16",
+            "bn18",
+            "bn18plus",
+          ] as const;
+          const bucketSumKm = Object.fromEntries(
+            bucketKeys.map((k) => [k, 0]),
+          ) as Record<(typeof bucketKeys)[number], number>;
+          for (const p of validProfiles) {
+            const splitDistKm = p.endKm - p.startKm;
+            for (const k of bucketKeys) {
+              bucketSumKm[k] += (p.gradeBuckets[k] / 100) * splitDistKm;
+            }
+          }
+          const gradeBuckets = Object.fromEntries(
+            bucketKeys.map((k) => [
+              k,
+              totalDistKm > 0
+                ? Math.round((bucketSumKm[k] / totalDistKm) * 100)
+                : 0,
+            ]),
+          ) as Record<(typeof bucketKeys)[number], number>;
+          const minGradePct = Math.min(
+            ...validProfiles.map((p) => p.minGradePct),
+          );
+          const maxGradePct = Math.max(
+            ...validProfiles.map((p) => p.maxGradePct),
+          );
           return {
             elevGainM: Math.round(elevGainM),
             elevLossM: Math.round(elevLossM),
             avgGradePct,
             steepPct,
+            gradeBuckets,
+            minGradePct,
+            maxGradePct,
           };
         })()
       : null;
@@ -465,13 +511,12 @@ export default function SegmentFormComponent({
                 {aggGpx.avgGradePct.toFixed(1)}% avg
               </span>
               {aggGpx.steepPct > 0 && (
-                <span
-                  className="split-header-meta-item split-header-meta-item--steep"
-                  title="% of distance with grade > 5%"
-                >
-                  <i className="fa-solid fa-triangle-exclamation"></i>{" "}
-                  {aggGpx.steepPct}% steep
-                </span>
+                <SteepBadge
+                  steepPct={aggGpx.steepPct}
+                  gradeBuckets={aggGpx.gradeBuckets}
+                  minGradePct={aggGpx.minGradePct}
+                  maxGradePct={aggGpx.maxGradePct}
+                />
               )}
             </div>
           )}
@@ -583,16 +628,6 @@ export default function SegmentFormComponent({
             </label>
           </div>
           <div className="split-action-buttons">
-            {gpxTrack && (
-              <button
-                type="button"
-                className="split-action-btn"
-                title="Export GPX splits for this segment"
-                onClick={() => setShowExportModal(true)}
-              >
-                <i className="fa-solid fa-download"></i> GPX
-              </button>
-            )}
             {onZoomToSegment && (
               <button
                 type="button"
@@ -600,7 +635,7 @@ export default function SegmentFormComponent({
                 title="Zoom course map to this segment"
                 onClick={() => onZoomToSegment()}
               >
-                <i className="fa-regular fa-map"></i>
+                <i className="fa-solid fa-route"></i>
               </button>
             )}
             {canDeleteSegment && (
@@ -652,6 +687,13 @@ export default function SegmentFormComponent({
                       />
                       <FieldError fieldId={`${prefix}-transit-dist`} />
                     </div>
+                    <TimeInput
+                      id={`${prefix}-sleep-time`}
+                      label="Sleep Time"
+                      value={value.sleep_time}
+                      onChange={(v) => update({ sleep_time: v })}
+                    />
+                    <FieldError fieldId={`${prefix}-sleep-time`} />
                   </div>
 
                   <RestStopFormComponent
@@ -768,11 +810,11 @@ export default function SegmentFormComponent({
 
               <button
                 type="button"
-                className="optional-toggle"
+                className="section-action-row"
                 onClick={() => setShowOptional(!showOptional)}
               >
                 <span className={`chevron${showOptional ? " open" : ""}`}>
-                  <i className="fas fa-chevron-right" />
+                  ▶
                 </span>
                 Optional overrides
               </button>
@@ -882,6 +924,7 @@ export default function SegmentFormComponent({
                       expandAllSignal={undefined}
                       splitResult={splitResults?.[j] ?? null}
                       courseSplitMode={courseSplitMode}
+                      mode={mode}
                       canShiftUp={j > 0}
                       canShiftDown={j < value.splits.length - 1}
                       canMoveToPrevSeg={
@@ -976,21 +1019,6 @@ export default function SegmentFormComponent({
           setPendingDeletedSplitDistanceCount(0);
         }}
       />
-      {gpxTrack && showExportModal && (
-        <Suspense fallback={null}>
-          <GpxExportModal
-            open={showExportModal}
-            onClose={() => setShowExportModal(false)}
-            segIndex={segIndex}
-            segName={value.name}
-            splits={value.splits}
-            gpxTrack={gpxTrack}
-            splitBoundariesKm={splitBoundariesKm ?? []}
-            gpxProfiles={gpxProfiles ?? []}
-            unitSystem={unitSystem}
-          />
-        </Suspense>
-      )}
     </div>
   );
 }

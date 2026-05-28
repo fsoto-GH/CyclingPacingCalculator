@@ -4,6 +4,7 @@ import type {
   CourseDetail,
   GpxTrackPoint,
   HourlyWeatherPoint,
+  Mode,
   SegmentDetail,
   SegmentForm,
   SplitDetail,
@@ -36,6 +37,7 @@ import {
 
 const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
 const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
+import { SteepBadge, GradeDistributionBar } from "./GradeTooltip";
 
 interface EtaInfo {
   status: "open" | "near-open" | "near-close" | "closed";
@@ -91,6 +93,14 @@ function buildEtaInfo(
 }
 
 const fmtInTz = formatIsoInTzShort;
+
+interface RollingAccum {
+  movingH: number;
+  downH: number;
+  adjustH: number;
+  sleepH: number;
+  dist: number;
+}
 
 interface ProjectionsViewProps {
   result: CourseDetail | null;
@@ -156,6 +166,31 @@ export default function ProjectionsView({
     );
   }
 
+  // Compute rolling accumulators (values before each segment) for rolling detail grids
+  const segRollingBefore: RollingAccum[] = [];
+  {
+    let acc: RollingAccum = {
+      movingH: 0,
+      downH: 0,
+      adjustH: 0,
+      sleepH: 0,
+      dist: 0,
+    };
+    for (let i = 0; i < result.segment_details.length; i++) {
+      segRollingBefore[i] = { ...acc };
+      const seg = result.segment_details[i];
+      if (seg) {
+        acc = {
+          movingH: acc.movingH + seg.moving_time_hours,
+          downH: acc.downH + seg.down_time_hours,
+          adjustH: acc.adjustH + (seg.adjustment_time_hours ?? 0),
+          sleepH: acc.sleepH + seg.sleep_time_hours,
+          dist: acc.dist + seg.distance,
+        };
+      }
+    }
+  }
+
   return (
     <div className="projections-view">
       {indices.map((segIndex) => {
@@ -207,8 +242,18 @@ export default function ProjectionsView({
                 ? hourlyWeather.filter((p) => p.segIdx === segIndex)
                 : null
             }
+            mode={form.mode}
             onZoomToSegment={onZoomToSegment}
             onZoomToSplit={onZoomToSplit}
+            rollingBefore={
+              segRollingBefore[segIndex] ?? {
+                movingH: 0,
+                downH: 0,
+                adjustH: 0,
+                sleepH: 0,
+                dist: 0,
+              }
+            }
           />
         );
       })}
@@ -376,8 +421,10 @@ function ProjectionSegment({
   etaMarginClose,
   segmentWeather,
   segmentHourlyWeather,
+  mode,
   onZoomToSegment,
   onZoomToSplit,
+  rollingBefore,
 }: {
   segment: SegmentDetail;
   segIndex: number;
@@ -386,6 +433,7 @@ function ProjectionSegment({
   sLabel: string;
   dLabel: string;
   courseTz: string;
+  mode: Mode;
   segmentStartCity: string | null;
   expandSignal?: number;
   expandSplitIdx?: number;
@@ -404,9 +452,11 @@ function ProjectionSegment({
   segmentHourlyWeather?: HourlyWeatherPoint[] | null;
   onZoomToSegment?: (segIdx: number) => void;
   onZoomToSplit?: (segIdx: number, splitIdx: number) => void;
+  rollingBefore: RollingAccum;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
+  const [showRollingGrid, setShowRollingGrid] = useState(false);
   const [targetSplitIdx, setTargetSplitIdx] = useState<number>(-1);
   const [targetSplitSignal, setTargetSplitSignal] = useState(0);
   const [transitJumpPulse, setTransitJumpPulse] = useState(false);
@@ -509,11 +559,59 @@ function ProjectionSegment({
             totalDistKm > 0
               ? Math.round((totalSteepKm / totalDistKm) * 100)
               : 0;
+          const bucketKeys = [
+            "b2",
+            "b4",
+            "b6",
+            "b8",
+            "b10",
+            "b12",
+            "b14",
+            "b16",
+            "b18",
+            "b18plus",
+            "bn2",
+            "bn4",
+            "bn6",
+            "bn8",
+            "bn10",
+            "bn12",
+            "bn14",
+            "bn16",
+            "bn18",
+            "bn18plus",
+          ] as const;
+          const bucketSumKm = Object.fromEntries(
+            bucketKeys.map((k) => [k, 0]),
+          ) as Record<(typeof bucketKeys)[number], number>;
+          for (const p of validProfiles) {
+            const splitDistKm = p.endKm - p.startKm;
+            for (const k of bucketKeys) {
+              bucketSumKm[k] += (p.gradeBuckets[k] / 100) * splitDistKm;
+            }
+          }
+          const gradeBuckets = Object.fromEntries(
+            bucketKeys.map((k) => [
+              k,
+              totalDistKm > 0
+                ? Math.round((bucketSumKm[k] / totalDistKm) * 100)
+                : 0,
+            ]),
+          ) as Record<(typeof bucketKeys)[number], number>;
+          const minGradePct = Math.min(
+            ...validProfiles.map((p) => p.minGradePct),
+          );
+          const maxGradePct = Math.max(
+            ...validProfiles.map((p) => p.maxGradePct),
+          );
           return {
             elevGainM: Math.round(elevGainM),
             elevLossM: Math.round(elevLossM),
             avgGradePct,
             steepPct,
+            gradeBuckets,
+            minGradePct,
+            maxGradePct,
           };
         })()
       : null;
@@ -596,6 +694,21 @@ function ProjectionSegment({
       ? `${segmentStartCity} — ${segEndCity}`
       : (segEndCity ?? segmentStartCity ?? null);
   const adjustmentHours = segment.adjustment_time_hours ?? 0;
+  const splitRollingAccums = useMemo(() => {
+    const accums: RollingAccum[] = [];
+    let acc = rollingBefore;
+    for (const split of segment.split_details) {
+      accums.push({ ...acc });
+      acc = {
+        movingH: acc.movingH + split.moving_time_hours,
+        downH: acc.downH + split.down_time_hours,
+        adjustH: acc.adjustH + (split.adjustment_time_hours ?? 0),
+        sleepH: acc.sleepH,
+        dist: acc.dist + split.distance,
+      };
+    }
+    return accums;
+  }, [rollingBefore, segment.split_details]);
   const segWeatherStart = segmentWeather?.[0]?.start ?? null;
   const segWeatherEnd = segmentWeather?.[lastSplitIdx]?.end ?? null;
   const _segMins =
@@ -786,13 +899,46 @@ function ProjectionSegment({
       : null);
   const transitTimeHours = segment.elapsed_time_hours;
 
+  const segRestStopEtaInfos = useMemo(() => {
+    if (isTransitSegment || !formSegment) return [];
+    return segment.split_details
+      .map((splitResult, i) => {
+        const formSplit = formSegment.splits[i];
+        if (!formSplit) return null;
+        return buildEtaInfo(
+          splitResult,
+          formSplit,
+          courseTz,
+          etaMarginOpen,
+          etaMarginClose,
+        );
+      })
+      .filter((x): x is EtaInfo => x !== null);
+  }, [
+    isTransitSegment,
+    formSegment,
+    segment.split_details,
+    courseTz,
+    etaMarginOpen,
+    etaMarginClose,
+  ]);
+
+  const segRestStopStatusCounts = useMemo(() => {
+    if (segRestStopEtaInfos.length === 0) return null;
+    const counts: Partial<Record<EtaInfo["status"], number>> = {};
+    for (const info of segRestStopEtaInfos) {
+      counts[info.status] = (counts[info.status] ?? 0) + 1;
+    }
+    return counts;
+  }, [segRestStopEtaInfos]);
+
   return (
     <div
-      className={`segment-form${transitJumpPulse ? " segment-form--transit-jump-pulse" : ""}`}
+      className={`proj-segment-form${transitJumpPulse ? " proj-segment-form--transit-jump-pulse" : ""}`}
       ref={segRootRef}
     >
       <div
-        className="segment-header"
+        className="proj-segment-header"
         onClick={() => setCollapsed((c) => !c)}
         role="button"
         tabIndex={0}
@@ -812,12 +958,12 @@ function ProjectionSegment({
         </span>
 
         <div className="proj-segment-header-grid">
-          <div className="split-header-left proj-segment-header-title">
-            <div className="split-header-titlerow">
+          <div className="proj-segment-header-title">
+            <div className="proj-header-titlerow">
               {onZoomToSegment && gpxTrack ? (
                 <button
                   type="button"
-                  className="split-header-title proj-title-link"
+                  className="proj-header-title proj-title-link"
                   title="Go to this segment on the map"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -834,7 +980,7 @@ function ProjectionSegment({
                   <span className="proj-title-link-text">{title}</span>
                 </button>
               ) : (
-                <span className="split-header-title">
+                <span className="proj-header-title">
                   {isTransitSegment && (
                     <i
                       className="fa-solid fa-forward-fast"
@@ -850,7 +996,7 @@ function ProjectionSegment({
 
           {(segTzSequence.length > 0 || segCumulativeDist != null) && (
             <div className="proj-segment-header-topright">
-              <div className="split-header-dist-row">
+              <div className="proj-header-dist-row">
                 {segTzSequence.map(({ tz, abbr }, idx) => (
                   <span
                     key={`${tz}-${idx}`}
@@ -862,7 +1008,7 @@ function ProjectionSegment({
                 ))}
                 {segCumulativeDist != null && (
                   <>
-                    <span className="split-header-dist">
+                    <span className="proj-header-dist">
                       {segCumulativeDist.toLocaleString(undefined, {
                         minimumFractionDigits: 1,
                         maximumFractionDigits: 1,
@@ -876,7 +1022,7 @@ function ProjectionSegment({
           )}
 
           {aggGpx && (
-            <div className="split-header-meta proj-segment-header-metrics">
+            <div className="proj-segment-header-metrics">
               <span
                 className="split-header-meta-item split-header-meta-item--dist"
                 title="Segment distance"
@@ -909,18 +1055,17 @@ function ProjectionSegment({
                 {aggGpx.avgGradePct.toFixed(1)}% avg
               </span>
               {aggGpx.steepPct > 0 && (
-                <span
-                  className="split-header-meta-item split-header-meta-item--steep"
-                  title="% of distance with grade > 5%"
-                >
-                  <i className="fa-solid fa-triangle-exclamation"></i>{" "}
-                  {aggGpx.steepPct}% steep
-                </span>
+                <SteepBadge
+                  steepPct={aggGpx.steepPct}
+                  gradeBuckets={aggGpx.gradeBuckets}
+                  minGradePct={aggGpx.minGradePct}
+                  maxGradePct={aggGpx.maxGradePct}
+                />
               )}
             </div>
           )}
 
-          <div className="proj-segment-header-timing split-header-city">
+          <div className="proj-segment-header-timing">
             <span
               className="proj-city-duration"
               title={`${formatHours(segment.active_time_hours, "full")} active time (excludes sleep)`}
@@ -967,6 +1112,19 @@ function ProjectionSegment({
                 </span>
               </>
             )}
+            {(citySummary || segEndCityFetching) && sleepHms && (
+              <span className="proj-city-sep"> · </span>
+            )}
+            {sleepHms && (
+              <span className="proj-city-pace">
+                <i className="fa-solid fa-moon"></i>{" "}
+                {segment.sleep_time_hours.toLocaleString(undefined, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}{" "}
+                hrs
+              </span>
+            )}
           </div>
 
           {(citySummary ||
@@ -974,23 +1132,59 @@ function ProjectionSegment({
             sleepHms ||
             (isTransitSegment &&
               transitFormSplit?.rest_stop.enabled &&
-              transitEtaInfo)) && (
-            <div className="proj-segment-header-location split-header-city">
+              transitEtaInfo) ||
+            (!isTransitSegment && !!segRestStopStatusCounts)) && (
+            <div className="proj-segment-header-location">
               {isTransitSegment &&
                 transitFormSplit?.rest_stop.enabled &&
                 transitEtaInfo && (
-                  <span
-                    className={`eta-badge eta-${transitEtaInfo.status}`}
-                    title={`${transitEtaInfo.statusWord} (${transitEtaInfo.nearDetail ? transitEtaInfo.nearDetail : transitEtaInfo.hoursLabel})`}
-                  >
-                    {transitEtaInfo.status === "open" &&
-                      (transitEtaInfo.hoursLabel === "24 hours"
-                        ? "24/7"
-                        : "Open")}
-                    {transitEtaInfo.status === "near-open" && "Near open"}
-                    {transitEtaInfo.status === "near-close" && "Near close"}
-                    {transitEtaInfo.status === "closed" && "Closed"}
-                  </span>
+                  <>
+                    <span
+                      className={`eta-badge eta-${transitEtaInfo.status}`}
+                      title={`${transitEtaInfo.statusWord} (${transitEtaInfo.nearDetail ? transitEtaInfo.nearDetail : transitEtaInfo.hoursLabel})`}
+                    >
+                      {transitFormSplit.rest_stop.name && (
+                        <span className="proj-segment-city">
+                          {transitFormSplit.rest_stop.name}
+                          {"—"}
+                        </span>
+                      )}
+                      {transitEtaInfo.status === "open" &&
+                        (transitEtaInfo.hoursLabel === "24 hours"
+                          ? "24/7"
+                          : "Open")}
+                      {transitEtaInfo.status === "near-open" && "Near open"}
+                      {transitEtaInfo.status === "near-close" && "Near close"}
+                      {transitEtaInfo.status === "closed" && "Closed"}
+                    </span>
+                  </>
+                )}
+              {!isTransitSegment &&
+                segRestStopStatusCounts &&
+                (["closed", "near-close", "near-open", "open"] as const).map(
+                  (status) => {
+                    const count = segRestStopStatusCounts[status];
+                    if (!count) return null;
+                    const label =
+                      status === "open"
+                        ? "open"
+                        : status === "near-open"
+                          ? "near open"
+                          : status === "near-close"
+                            ? "near close"
+                            : "closed";
+                    return (
+                      <span
+                        key={status}
+                        className={`eta-badge eta-${status}`}
+                        title={`${
+                          count === 1 ? "1 rest stop" : `${count} rest stops`
+                        } ${label}`}
+                      >
+                        {count} {label}
+                      </span>
+                    );
+                  },
                 )}
               {!segEndCityFetching && citySummary && (
                 <span className="proj-segment-city">{citySummary}</span>
@@ -1000,18 +1194,10 @@ function ProjectionSegment({
                   (finding nearest city...)
                 </span>
               )}
-              {(citySummary || segEndCityFetching) && sleepHms && (
-                <span className="proj-city-sep"> · </span>
-              )}
-              {sleepHms && (
-                <span className="proj-segment-sleep">
-                  {sleepHms} <i className="fa-solid fa-moon"></i>
-                </span>
-              )}
             </div>
           )}
 
-          <div className="proj-segment-header-startend split-header-city">
+          <div className="proj-segment-header-startend">
             <span className="proj-city-start">
               {fmtInTz(segment.start_time, segmentStartTz ?? courseTz)}
             </span>
@@ -1019,12 +1205,21 @@ function ProjectionSegment({
             <span className="proj-city-end">
               {fmtInTz(segment.end_time, segmentEndTz ?? courseTz)}
             </span>
-            <span className="proj-city-sep"> · </span>
+            {segment.sleep_time_hours > 0 && (
+              <span title="Sleep time">
+                {" "}
+                + {formatHours(segment.sleep_time_hours)}{" "}
+                <i className="fa-solid fa-moon"></i>
+              </span>
+            )}
+            <span className="proj-city-sep">
+              {segment.sleep_time_hours > 0 ? " = " : " · "}
+            </span>
             <span>{formatHours(segment.elapsed_time_hours)}</span>
           </div>
 
           {(segWeatherStart || segWeatherEnd) && (
-            <div className="proj-segment-header-weather split-header-city">
+            <div className="proj-segment-header-weather">
               {segWeatherStart && (
                 <span
                   className="split-weather-inline"
@@ -1098,29 +1293,29 @@ function ProjectionSegment({
       </div>
 
       {!collapsed && (
-        <div className="segment-body">
+        <div className="proj-segment-body">
           {!isTransitSegment && (
             <button
               type="button"
-              className="optional-toggle"
+              className="section-action-row"
               onClick={() => setShowResultsGrid((v) => !v)}
             >
               <span className={`chevron${showResultsGrid ? " open" : ""}`}>
                 ▶
               </span>
-              View detailed projections
+              More details
             </button>
           )}
 
           {!isTransitSegment && showResultsGrid && (
             <div className="split-results-panel">
-              <dl className="split-results-grid">
+              <dl className="proj-split-results-grid">
                 <div>
                   <dt title="Segment start time">Start</dt>
                   <dd>
                     {fmtInTz(segment.start_time, segmentStartTz ?? courseTz)}
                     {segmentStartTz && segmentStartTz !== courseTz && (
-                      <span className="split-end-tz">
+                      <span className="proj-split-end-tz">
                         {fmtInTz(segment.start_time, courseTz)}
                       </span>
                     )}
@@ -1133,7 +1328,7 @@ function ProjectionSegment({
                   <dd>
                     {fmtInTz(segment.end_time, segmentEndTz ?? courseTz)}
                     {segmentEndTz && segmentEndTz !== courseTz && (
-                      <span className="split-end-tz">
+                      <span className="proj-split-end-tz">
                         {fmtInTz(segment.end_time, courseTz)}
                       </span>
                     )}
@@ -1150,7 +1345,7 @@ function ProjectionSegment({
                     {nextStartTime &&
                       segmentEndTz &&
                       segmentEndTz !== courseTz && (
-                        <span className="split-end-tz">
+                        <span className="proj-split-end-tz">
                           {fmtInTz(nextStartTime, courseTz)}
                         </span>
                       )}
@@ -1358,13 +1553,13 @@ function ProjectionSegment({
                           Wind Direction
                         </dt>
                         <dd>
-                          <i className="fa-solid fa-arrow-up" />{" "}
+                          {"N "}
                           {segWeatherStats.windDir.N}%{" · "}
-                          <i className="fa-solid fa-arrow-right" />{" "}
+                          {"E "}
                           {segWeatherStats.windDir.E}%{" · "}
-                          <i className="fa-solid fa-arrow-down" />{" "}
+                          {"S "}
                           {segWeatherStats.windDir.S}%{" · "}
-                          <i className="fa-solid fa-arrow-left" />{" "}
+                          {"W "}
                           {segWeatherStats.windDir.W}%
                         </dd>
                       </div>
@@ -1386,14 +1581,152 @@ function ProjectionSegment({
                     )}
                   </>
                 )}
+                {aggGpx &&
+                  (aggGpx.steepPct > 0 ||
+                    aggGpx.minGradePct < 0 ||
+                    aggGpx.maxGradePct > 0) && (
+                    <>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <dt title="% of segment distance in each absolute-grade bucket">
+                          Grade Distribution
+                        </dt>
+                        <dd>
+                          <GradeDistributionBar
+                            gradeBuckets={aggGpx.gradeBuckets}
+                            granular
+                          />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt title="Steepest descent grade in this segment">
+                          Min Grade
+                        </dt>
+                        <dd>{aggGpx.minGradePct.toFixed(1)}%</dd>
+                      </div>
+                      <div>
+                        <dt title="Steepest ascent grade in this segment">
+                          Max Grade
+                        </dt>
+                        <dd>{aggGpx.maxGradePct.toFixed(1)}%</dd>
+                      </div>
+                    </>
+                  )}
               </dl>
             </div>
           )}
 
+          {!isTransitSegment && (
+            <button
+              type="button"
+              className="section-action-row"
+              onClick={() => setShowRollingGrid((v) => !v)}
+            >
+              <span className={`chevron${showRollingGrid ? " open" : ""}`}>
+                ▶
+              </span>
+              Rolling details
+            </button>
+          )}
+
+          {!isTransitSegment &&
+            showRollingGrid &&
+            (() => {
+              const rollingDist = rollingBefore.dist + segment.distance;
+              const rollingMovingH =
+                rollingBefore.movingH + segment.moving_time_hours;
+              const rollingDownH =
+                rollingBefore.downH + segment.down_time_hours;
+              const rollingAdjustH =
+                rollingBefore.adjustH + (segment.adjustment_time_hours ?? 0);
+              const rollingSleepH =
+                rollingBefore.sleepH + segment.sleep_time_hours;
+              const rollingActiveH =
+                rollingMovingH + rollingDownH + rollingAdjustH;
+              const rollingElapsedH = rollingActiveH + rollingSleepH;
+              return (
+                <div className="split-results-panel">
+                  <dl className="proj-split-results-grid">
+                    <div>
+                      <dt title="Cumulative elapsed time from course start (includes sleep)">
+                        Elapsed
+                      </dt>
+                      <dd title={formatHours(rollingElapsedH, "full")}>
+                        {formatHours(rollingElapsedH)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title="Cumulative active time from course start (excludes sleep)">
+                        Active
+                      </dt>
+                      <dd title={formatHours(rollingActiveH, "full")}>
+                        {formatHours(rollingActiveH)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title="Cumulative moving time from course start">
+                        Moving
+                      </dt>
+                      <dd title={formatHours(rollingMovingH, "full")}>
+                        {formatHours(rollingMovingH)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title="Cumulative down time from course start">
+                        Down
+                      </dt>
+                      <dd title={formatHours(rollingDownH, "full")}>
+                        {formatHours(rollingDownH)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title="Cumulative sleep time from course start">
+                        Sleep
+                      </dt>
+                      <dd title={formatHours(rollingSleepH, "full")}>
+                        {formatHours(rollingSleepH)}
+                      </dd>
+                    </div>
+                    {rollingAdjustH > 0 && (
+                      <div>
+                        <dt title="Cumulative adjustment time from course start">
+                          Adj Time
+                        </dt>
+                        <dd title={formatHours(rollingAdjustH, "full")}>
+                          {formatHours(rollingAdjustH)}
+                        </dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt title="Average moving speed from course start">
+                        Speed
+                      </dt>
+                      <dd>
+                        {rollingMovingH > 0
+                          ? (rollingDist / rollingMovingH).toFixed(2)
+                          : "0.00"}{" "}
+                        {sLabel}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title="Average pace from course start (dist / active time)">
+                        Pace
+                      </dt>
+                      <dd>
+                        {rollingActiveH > 0
+                          ? (rollingDist / rollingActiveH).toFixed(2)
+                          : "0.00"}{" "}
+                        {sLabel}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              );
+            })()}
+
           {isTransitSegment ? (
             <div className="split-results-panel">
               {transitSplit && (
-                <dl className="split-results-grid proj-split-results-grid">
+                <dl className="proj-split-results-grid">
                   <div>
                     <dt title="Transit start time">Start</dt>
                     <dd>
@@ -1447,45 +1780,67 @@ function ProjectionSegment({
                 (transitFormSplit.rest_stop.name ||
                   transitFormSplit.rest_stop.address ||
                   transitFormSplit.rest_stop.alt ||
-                  transitFormSplit.notes) && (
-                  <div className="split-results-rs-info">
-                    {transitFormSplit.rest_stop.name && (
-                      <div className="split-results-rs-name">
-                        {transitFormSplit.rest_stop.alt ? (
-                          <a
-                            href={transitFormSplit.rest_stop.alt}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {transitFormSplit.rest_stop.name}
-                          </a>
-                        ) : (
-                          transitFormSplit.rest_stop.name
+                  transitFormSplit.notes ||
+                  transitEtaInfo) && (
+                  <div className="split-results-stops">
+                    <div className="split-results-stops-header">
+                      <i className="fa-solid fa-map-pin" aria-hidden="true" />
+                      <span className="split-results-stops-label">Stops</span>
+                      <span className="split-results-stops-count">1 stop</span>
+                    </div>
+                    <div className="split-results-stop-row">
+                      <div className="split-results-stop-icon split-results-stop-icon--rest">
+                        <i
+                          className="fa-solid fa-location-dot"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <div className="split-results-stop-body">
+                        <span className="split-results-rs-badge">
+                          Rest Stop
+                        </span>
+                        {(transitFormSplit.rest_stop.name ||
+                          transitFormSplit.rest_stop.alt) && (
+                          <div className="split-results-rs-name">
+                            {transitFormSplit.rest_stop.alt ? (
+                              <a
+                                href={transitFormSplit.rest_stop.alt}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {transitFormSplit.rest_stop.name ||
+                                  transitFormSplit.rest_stop.alt}
+                              </a>
+                            ) : (
+                              transitFormSplit.rest_stop.name
+                            )}
+                          </div>
+                        )}
+                        {transitFormSplit.rest_stop.address && (
+                          <div className="split-results-rs-address">
+                            {transitFormSplit.rest_stop.address}
+                          </div>
+                        )}
+                        {transitFormSplit.notes && (
+                          <div className="split-results-rs-notes">
+                            {transitFormSplit.notes}
+                          </div>
                         )}
                       </div>
-                    )}
-                    {transitFormSplit.rest_stop.address && (
-                      <div className="split-results-rs-address">
-                        {transitFormSplit.rest_stop.address}
-                      </div>
-                    )}
-                    {!transitFormSplit.rest_stop.name &&
-                      transitFormSplit.rest_stop.alt && (
-                        <div className="split-results-rs-address">
-                          <a
-                            href={transitFormSplit.rest_stop.alt}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {transitFormSplit.rest_stop.alt}
-                          </a>
+                      {transitEtaInfo && (
+                        <div
+                          className={`split-results-stop-hours split-results-stop-hours--${transitEtaInfo.status}`}
+                        >
+                          <span className="split-results-stop-dot" />
+                          <span>{transitEtaInfo.hoursLabel}</span>
+                          {transitEtaInfo.nearDetail && (
+                            <span className="split-results-stop-near">
+                              {transitEtaInfo.nearDetail}
+                            </span>
+                          )}
                         </div>
                       )}
-                    {transitFormSplit.notes && (
-                      <div className="split-results-rs-notes">
-                        {transitFormSplit.notes}
-                      </div>
-                    )}
+                    </div>
                   </div>
                 )}
 
@@ -1504,7 +1859,6 @@ function ProjectionSegment({
                         unitSystem={unitSystem}
                         segmentColor={segColor}
                         restStop={transitFormSplit?.rest_stop ?? null}
-                        onSelectStop={() => {}}
                       />
                     </Suspense>
                   </div>
@@ -1548,6 +1902,7 @@ function ProjectionSegment({
                         : undefined
                     }
                     splitWeather={segmentWeather?.[splitIndex] ?? null}
+                    mode={mode}
                     splitHourlyWeather={
                       segmentHourlyWeather
                         ? segmentHourlyWeather.filter(
@@ -1556,6 +1911,9 @@ function ProjectionSegment({
                         : null
                     }
                     onZoomToSplit={onZoomToSplit}
+                    splitRollingBefore={
+                      splitRollingAccums[splitIndex] ?? rollingBefore
+                    }
                   />
                 ))}
               </div>
@@ -1589,7 +1947,9 @@ function ProjectionSplit({
   expandSignal,
   splitWeather,
   splitHourlyWeather,
+  mode,
   onZoomToSplit,
+  splitRollingBefore,
 }: {
   segIndex: number;
   split: SplitDetail;
@@ -1599,6 +1959,7 @@ function ProjectionSplit({
   courseTz: string;
   dLabel: string;
   sLabel: string;
+  mode: Mode;
   unitSystem: UnitSystem;
   gpxTrack: GpxTrackPoint[] | null;
   cumulativeDist: number | null;
@@ -1613,9 +1974,12 @@ function ProjectionSplit({
   splitWeather?: SplitWeatherPair | null;
   splitHourlyWeather?: HourlyWeatherPoint[] | null;
   onZoomToSplit?: (segIdx: number, splitIdx: number) => void;
+  splitRollingBefore: RollingAccum;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showResultsGrid, setShowResultsGrid] = useState(false);
+  const [showSplitRollingGrid, setShowSplitRollingGrid] = useState(false);
+  const [showSubSplits, setShowSubSplits] = useState(false);
   const splitRootRef = useRef<HTMLDivElement | null>(null);
   const lastFiredExpandRef = useRef<number | undefined>(undefined);
 
@@ -1662,6 +2026,49 @@ function ProjectionSplit({
       ? buildEtaInfo(split, formSplit, courseTz, etaMarginOpen, etaMarginClose)
       : null;
 
+  const KM_PER_MI = 1.60934;
+  const intermediateKm = useMemo(() => {
+    const is = formSplit?.intermediate_stop;
+    if (!is?.enabled || !is.distance.trim()) return null;
+    const d = parseFloat(is.distance);
+    if (isNaN(d)) return null;
+    const dKm = d * (unitSystem === "imperial" ? KM_PER_MI : 1);
+    return mode === "target_distance" ? dKm : (profile?.startKm ?? 0) + dKm;
+  }, [formSplit?.intermediate_stop, mode, unitSystem, profile?.startKm]);
+
+  const intermHoursInfo = useMemo(() => {
+    const is = formSplit?.intermediate_stop;
+    if (!is?.enabled) return null;
+    const dayIdx = dayIndexInTimezone(split.end_time, courseTz);
+    const entry = is.sameHoursEveryDay ? is.allDays : is.perDay[dayIdx];
+    const status = checkArrivalVsHoursDetailed(
+      split.end_time,
+      entry,
+      courseTz,
+      etaMarginOpen,
+      etaMarginClose,
+    );
+    if (!status) return null;
+    const hoursLabel = hoursLabelForEntry(entry);
+    const nearDetail =
+      status === "near-open" || status === "near-close"
+        ? buildDetailedNearDetail(status, split.end_time, entry, courseTz)
+        : null;
+    const statusWords: Record<string, string> = {
+      open: "Open",
+      "near-open": "Near open",
+      "near-close": "Near close",
+      closed: "Closed",
+    };
+    return { status, statusWord: statusWords[status], hoursLabel, nearDetail };
+  }, [
+    formSplit?.intermediate_stop,
+    split.end_time,
+    courseTz,
+    etaMarginOpen,
+    etaMarginClose,
+  ]);
+
   const elevUnit = unitSystem === "imperial" ? "ft" : "m";
   const toElevUnit = (m: number) =>
     (unitSystem === "imperial"
@@ -1699,9 +2106,9 @@ function ProjectionSplit({
   const mapAvailable = !!gpxTrack && !!profile;
 
   return (
-    <div className="split-form" ref={splitRootRef}>
+    <div className="proj-split-form" ref={splitRootRef}>
       <div
-        className="split-header"
+        className="proj-split-header"
         onClick={() => setCollapsed((c) => !c)}
         role="button"
         tabIndex={0}
@@ -1722,12 +2129,12 @@ function ProjectionSplit({
 
         <div className="proj-split-header-grid">
           {/* (0,0) title + meta */}
-          <div className="split-header-left proj-split-header-main">
-            <div className="split-header-titlerow">
+          <div className="proj-split-header-main">
+            <div className="proj-header-titlerow">
               {onZoomToSplit && gpxTrack ? (
                 <button
                   type="button"
-                  className="split-header-title proj-title-link"
+                  className="proj-header-title proj-title-link"
                   title="Go to this split on the map"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1737,11 +2144,11 @@ function ProjectionSplit({
                   <span className="proj-title-link-text">{name}</span>
                 </button>
               ) : (
-                <span className="split-header-title">{name}</span>
+                <span className="proj-header-title">{name}</span>
               )}
             </div>
             {(profile || splitDistUser != null) && (
-              <div className="split-header-meta">
+              <div className="proj-header-meta">
                 <span
                   className="split-header-meta-item split-header-meta-item--dist"
                   title="Split distance"
@@ -1777,13 +2184,12 @@ function ProjectionSplit({
                       {profile.avgGradePct.toFixed(1)}% avg
                     </span>
                     {profile.steepPct > 0 && (
-                      <span
-                        className="split-header-meta-item split-header-meta-item--steep"
-                        title="% of distance with grade > 5%"
-                      >
-                        <i className="fa-solid fa-triangle-exclamation"></i>{" "}
-                        {profile.steepPct}% steep
-                      </span>
+                      <SteepBadge
+                        steepPct={profile.steepPct}
+                        gradeBuckets={profile.gradeBuckets}
+                        minGradePct={profile.minGradePct}
+                        maxGradePct={profile.maxGradePct}
+                      />
                     )}
                     {profile.surface !== "unknown" && (
                       <span
@@ -1801,7 +2207,7 @@ function ProjectionSplit({
 
           {/* (1,0) tz/cumul dist + duration · pace */}
           <div className="proj-split-header-topright">
-            <div className="split-header-dist-row">
+            <div className="proj-header-dist-row">
               {tzBadgeAbbr && (
                 <span
                   className={`split-header-meta-item split-header-meta-item--tz${formSplit?.tzManuallySet ? " tz-manual" : ""}`}
@@ -1815,7 +2221,7 @@ function ProjectionSplit({
               {hasDist && (
                 <>
                   <span
-                    className="split-header-dist"
+                    className="proj-header-dist"
                     style={{ color: distColor }}
                   >
                     {cumulativeDist!.toLocaleString(undefined, {
@@ -1827,7 +2233,7 @@ function ProjectionSplit({
                 </>
               )}
             </div>
-            <div className="split-header-city">
+            <div className="proj-header-city">
               <span
                 className="proj-city-duration"
                 title={`${formatHours(split.moving_time_hours, "full")} moving time`}
@@ -1873,7 +2279,7 @@ function ProjectionSplit({
           </div>
 
           {/* (0,1) start → end time */}
-          <div className="proj-split-header-startend split-header-city">
+          <div className="proj-split-header-startend">
             <span className="proj-city-start">
               {fmtInTz(split.start_time, splitStartTz ?? courseTz)}
             </span>
@@ -1886,18 +2292,26 @@ function ProjectionSplit({
           </div>
 
           {/* (1,1) eta-badge · city · GPX state */}
-          <div className="proj-split-header-status split-header-city">
+          <div className="proj-split-header-status">
             {etaInfo && (
-              <span
-                className={`eta-badge eta-${etaInfo.status}`}
-                title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
-              >
-                {etaInfo.status === "open" &&
-                  (etaInfo.hoursLabel === "24 hours" ? "24/7" : "Open")}
-                {etaInfo.status === "near-open" && "Near open"}
-                {etaInfo.status === "near-close" && "Near close"}
-                {etaInfo.status === "closed" && "Closed"}
-              </span>
+              <>
+                <span
+                  className={`eta-badge eta-${etaInfo.status} ${formSplit?.intermediate_stop.enabled ? "intermediate-stop-set" : ""}`}
+                  title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel}) ${formSplit?.intermediate_stop?.enabled ? `& "${formSplit.intermediate_stop.name}" (${intermHoursInfo!.hoursLabel})` : ""}`}
+                >
+                  {formSplit?.rest_stop.name && (
+                    <span className="proj-segment-city">
+                      {formSplit.rest_stop.name}
+                      {"—"}
+                    </span>
+                  )}
+                  {etaInfo.status === "open" &&
+                    (etaInfo.hoursLabel === "24 hours" ? "24/7" : "Open")}
+                  {etaInfo.status === "near-open" && "Near open"}
+                  {etaInfo.status === "near-close" && "Near close"}
+                  {etaInfo.status === "closed" && "Closed"}
+                </span>
+              </>
             )}
             {nearbyCity && (
               <span className="proj-segment-city">{nearbyCity}</span>
@@ -1921,7 +2335,7 @@ function ProjectionSplit({
 
           {/* (2,1) start → end temp + hi/lo */}
           {(splitWeather?.start || splitWeather?.end) && (
-            <div className="proj-split-header-hilow split-header-city">
+            <div className="proj-split-header-hilow">
               {splitWeather?.start && (
                 <span
                   className="split-weather-inline"
@@ -2001,23 +2415,23 @@ function ProjectionSplit({
         <div className="split-results-panel">
           <button
             type="button"
-            className="optional-toggle"
+            className="section-action-row"
             onClick={() => setShowResultsGrid((v) => !v)}
           >
             <span className={`chevron${showResultsGrid ? " open" : ""}`}>
               ▶
             </span>
-            View detailed projections
+            More details
           </button>
 
           {showResultsGrid && (
-            <dl className="split-results-grid proj-split-results-grid">
+            <dl className="proj-split-results-grid">
               <div>
                 <dt title="Split start time">Start</dt>
                 <dd>
                   {fmtInTz(split.start_time, splitStartTz ?? courseTz)}
                   {splitStartTz && splitStartTz !== courseTz && (
-                    <span className="split-end-tz">
+                    <span className="proj-split-end-tz">
                       {" "}
                       {fmtInTz(split.start_time, courseTz)}
                     </span>
@@ -2031,7 +2445,7 @@ function ProjectionSplit({
                 <dd>
                   {fmtInTz(split.end_time, splitEndTz ?? courseTz)}
                   {splitEndTz && splitEndTz !== courseTz && (
-                    <span className="split-end-tz">
+                    <span className="proj-split-end-tz">
                       {" "}
                       {fmtInTz(split.end_time, courseTz)}
                     </span>
@@ -2087,21 +2501,6 @@ function ProjectionSplit({
                     </dd>
                   </div>
                 )}
-              {etaInfo && (
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <dt title="Hours for the rest stop at the estimated time of arrival.">
-                    Rest Stop Hours
-                  </dt>
-                  <dd>
-                    <span>{etaInfo.hoursLabel}</span>
-                    {etaInfo.nearDetail && (
-                      <span className="split-results-near-detail">
-                        {etaInfo.nearDetail}
-                      </span>
-                    )}
-                  </dd>
-                </div>
-              )}
               {(() => {
                 const windW = splitWeather?.end ?? splitWeather?.start ?? null;
                 if (
@@ -2183,85 +2582,317 @@ function ProjectionSplit({
                   />
                 </div>
               )}
+              {profile &&
+                (profile.steepPct > 0 ||
+                  profile.minGradePct < 0 ||
+                  profile.maxGradePct > 0) && (
+                  <>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <dt title="% of split distance in each absolute-grade bucket">
+                        Grade Distribution
+                      </dt>
+                      <dd>
+                        <GradeDistributionBar
+                          gradeBuckets={profile.gradeBuckets}
+                          granular
+                        />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title="Steepest descent grade in this split">
+                        Min Grade
+                      </dt>
+                      <dd>{profile.minGradePct.toFixed(1)}%</dd>
+                    </div>
+                    <div>
+                      <dt title="Steepest ascent grade in this split">
+                        Max Grade
+                      </dt>
+                      <dd>{profile.maxGradePct.toFixed(1)}%</dd>
+                    </div>
+                  </>
+                )}
             </dl>
           )}
 
-          {formSplit?.rest_stop.enabled &&
-            (formSplit.rest_stop.name ||
-              formSplit.rest_stop.address ||
-              formSplit.rest_stop.alt ||
-              formSplit.notes) && (
-              <div className="split-results-rs-info">
-                {formSplit.rest_stop.name && (
-                  <div className="split-results-rs-name">
-                    {formSplit.rest_stop.alt ? (
-                      <a
-                        href={formSplit.rest_stop.alt}
-                        target="_blank"
-                        rel="noopener noreferrer"
+          <button
+            type="button"
+            className="section-action-row"
+            onClick={() => setShowSplitRollingGrid((v) => !v)}
+          >
+            <span className={`chevron${showSplitRollingGrid ? " open" : ""}`}>
+              ▶
+            </span>
+            Rolling details
+          </button>
+
+          {showSplitRollingGrid &&
+            (() => {
+              const rollingDist = splitRollingBefore.dist + split.distance;
+              const rollingMovingH =
+                splitRollingBefore.movingH + split.moving_time_hours;
+              const rollingDownH =
+                splitRollingBefore.downH + split.down_time_hours;
+              const rollingAdjustH =
+                splitRollingBefore.adjustH + (split.adjustment_time_hours ?? 0);
+              const rollingSleepH = splitRollingBefore.sleepH;
+              const rollingActiveH =
+                rollingMovingH + rollingDownH + rollingAdjustH;
+              const rollingElapsedH = rollingActiveH + rollingSleepH;
+              return (
+                <dl className="proj-split-results-grid">
+                  <div>
+                    <dt title="Cumulative elapsed time from course start (includes sleep from completed segments)">
+                      Elapsed
+                    </dt>
+                    <dd title={formatHours(rollingElapsedH, "full")}>
+                      {formatHours(rollingElapsedH)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Cumulative active time from course start">
+                      Active
+                    </dt>
+                    <dd title={formatHours(rollingActiveH, "full")}>
+                      {formatHours(rollingActiveH)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Cumulative moving time from course start">
+                      Moving
+                    </dt>
+                    <dd title={formatHours(rollingMovingH, "full")}>
+                      {formatHours(rollingMovingH)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Cumulative down time from course start">Down</dt>
+                    <dd title={formatHours(rollingDownH, "full")}>
+                      {formatHours(rollingDownH)}
+                    </dd>
+                  </div>
+                  {rollingSleepH > 0 && (
+                    <div>
+                      <dt title="Cumulative sleep time from completed segments">
+                        Sleep
+                      </dt>
+                      <dd title={formatHours(rollingSleepH, "full")}>
+                        {formatHours(rollingSleepH)}
+                      </dd>
+                    </div>
+                  )}
+                  {rollingAdjustH > 0 && (
+                    <div>
+                      <dt title="Cumulative adjustment time from course start">
+                        Adj Time
+                      </dt>
+                      <dd title={formatHours(rollingAdjustH, "full")}>
+                        {formatHours(rollingAdjustH)}
+                      </dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt title="Average moving speed from course start">
+                      Speed
+                    </dt>
+                    <dd>
+                      {rollingMovingH > 0
+                        ? (rollingDist / rollingMovingH).toFixed(2)
+                        : "0.00"}{" "}
+                      {sLabel}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt title="Average pace from course start (dist / active time)">
+                      Pace
+                    </dt>
+                    <dd>
+                      {rollingActiveH > 0
+                        ? (rollingDist / rollingActiveH).toFixed(2)
+                        : "0.00"}{" "}
+                      {sLabel}
+                    </dd>
+                  </div>
+                </dl>
+              );
+            })()}
+
+          {split.sub_splits.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="section-action-row"
+                onClick={() => setShowSubSplits((v) => !v)}
+              >
+                <span className={`chevron${showSubSplits ? " open" : ""}`}>
+                  ▶
+                </span>
+                Sub-splits ({split.sub_splits.length})
+              </button>
+              {showSubSplits && (
+                <table className="split-sub-splits-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Dist</th>
+                      <th>Moving</th>
+                      <th>Down</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {split.sub_splits.map((ss: SubSplitDetail, i: number) => (
+                      <tr key={i}>
+                        <td>{i + 1}</td>
+                        <td>
+                          {ss.distance.toLocaleString(undefined, {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })}{" "}
+                          {dLabel}
+                        </td>
+                        <td>{formatHours(ss.moving_time_hours)}</td>
+                        <td>{formatHours(ss.down_time_hours)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+
+          {(() => {
+            const hasRest =
+              formSplit?.rest_stop.enabled &&
+              (formSplit.rest_stop.name ||
+                formSplit.rest_stop.address ||
+                formSplit.rest_stop.alt ||
+                formSplit.notes ||
+                etaInfo);
+            const hasInterm =
+              formSplit?.intermediate_stop?.enabled &&
+              (formSplit.intermediate_stop.name ||
+                formSplit.intermediate_stop.address ||
+                formSplit.intermediate_stop.alt ||
+                intermHoursInfo);
+            const stopCount = (hasRest ? 1 : 0) + (hasInterm ? 1 : 0);
+            if (!stopCount) return null;
+            return (
+              <div className="split-results-stops">
+                <div className="split-results-stops-header">
+                  <i className="fa-solid fa-map-pin" aria-hidden="true" />
+                  <span className="split-results-stops-label">Stops</span>
+                  <span className="split-results-stops-count">
+                    {stopCount} {stopCount === 1 ? "stop" : "stops"}
+                  </span>
+                </div>
+
+                {hasRest && (
+                  <div className="split-results-stop-row">
+                    <div className="split-results-stop-icon split-results-stop-icon--rest">
+                      <i
+                        className="fa-solid fa-location-dot"
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="split-results-stop-body">
+                      <span className="split-results-rs-badge">Rest Stop</span>
+                      {(formSplit.rest_stop.name ||
+                        formSplit.rest_stop.alt) && (
+                        <div className="split-results-rs-name">
+                          {formSplit.rest_stop.alt ? (
+                            <a
+                              href={formSplit.rest_stop.alt}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {formSplit.rest_stop.name ||
+                                formSplit.rest_stop.alt}
+                            </a>
+                          ) : (
+                            formSplit.rest_stop.name
+                          )}
+                        </div>
+                      )}
+                      {formSplit.rest_stop.address && (
+                        <div className="split-results-rs-address">
+                          {formSplit.rest_stop.address}
+                        </div>
+                      )}
+                      {formSplit.notes && (
+                        <div className="split-results-rs-notes">
+                          {formSplit.notes}
+                        </div>
+                      )}
+                    </div>
+                    {etaInfo && (
+                      <div
+                        className={`split-results-stop-hours split-results-stop-hours--${etaInfo.status}`}
                       >
-                        {formSplit.rest_stop.name}
-                      </a>
-                    ) : (
-                      formSplit.rest_stop.name
+                        <span className="split-results-stop-dot" />
+                        <span>{etaInfo.hoursLabel}</span>
+                        {etaInfo.nearDetail && (
+                          <span className="split-results-stop-near">
+                            {etaInfo.nearDetail}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
-                {formSplit.rest_stop.address && (
-                  <div className="split-results-rs-address">
-                    {formSplit.rest_stop.address}
-                  </div>
-                )}
-                {!formSplit.rest_stop.name && formSplit.rest_stop.alt && (
-                  <div className="split-results-rs-address">
-                    <a
-                      href={formSplit.rest_stop.alt}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {formSplit.rest_stop.alt}
-                    </a>
-                  </div>
-                )}
-                {formSplit.notes && (
-                  <div className="split-results-rs-notes">
-                    {formSplit.notes}
+
+                {hasInterm && (
+                  <div className="split-results-stop-row">
+                    <div className="split-results-stop-icon split-results-stop-icon--interm">
+                      <i
+                        className="fa-solid fa-location-dot"
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="split-results-stop-body">
+                      <span className="split-results-rs-badge split-results-rs-badge--interm">
+                        Intermediate Stop
+                      </span>
+                      {(formSplit.intermediate_stop.name ||
+                        formSplit.intermediate_stop.alt) && (
+                        <div className="split-results-rs-name">
+                          {formSplit.intermediate_stop.alt ? (
+                            <a
+                              href={formSplit.intermediate_stop.alt}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {formSplit.intermediate_stop.name ||
+                                formSplit.intermediate_stop.alt}
+                            </a>
+                          ) : (
+                            formSplit.intermediate_stop.name
+                          )}
+                        </div>
+                      )}
+                      {formSplit.intermediate_stop.address && (
+                        <div className="split-results-rs-address">
+                          {formSplit.intermediate_stop.address}
+                        </div>
+                      )}
+                    </div>
+                    {intermHoursInfo && (
+                      <div
+                        className={`split-results-stop-hours split-results-stop-hours--${intermHoursInfo.status}`}
+                      >
+                        <span className="split-results-stop-dot" />
+                        <span>{intermHoursInfo.hoursLabel}</span>
+                        {intermHoursInfo.nearDetail && (
+                          <span className="split-results-stop-near">
+                            {intermHoursInfo.nearDetail}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-
-          {split.sub_splits.length > 0 && (
-            <details className="split-sub-splits">
-              <summary>Sub-splits ({split.sub_splits.length})</summary>
-              <table className="split-sub-splits-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Dist</th>
-                    <th>Moving</th>
-                    <th>Down</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {split.sub_splits.map((ss: SubSplitDetail, i: number) => (
-                    <tr key={i}>
-                      <td>{i + 1}</td>
-                      <td>
-                        {ss.distance.toLocaleString(undefined, {
-                          minimumFractionDigits: 1,
-                          maximumFractionDigits: 1,
-                        })}{" "}
-                        {dLabel}
-                      </td>
-                      <td>{formatHours(ss.moving_time_hours)}</td>
-                      <td>{formatHours(ss.down_time_hours)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
-          )}
+            );
+          })()}
 
           {mapAvailable && (
             <div className="split-two-pane">
@@ -2278,7 +2909,8 @@ function ProjectionSplit({
                     endpointDefined={cumulativeDist != null}
                     unitSystem={unitSystem}
                     restStop={formSplit?.rest_stop ?? null}
-                    onSelectStop={() => {}}
+                    intermediateStop={formSplit?.intermediate_stop ?? null}
+                    intermediateKm={intermediateKm}
                     splitHourlyWeather={splitHourlyWeather}
                   />
                 </Suspense>

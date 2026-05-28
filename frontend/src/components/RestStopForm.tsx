@@ -18,6 +18,8 @@ interface RestStopFormProps {
   onChange: (val: RestStopForm) => void;
   addressLoading?: boolean;
   etaInfo?: EtaInfo | null;
+  /** When true, hides the enable/disable toggle row (for embedded use). */
+  hideToggle?: boolean;
 }
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -68,6 +70,7 @@ export default function RestStopFormComponent({
   onChange,
   addressLoading,
   etaInfo,
+  hideToggle = false,
 }: RestStopFormProps) {
   const update = (patch: Partial<RestStopForm>) =>
     onChange({ ...value, ...patch });
@@ -123,38 +126,28 @@ export default function RestStopFormComponent({
 
   return (
     <div className="rs-section">
-      {/* Header row with toggle */}
-      <div className={`rs-toggle-row${value.enabled ? " open" : ""}`}>
-        <div className="rs-header-name">
-          <span className="rs-toggle-label">Rest Stop</span>
-        </div>
+      {/* Header row with toggle — omitted when embedded (hideToggle) */}
+      {!hideToggle && (
+        <div className={`rs-toggle-row${value.enabled ? " open" : ""}`}>
+          <div className="rs-header-name">
+            <span className="rs-toggle-label">Rest Stop</span>
+          </div>
 
-        <label className="toggle-switch">
-          <input
-            id={`${prefix}-enabled`}
-            type="checkbox"
-            checked={value.enabled}
-            onChange={(e) => update({ enabled: e.target.checked })}
-          />
-          <span className="toggle-track" />
-          <span className="toggle-thumb" />
-        </label>
-      </div>
-
-      {value.enabled && (
-        <div className="rs-section-body">
-          {/* Backup toggle */}
-          <label className="rs-backup-label">
+          <label className="toggle-switch">
             <input
-              id={`${prefix}-backup`}
+              id={`${prefix}-enabled`}
               type="checkbox"
-              checked={value.backup}
-              onChange={(e) => update({ backup: e.target.checked })}
+              checked={value.enabled}
+              onChange={(e) => update({ enabled: e.target.checked })}
             />
-            Backup stop
+            <span className="toggle-track" />
+            <span className="toggle-thumb" />
           </label>
-          <FieldError fieldId={`${prefix}-backup`} />
+        </div>
+      )}
 
+      {(hideToggle || value.enabled) && (
+        <div className="rs-section-body">
           {/* Name + Alt URL on same row */}
           <div className="fields-grid fields-grid--2col">
             <div className="field">
@@ -229,7 +222,11 @@ export default function RestStopFormComponent({
             {value.address.trim() && (
               <a
                 className="rs-open-in-google"
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.address.trim())}`}
+                href={
+                  value.googlePlaceId
+                    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.name)}&query_place_id=${value.googlePlaceId}`
+                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.address.trim())}`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
               >

@@ -11,7 +11,7 @@ interface NumberInputProps extends Omit<
 }
 
 /**
- * A styled number input with +/− stepper buttons.
+ * A styled number input with +/- stepper buttons.
  * Wraps a standard <input type="number"> and adds explicit ▲/▼ buttons that
  * respect the input's `step`, `min`, and `max` attributes.
  */

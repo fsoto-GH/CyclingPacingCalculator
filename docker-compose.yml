@@ -24,16 +24,15 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_ENABLE_PAID_APIS: ${VITE_ENABLE_PAID_APIS:-false}
+        VITE_ENABLE_SERVER_FUNCTIONS: ${VITE_ENABLE_SERVER_FUNCTIONS:-false}
     container_name: pacing-api
     ports:
       - "8000:8000"
-    # links pacing directory to the container, so that changes to the code will be reflected in the container without needing to rebuild it
-    # the anonymous volume for /pacing/static ensures the frontend built during `docker build` is not
-    # overwritten by the host mount (which would serve a stale or missing build)
+    # mount only backend source for live-reload; keep /pacing/static from the image
+    # so rebuilt frontend assets are always what gets served
     volumes:
-      - .:/pacing
-      - /pacing/static
+      - ./pacing:/pacing/pacing
+      - ./shared:/pacing/shared
     restart: always
     depends_on:
       postgres:
@@ -42,13 +41,19 @@ services:
     command: uvicorn pacing.api.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - PYTHONPATH=/pacing
-      - DATABASE_URL=postgresql://pacing:pacing@postgres:5432/pacing
-      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - IS_LOCAL=${IS_LOCAL:-true}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://pacing:pacing@postgres:5432/pacing}
+      - DATABASE_URL_LOCAL=${DATABASE_URL_LOCAL:-postgresql://pacing:pacing@postgres:5432/pacing}
+      - DATABASE_URL_SUPABASE=${DATABASE_URL_SUPABASE:-}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-change-me-in-production}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8000}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
       - RIDEWITHGPS_API_KEY=${RIDEWITHGPS_API_KEY:-}
+      - RIDEWITHGPS_CLIENT_ID=${RIDEWITHGPS_CLIENT_ID:-}
+      - RIDEWITHGPS_CLIENT_SECRET=${RIDEWITHGPS_CLIENT_SECRET:-}
       - WEATHER_API_KEY=${WEATHER_API_KEY:-}
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
 

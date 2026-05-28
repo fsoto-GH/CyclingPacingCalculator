@@ -4,8 +4,28 @@
  */
 
 import tzlookup from "tz-lookup";
-import type { GpxTrackPoint, SplitGpxProfile } from "../types";
+import type { GpxTrackPoint, GradeBuckets, SplitGpxProfile } from "../types";
 import type { GpxWaypoint } from "../types";
+
+// ── Grade bucket helpers ─────────────────────────────────────────────────────
+/** Zero-initialised GradeBuckets (2 % resolution, 20 keys). */
+const ZERO_GRADE_BUCKETS: GradeBuckets = Object.fromEntries([
+  ...Array.from({ length: 9 }, (_, i) => [`b${(i + 1) * 2}`, 0]),
+  ["b18plus", 0],
+  ...Array.from({ length: 9 }, (_, i) => [`bn${(i + 1) * 2}`, 0]),
+  ["bn18plus", 0],
+]) as GradeBuckets;
+
+/** Maps an absolute grade % to the 2%-resolution bucket key. */
+function gradeBucketKey(
+  absGrade: number,
+  descent: boolean,
+): keyof GradeBuckets {
+  const raw = Math.ceil(absGrade / 2) * 2;
+  const n = Math.max(2, raw);
+  if (n > 18) return descent ? "bn18plus" : "b18plus";
+  return (descent ? `bn${n}` : `b${n}`) as keyof GradeBuckets;
+}
 
 // ── Haversine distance ──────────────────────────────────────────────────────
 
@@ -93,6 +113,31 @@ export function parseGpx(xml: string): GpxTrackPoint[] {
   }
 
   return points;
+}
+
+/**
+ * Parse a GPX XML string and return all `<wpt>` waypoints in the file.
+ * Preserves name, description (from <desc> or <cmt>), and symbol (<sym>).
+ */
+export function parseGpxWaypoints(xml: string): GpxWaypoint[] {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const parseErr = doc.querySelector("parsererror");
+  if (parseErr) return [];
+
+  return Array.from(doc.getElementsByTagName("wpt"))
+    .map((el): GpxWaypoint | null => {
+      const lat = parseFloat(el.getAttribute("lat") ?? "");
+      const lon = parseFloat(el.getAttribute("lon") ?? "");
+      if (isNaN(lat) || isNaN(lon)) return null;
+      const name =
+        el.getElementsByTagName("name")[0]?.textContent?.trim() ?? "Waypoint";
+      const description =
+        el.getElementsByTagName("desc")[0]?.textContent?.trim() ||
+        el.getElementsByTagName("cmt")[0]?.textContent?.trim() ||
+        undefined;
+      return { lat, lon, name, description, symbol: "food" as const };
+    })
+    .filter((w): w is GpxWaypoint => w !== null);
 }
 
 /**
@@ -312,6 +357,9 @@ export function computeSplitProfile(
       elevLossM: 0,
       avgGradePct: 0,
       steepPct: 0,
+      gradeBuckets: ZERO_GRADE_BUCKETS,
+      minGradePct: 0,
+      maxGradePct: 0,
       surface,
       startLat: closest.lat,
       startLon: closest.lon,
@@ -328,12 +376,48 @@ export function computeSplitProfile(
 
   // cumDist deltas are pre-computed at parse time — no haversine needed.
   let steepDistKm = 0;
+  const bucketKm: GradeBuckets = { ...ZERO_GRADE_BUCKETS };
+  let minGradePct = 0;
+  let maxGradePct = 0;
   for (let i = 1; i < slice.length; i++) {
     const dEle = slice[i].ele - slice[i - 1].ele;
     const segDistKm = slice[i].cumDist - slice[i - 1].cumDist;
     if (segDistKm > 0) {
-      const gradePct = Math.abs(dEle / (segDistKm * 1000)) * 100;
-      if (gradePct > 5) steepDistKm += segDistKm;
+      const signedGradePct = (dEle / (segDistKm * 1000)) * 100;
+      const absGrade = Math.abs(signedGradePct);
+      if (absGrade > 5) steepDistKm += segDistKm;
+      bucketKm[gradeBucketKey(absGrade, signedGradePct <= 0)] += segDistKm;
+    }
+  }
+  // Min/max grade: use a 100 m sliding window to suppress GPS elevation noise.
+  // Point-to-point grade on raw GPS data (often 2–10 m apart) can produce
+  // impossible values (e.g. -177%) due to ±3–5 m vertical accuracy on GPS devices.
+  const GRADE_WINDOW_KM = 0.1;
+  let rIdx = 0;
+  for (let li = 0; li < slice.length - 1; li++) {
+    if (rIdx <= li) rIdx = li + 1;
+    while (
+      rIdx < slice.length - 1 &&
+      slice[rIdx].cumDist - slice[li].cumDist < GRADE_WINDOW_KM
+    ) {
+      rIdx++;
+    }
+    const windowDist = slice[rIdx].cumDist - slice[li].cumDist;
+    if (windowDist >= GRADE_WINDOW_KM) {
+      const dEle = slice[rIdx].ele - slice[li].ele;
+      const signedGradePct = (dEle / (windowDist * 1000)) * 100;
+      if (signedGradePct < minGradePct) minGradePct = signedGradePct;
+      if (signedGradePct > maxGradePct) maxGradePct = signedGradePct;
+    }
+  }
+  // Normalise bucket km → % of total split distance
+  const bucketTotalKm = (
+    Object.keys(bucketKm) as (keyof GradeBuckets)[]
+  ).reduce((s, k) => s + bucketKm[k], 0);
+  const gradeBuckets: GradeBuckets = { ...ZERO_GRADE_BUCKETS };
+  if (bucketTotalKm > 0) {
+    for (const k of Object.keys(bucketKm) as (keyof GradeBuckets)[]) {
+      gradeBuckets[k] = Math.round((bucketKm[k] / bucketTotalKm) * 100);
     }
   }
 
@@ -350,6 +434,9 @@ export function computeSplitProfile(
     elevLossM: Math.round(elevLossM),
     avgGradePct: Math.round(avgGradePct * 10) / 10,
     steepPct: Math.round(steepPct),
+    gradeBuckets,
+    minGradePct: Math.round(minGradePct * 10) / 10,
+    maxGradePct: Math.round(maxGradePct * 10) / 10,
     surface,
     startLat: startPt.lat,
     startLon: startPt.lon,

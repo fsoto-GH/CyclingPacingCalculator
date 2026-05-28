@@ -15,22 +15,32 @@ class Settings(BaseSettings):
     )
 
     # ── Database ──────────────────────────────────────────────────────────────
+    # Set IS_LOCAL=true to use DATABASE_URL_LOCAL, false to use DATABASE_URL_SUPABASE.
+    # If DATABASE_URL is set directly it always takes precedence (e.g. inside Docker).
+    is_local: bool = False
     database_url: str = "sqlite:///./cycling_pacing.db"
+    database_url_local: Optional[str] = None
+    database_url_supabase: Optional[str] = None
+
+    @property
+    def active_database_url(self) -> str:
+        print(self.is_local, self.database_url_local, self.database_url_supabase)
+        """Resolve the database URL based on IS_LOCAL, falling back to DATABASE_URL."""
+        if self.is_local and self.database_url_local:
+            return self.database_url_local
+        elif not self.is_local and self.database_url_supabase:
+            return self.database_url_supabase
+        return self.database_url
 
     # ── Auth ──────────────────────────────────────────────────────────────────
-    # A strong random string used to sign JWTs.  Generate with:
-    #   python -c "import secrets; print(secrets.token_hex(32))"
-    jwt_secret: str = "change-me-in-production"
+    # Supabase project URL — used to fetch JWKS public keys for JWT verification.
+    supabase_url: Optional[str] = None
+
+    # Legacy HS256 secret — only needed if the project still uses the old signing mode.
+    supabase_jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
-    # Access token lifetime in seconds (default: 30 days)
-    jwt_expires_seconds: int = 60 * 60 * 24 * 30
 
-    # Google OAuth 2.0 credentials
-    google_client_id: Optional[str] = None
-    google_client_secret: Optional[str] = None
-
-    # Where Google redirects after consent (must match what's configured in
-    # Google Cloud Console → OAuth 2.0 credentials → Authorized redirect URIs)
+    # Frontend / CORS origin.
     frontend_url: str = "http://localhost:5173"
 
     # ── Paid / premium API keys (all optional) ────────────────────────────────

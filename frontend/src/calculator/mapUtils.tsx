@@ -6,7 +6,7 @@
 
 import { useEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
-import type { RestStopForm } from "../types";
+import type { RestStopForm, IntermediateRestStopForm } from "../types";
 import { forwardGeocode, parseHighPrecisionCoordinateAddress } from "./geocode";
 import { divIcon } from "leaflet";
 import type { GpxTrackPoint, UnitSystem } from "../types";
@@ -115,6 +115,60 @@ export function useRestStopGeocode(
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restStop?.enabled, restStop?.address, restStop?.name, onSelectStop]);
+}
+
+/**
+ * Fires a forward-geocode whenever the intermediate stop address changes.
+ * Unlike useRestStopGeocode, this re-geocodes even when lat/lon are already
+ * set — the user may have clicked the map to place the stop, then updated the
+ * address to a named location, and we must move the pin to match.
+ * A ref tracks the last successfully geocoded address so we don't re-fire on
+ * every render (which would cause an infinite loop).
+ */
+export function useIntermediateStopGeocode(
+  intermediateStop: IntermediateRestStopForm | null | undefined,
+  onSelectStop: ((patch: Partial<IntermediateRestStopForm>) => void) | undefined,
+): void {
+  const abortRef = useRef<AbortController | null>(null);
+  const lastGeocodedAddressRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const rs = intermediateStop;
+    if (!rs?.enabled || !rs.address?.trim()) return;
+    if (!onSelectStop) return;
+
+    const trimmed = rs.address.trim();
+
+    const parsed = parseHighPrecisionCoordinateAddress(trimmed);
+    if (parsed) {
+      abortRef.current?.abort();
+      if (rs.lat === parsed.lat && rs.lon === parsed.lon) return;
+      onSelectStop({ lat: parsed.lat, lon: parsed.lon });
+      lastGeocodedAddressRef.current = trimmed;
+      return;
+    }
+
+    // Skip if we already geocoded this exact address and coords are set.
+    if (
+      rs.lat != null &&
+      rs.lon != null &&
+      lastGeocodedAddressRef.current === trimmed
+    )
+      return;
+
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    forwardGeocode(trimmed, ctrl.signal).then((result) => {
+      if (ctrl.signal.aborted || !result) return;
+      lastGeocodedAddressRef.current = trimmed;
+      onSelectStop({ lat: result.lat, lon: result.lon });
+    });
+
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intermediateStop?.enabled, intermediateStop?.address, onSelectStop]);
 }
 
 export function ScrollWheelActivator() {

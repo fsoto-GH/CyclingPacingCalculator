@@ -20,6 +20,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from pacing.api.auth.deps import _decode_token
 from pacing.api.config import settings
 
 router = APIRouter(prefix="/v1/cycling/rwgps/oauth", tags=["rwgps-oauth"])
@@ -61,8 +62,22 @@ async def oauth_start(
         description="The opener window's origin (window.location.origin). "
         "Passed through the OAuth flow and used as the postMessage targetOrigin.",
     ),
+    access_token: str = Query(
+        "",
+        description="Optional Supabase access token. Popup navigations cannot send "
+        "headers so the token is passed as a query parameter and verified server-side. "
+        "When omitted the OAuth flow proceeds unauthenticated (suitable for local/self-hosted use).",
+    ),
 ):
     """Redirect the popup to the RideWithGPS OAuth consent page."""
+    # Validate the Supabase token only when one is actually supplied.
+    # Self-hosted / local users who haven't configured Supabase can still
+    # connect their RideWithGPS account without being signed in.
+    if access_token:
+        try:
+            _decode_token(access_token)
+        except HTTPException:
+            raise
     if not settings.ridewithgps_client_id:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

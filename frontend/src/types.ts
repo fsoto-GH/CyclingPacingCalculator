@@ -10,11 +10,38 @@ export interface GpxTrackPoint {
   cumDist: number; // km from track start
 }
 
+/** % of total split distance in each absolute-grade bucket (2 % resolution). */
+export interface GradeBuckets {
+  b2: number; // (0,  2%]  ascent
+  b4: number; // (2,  4%]
+  b6: number; // (4,  6%]
+  b8: number; // (6,  8%]
+  b10: number; // (8,  10%]
+  b12: number; // (10, 12%]
+  b14: number; // (12, 14%]
+  b16: number; // (14, 16%]
+  b18: number; // (16, 18%]
+  b18plus: number; // > 18%
+  bn2: number; // (-2,  0]  descent / flat
+  bn4: number; // (-4, -2%]
+  bn6: number; // (-6, -4%]
+  bn8: number; // (-8, -6%]
+  bn10: number; // (-10, -8%]
+  bn12: number; // (-12, -10%]
+  bn14: number; // (-14, -12%]
+  bn16: number; // (-16, -14%]
+  bn18: number; // (-18, -16%]
+  bn18plus: number; // ≤ -18%
+}
+
 export interface SplitGpxProfile {
   elevGainM: number;
   elevLossM: number;
   avgGradePct: number;
   steepPct: number; // % of distance with grade > 5%
+  gradeBuckets: GradeBuckets;
+  minGradePct: number; // most negative (steepest descent)
+  maxGradePct: number; // most positive (steepest ascent)
   surface: string; // e.g. "paved" | "gravel" | "unknown"
   startLat: number;
   startLon: number;
@@ -116,14 +143,36 @@ export function makeDefaultDayHours(): DayHoursEntry {
 
 export interface RestStopForm {
   enabled: boolean;
-  backup: boolean;
   name: string;
   address: string;
   alt: string;
   lat?: number;
   lon?: number;
+  googlePlaceId?: string | null;
   sameHoursEveryDay: boolean;
   allDays: DayHoursEntry; // used when sameHoursEveryDay
+  perDay: [
+    DayHoursEntry,
+    DayHoursEntry,
+    DayHoursEntry,
+    DayHoursEntry,
+    DayHoursEntry,
+    DayHoursEntry,
+    DayHoursEntry,
+  ];
+}
+
+export interface IntermediateRestStopForm {
+  enabled: boolean;
+  distance: string; // user-unit distance string positioning the stop along the split
+  name: string;
+  address: string;
+  alt: string;
+  lat?: number;
+  lon?: number;
+  googlePlaceId?: string | null;
+  sameHoursEveryDay: boolean;
+  allDays: DayHoursEntry;
   perDay: [
     DayHoursEntry,
     DayHoursEntry,
@@ -145,6 +194,7 @@ export interface SplitForm {
   last_sub_split_threshold: string;
   sub_split_distances: string; // comma-separated
   rest_stop: RestStopForm;
+  intermediate_stop: IntermediateRestStopForm;
   down_time: string; // minutes
   moving_speed: string;
   adjustment_time: string; // minutes
@@ -170,6 +220,7 @@ export interface SegmentForm {
 
 export interface CourseForm {
   name?: string;
+  description?: string;
   gpxFileName?: string; // filename (no .gpx) of the associated GPX, for IDB restore on import
   rwgpsRouteId?: number | null; // RWGPS route ID used to re-fetch route tracks on reload/import
   unitSystem: UnitSystem;
