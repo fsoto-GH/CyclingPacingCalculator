@@ -52,7 +52,9 @@ import type { NearbyAmenity } from "../calculator/overpass";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
 import { useAppSettings } from "../AppSettingsContext";
-import { searchPlacesText } from "../api";
+import { searchAlongRoute, searchPlacesText } from "../api";
+import SearchAlongRouteModal from "./SearchAlongRouteModal";
+import { encodePolyline, sampleTrackForRoute } from "../utils";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -467,7 +469,12 @@ function ZoomableMarkers({
 function FitBounds({ bounds }: { bounds: LatLngBoundsExpression }) {
   const map = useMap();
   useEffect(() => {
-    map.fitBounds(bounds, { padding: [20, 20] });
+    try {
+      map.fitBounds(bounds, { padding: [20, 20] });
+    } catch {
+      // Silently ignore: can fire during unmount (StrictMode double-remove)
+      // or when bounds are degenerate (e.g. Infinity from an empty polyline).
+    }
   }, [map, bounds]);
   return null;
 }
@@ -480,7 +487,16 @@ function MapInvalidator() {
   useEffect(() => {
     map.invalidateSize();
     const container = map.getContainer();
-    const ro = new ResizeObserver(() => map.invalidateSize());
+    // Skip invalidateSize when the container is hidden (e.g. tab-panel--hidden
+    // applies display:none). Calling it on a 0×0 container corrupts Leaflet's
+    // internal centre/zoom state and causes "Invalid LatLng (NaN,NaN)" errors
+    // when the panel becomes visible again.
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) {
+        map.invalidateSize();
+      }
+    });
     ro.observe(container);
     return () => ro.disconnect();
   }, [map]);
@@ -559,10 +575,16 @@ export default function SplitEndpointMap({
     "main",
   );
   const { radiusM, selectedTypes, textQuery } = useContext(AmenityContext);
-  const { paidApisEnabled, enableGoogleMaps, enableGooglePlaces, user, userSettings } =
-    useAppSettings();
+  const {
+    paidApisEnabled,
+    enableGoogleMaps,
+    enableGooglePlaces,
+    user,
+    userSettings,
+  } = useAppSettings();
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [searchAlongRouteOpen, setSearchAlongRouteOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -744,6 +766,50 @@ export default function SplitEndpointMap({
       [maxLat + pad, maxLon + pad],
     ];
   }, [polyline, endLat, endLon, restStopCoords, intermediateStopCoords]);
+
+  const handleSearchAlongRoute = useCallback(
+    (query: string) => {
+      searchAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      searchAbortRef.current = ctrl;
+      setSearchLoading(true);
+      setSearchError(null);
+
+      const slice = sliceTrackPoints(gpxTrack, startKm, endKm);
+      const sampled = sampleTrackForRoute(slice, 1.0);
+      const encodedPolyline = encodePolyline(sampled);
+
+      searchAlongRoute(query, encodedPolyline, ctrl.signal)
+        .then((raw) => {
+          if (ctrl.signal.aborted) return;
+          const results: NearbyAmenity[] = raw.map((a) => ({
+            id: a.id,
+            name: a.name,
+            amenity: a.amenity,
+            distanceM: a.distance_m,
+            lat: a.lat,
+            lon: a.lon,
+            address: a.address,
+            streetLine: a.street_line,
+            hasLocality: a.has_locality,
+            hours: a.hours ? (a.hours as WeekHours) : null,
+            rawHours: a.raw_hours ?? null,
+            placeId: a.place_id ?? null,
+          }));
+          setAmenities(results);
+          setShowNearby(true);
+          setShowList(true);
+        })
+        .catch((err: unknown) => {
+          if ((err as { name?: string }).name === "AbortError") return;
+          setSearchError(
+            "Route search failed. Check your connection and try again.",
+          );
+        })
+        .finally(() => setSearchLoading(false));
+    },
+    [gpxTrack, startKm, endKm],
+  );
 
   const handleSearch = useCallback(
     async (
@@ -1613,6 +1679,18 @@ export default function SplitEndpointMap({
               <i className="fa-solid fa-magnifying-glass-location" />
             </button>
           )}
+          {/* Search along route */}
+          {paidApisEnabled && enableGooglePlaces && (
+            <button
+              type="button"
+              className="split-map-reset-btn"
+              onClick={() => setSearchAlongRouteOpen(true)}
+              title="Search along route"
+              aria-label="Search along route"
+            >
+              <i className="fa-solid fa-binoculars" />
+            </button>
+          )}
           {/* Wind overlay toggle button */}
           {splitHourlyWeather && splitHourlyWeather.length > 0 && (
             <button
@@ -1801,6 +1879,13 @@ export default function SplitEndpointMap({
             ))
           )}
         </div>
+      )}
+      {searchAlongRouteOpen && (
+        <SearchAlongRouteModal
+          open={searchAlongRouteOpen}
+          onClose={() => setSearchAlongRouteOpen(false)}
+          onSearch={handleSearchAlongRoute}
+        />
       )}
       {modalOpen && (
         <FindNearbyModal

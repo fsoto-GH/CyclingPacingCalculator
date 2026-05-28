@@ -6143,7 +6143,7 @@ dialog {
 .split-two-pane {
   display: flex;
   overflow: hidden;
-  height: 550px;
+  height: 650px;
 }
 
 /* Narrow desktop or mobile override: stack vertically */
@@ -6205,7 +6205,7 @@ dialog {
   min-width: 120px;
   display: flex;
   flex-direction: column;
-  padding: 0.5rem 0.5rem 0.5rem 0;
+  /* padding: 0.5rem 0.5rem 0.5rem 0; */
 }
 
 /* Results panel column — flex:1, scrollable, no border-right */
@@ -6380,7 +6380,7 @@ dialog {
 
 .split-endpoint-map-canvas {
   position: relative;
-  border-radius: 6px;
+  /* border-radius: 6px; */
   overflow: hidden;
   border: 1px solid #2e2e2e;
   width: 100%;

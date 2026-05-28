@@ -158,6 +158,19 @@ export async function searchPlacesText(
   return resp.data;
 }
 
+export async function searchAlongRoute(
+  query: string,
+  encodedPolyline: string,
+  signal?: AbortSignal,
+): Promise<NearbyAmenityResult[]> {
+  const resp = await axios.post<NearbyAmenityResult[]>(
+    "/v1/cycling/places_search_along_route",
+    { query, encoded_polyline: encodedPolyline },
+    { signal, headers: await authHeader() },
+  );
+  return resp.data;
+}
+
 // ── Weather (proxy) ───────────────────────────────────────────────────────────
 
 export async function getForecast(

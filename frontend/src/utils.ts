@@ -1,4 +1,4 @@
-import type { UnitSystem } from "./types";
+import type { GpxTrackPoint, UnitSystem } from "./types";
 
 /** Deterministic per-segment accent colours; cycles if more segments than entries. */
 export const SEGMENT_COLORS = [
@@ -153,4 +153,62 @@ export function formatHours(
     parts.push(`${s}s`);
   }
   return (negative ? "-" : "") + parts.join(" ");
+}
+
+// ── Google Polyline Algorithm ─────────────────────────────────────────────────
+
+/**
+ * Encode an array of [lat, lon] pairs into a Google Encoded Polyline string.
+ * https://developers.google.com/maps/documentation/utilities/polylinealgorithm
+ */
+export function encodePolyline(points: [number, number][]): string {
+  let result = "";
+  let prevLat = 0;
+  let prevLon = 0;
+
+  function encodeInt(v: number): string {
+    let s = v < 0 ? ~(v << 1) : v << 1;
+    let out = "";
+    while (s >= 0x20) {
+      out += String.fromCharCode((0x20 | (s & 0x1f)) + 63);
+      s >>= 5;
+    }
+    out += String.fromCharCode(s + 63);
+    return out;
+  }
+
+  for (const [lat, lon] of points) {
+    const scaledLat = Math.round(lat * 1e5);
+    const scaledLon = Math.round(lon * 1e5);
+    result += encodeInt(scaledLat - prevLat);
+    result += encodeInt(scaledLon - prevLon);
+    prevLat = scaledLat;
+    prevLon = scaledLon;
+  }
+
+  return result;
+}
+
+/**
+ * Sample a GPX track at a minimum interval for use as an encoded route polyline.
+ * Always includes the first and last point.
+ */
+export function sampleTrackForRoute(
+  track: GpxTrackPoint[],
+  intervalKm: number,
+): [number, number][] {
+  if (track.length === 0) return [];
+  const result: [number, number][] = [[track[0].lat, track[0].lon]];
+  let prevKm = track[0].cumDist;
+  for (let i = 1; i < track.length - 1; i++) {
+    if (track[i].cumDist - prevKm >= intervalKm) {
+      result.push([track[i].lat, track[i].lon]);
+      prevKm = track[i].cumDist;
+    }
+  }
+  if (track.length > 1) {
+    const last = track[track.length - 1];
+    result.push([last.lat, last.lon]);
+  }
+  return result;
 }
