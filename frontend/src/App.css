@@ -2396,6 +2396,12 @@ h4 {
   color: #ccc;
 }
 
+.rs-interm-dist {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ccc;
+}
+
 .rs-section-body {
   padding: 0.6rem 0.75rem;
   display: flex;
@@ -4053,7 +4059,6 @@ h4 {
 
 .signout-btn {
   padding: 5px 11px;
-  height: 30px;
   font-size: 12px;
   font-weight: 500;
   font-family: var(--font-body);
@@ -4075,7 +4080,6 @@ h4 {
 
 .signin-btn {
   padding: 5px 14px;
-  height: 30px;
   font-size: 12px;
   font-weight: 600;
   font-family: var(--font-body);
@@ -6673,6 +6677,15 @@ dialog {
   color: #ffffff;
 }
 
+.split-map-popup-name-link {
+  text-decoration: none;
+  color: inherit;
+}
+.split-map-popup-name-link:hover strong {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
 .split-map-popup-type-icon {
   font-size: 1rem;
   color: #aaaaaa;
@@ -7068,6 +7081,13 @@ path.polyline-clickable {
   color: #4ade80 !important;
   cursor: default;
   animation: use-btn-check 0.25s ease-out;
+}
+
+.split-map-amenity-use-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 /* Nominatim type badge shown in rest-stop popup */
@@ -8696,3 +8716,6 @@ path.polyline-clickable {
   color: #f59e0b;
 }
 
+.intermediate-stop-set {
+  border-right: 2px solid rgba(245, 159, 11, 0.786);
+}

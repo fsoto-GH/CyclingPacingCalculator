@@ -229,41 +229,68 @@ export default function GpxExportModal({
         }),
       );
 
-      // Collect rest stop waypoints from selected splits
-      const restStopWaypoints: GpxWaypoint[] = segments.flatMap((seg, si) =>
+      // Collect rest stop and intermediate stop waypoints from selected splits,
+      // in course order (intermediate mid-split comes before rest stop at split end).
+      const stopWaypoints: GpxWaypoint[] = segments.flatMap((seg, si) =>
         seg.splits.flatMap((split, sj) => {
           if (!checked[si]?.[sj]) return [];
-          const rs = split.rest_stop;
-          if (!rs.enabled || rs.lat == null || rs.lon == null) return [];
           const boundary = splitBoundariesKm[si]?.[sj];
-          const snapped =
-            boundary && gpxTrack.length > 0
-              ? findNearestTrackPoint(
-                  gpxTrack,
-                  rs.lat,
-                  rs.lon,
-                  boundary[0],
-                  boundary[1],
-                )
-              : null;
           const segLabel = seg.name?.trim() || `Segment ${si + 1}`;
           const splitLabel = split.name?.trim() || `Split ${sj + 1}`;
-          return [
-            {
+          const waypoints: GpxWaypoint[] = [];
+
+          // Intermediate stop (mid-split) — include first so waypoints follow course order
+          const is = split.intermediate_stop;
+          if (is?.enabled && is.lat != null && is.lon != null) {
+            const snapped =
+              boundary && gpxTrack.length > 0
+                ? findNearestTrackPoint(
+                    gpxTrack,
+                    is.lat,
+                    is.lon,
+                    boundary[0],
+                    boundary[1],
+                  )
+                : null;
+            waypoints.push({
+              name: `${is.name || "Intermediate Stop"} (${segLabel} / ${splitLabel})`,
+              lat: snapped?.lat ?? is.lat,
+              lon: snapped?.lon ?? is.lon,
+              description: buildRestStopDescription(is as RestStopForm),
+              symbol: "food",
+            });
+          }
+
+          // Rest stop (split end)
+          const rs = split.rest_stop;
+          if (rs.enabled && rs.lat != null && rs.lon != null) {
+            const snapped =
+              boundary && gpxTrack.length > 0
+                ? findNearestTrackPoint(
+                    gpxTrack,
+                    rs.lat,
+                    rs.lon,
+                    boundary[0],
+                    boundary[1],
+                  )
+                : null;
+            waypoints.push({
               name: `${rs.name} (${segLabel} / ${splitLabel})`,
               lat: snapped?.lat ?? rs.lat,
               lon: snapped?.lon ?? rs.lon,
               description: buildRestStopDescription(rs),
               symbol: "food",
-            } satisfies GpxWaypoint,
-          ];
+            });
+          }
+
+          return waypoints;
         }),
       );
 
       const trackName = defaultFileName.trim() || "Course";
       const safeFileName = trackName.replace(/[^a-z0-9_\-. ]/gi, "_");
       const allWaypoints = [
-        ...restStopWaypoints,
+        ...stopWaypoints,
         ...(gpxWaypoints ?? []),
         ...(includeRwgpsPois ? (rwgpsPois ?? []) : []),
         ...(includeRwgpsCoursePoints ? (rwgpsCoursePoints ?? []) : []),

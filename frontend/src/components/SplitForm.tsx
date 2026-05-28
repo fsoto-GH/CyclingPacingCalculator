@@ -10,7 +10,10 @@ import type {
   Mode,
 } from "../types";
 import { speedLabel, distanceLabel, formatHours } from "../utils";
-import { interpolateLatLon } from "../calculator/gpxParser";
+import {
+  interpolateLatLon,
+  findNearestTrackPoint,
+} from "../calculator/gpxParser";
 import { DEFAULT_INTERMEDIATE_REST_STOP } from "../defaults";
 import {
   buildDetailedNearDetail,
@@ -507,6 +510,42 @@ export default function SplitFormComponent({
     displayProfile?.startKm,
   ]);
 
+  // Distance from split start to the intermediate stop, in user units.
+  // Snaps via findNearestTrackPoint when lat/lon are present (stop may be off-route),
+  // otherwise falls back to intermediateKm (derived from the distance field).
+  const intermediateDistFromStart = useMemo(() => {
+    if (!intermediateStop.enabled) return null;
+    let cumKm: number | null = null;
+    if (
+      intermediateStop.lat != null &&
+      intermediateStop.lon != null &&
+      gpxTrack &&
+      gpxTrack.length > 0 &&
+      displayProfile
+    ) {
+      const snapped = findNearestTrackPoint(
+        gpxTrack,
+        intermediateStop.lat,
+        intermediateStop.lon,
+        displayProfile.startKm,
+        displayProfile.endKm,
+      );
+      if (snapped) cumKm = snapped.cumDist - displayProfile.startKm;
+    } else if (intermediateKm != null) {
+      cumKm = intermediateKm - (displayProfile?.startKm ?? 0);
+    }
+    if (cumKm == null) return null;
+    return unitSystem === "imperial" ? cumKm / KM_PER_MI : cumKm;
+  }, [
+    intermediateStop.enabled,
+    intermediateStop.lat,
+    intermediateStop.lon,
+    intermediateKm,
+    gpxTrack,
+    displayProfile,
+    unitSystem,
+  ]);
+
   return (
     <div
       className={`split-form${jumpHighlight ? " split-form--jump-highlight" : ""}`}
@@ -699,10 +738,14 @@ export default function SplitFormComponent({
                     {hasDist && (
                       <span className="split-header-city">
                         {etaInfo && (
+                          /* Display a yellow border if there is an intermediate stop */
                           <span
-                            className={`eta-badge eta-${etaInfo.status}`}
-                            title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
+                            className={`eta-badge eta-${etaInfo.status} ${value.intermediate_stop?.enabled ? "intermediate-stop-set" : ""}`}
+                            title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel}) ${value.intermediate_stop?.enabled ? `& "${value.intermediate_stop.name}" (${intermHoursInfo!.hoursLabel})` : ""}`}
                           >
+                            {value.rest_stop.enabled &&
+                              (value.rest_stop.name?.trim() || "Rest stop")}
+                            &mdash;
                             {etaInfo.status === "open" &&
                               (etaInfo.hoursLabel === "24 hours"
                                 ? "24/7"
@@ -710,11 +753,6 @@ export default function SplitFormComponent({
                             {etaInfo.status === "near-open" && "Near open"}
                             {etaInfo.status === "near-close" && "Near close"}
                             {etaInfo.status === "closed" && "Closed"}
-                          </span>
-                        )}
-                        {nearbyCity_fetching && (
-                          <span className="split-nearby-city--loading">
-                            (finding nearest city…) ·{" "}
                           </span>
                         )}
                         {!nearbyCity_fetching &&
@@ -1077,6 +1115,20 @@ export default function SplitFormComponent({
                       <span className="rs-toggle-label">
                         Intermediate Rest Stop
                       </span>
+                      {intermediateDistFromStart != null && (
+                        <span
+                          className="rs-interm-dist"
+                          title="Distance from split start to this stop (snapped to nearest track point)"
+                        >
+                          {` (~${intermediateDistFromStart.toLocaleString(
+                            undefined,
+                            {
+                              minimumFractionDigits: 1,
+                              maximumFractionDigits: 1,
+                            },
+                          )} ${dLabel})`}
+                        </span>
+                      )}
                     </div>
                     <label className="toggle-switch">
                       <input

@@ -2296,8 +2296,8 @@ function ProjectionSplit({
             {etaInfo && (
               <>
                 <span
-                  className={`eta-badge eta-${etaInfo.status}`}
-                  title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})`}
+                  className={`eta-badge eta-${etaInfo.status} ${formSplit?.intermediate_stop.enabled ? "intermediate-stop-set" : ""}`}
+                  title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel}) ${formSplit?.intermediate_stop?.enabled ? `& "${formSplit.intermediate_stop.name}" (${intermHoursInfo!.hoursLabel})` : ""}`}
                 >
                   {formSplit?.rest_stop.name && (
                     <span className="proj-segment-city">

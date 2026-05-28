@@ -37,25 +37,25 @@ export const MAP_TILE_LAYERS = {
   googleRoadmap: {
     label: "Google Maps",
     url: "__google_roadmap__",
-    attribution: "Map data &copy;2025 Google",
+    attribution: "Map data &copy;2026 Google",
     maxZoom: 20,
   },
   googleSatellite: {
     label: "Google Satellite",
     url: "__google_satellite__",
-    attribution: "Map data &copy;2025 Google",
+    attribution: "Map data &copy;2026 Google",
     maxZoom: 20,
   },
   googleTerrain: {
     label: "Google Terrain",
     url: "__google_terrain__",
-    attribution: "Map data &copy;2025 Google",
+    attribution: "Map data &copy;2026 Google",
     maxZoom: 20,
   },
   googleDark: {
     label: "Google Dark",
     url: "__google_dark__",
-    attribution: "Map data &copy;2025 Google",
+    attribution: "Map data &copy;2026 Google",
     maxZoom: 20,
   },
 } as const;

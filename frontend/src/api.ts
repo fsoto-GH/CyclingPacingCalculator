@@ -162,10 +162,19 @@ export async function searchAlongRoute(
   query: string,
   encodedPolyline: string,
   signal?: AbortSignal,
+  originLat?: number,
+  originLon?: number,
 ): Promise<NearbyAmenityResult[]> {
+  const body: Record<string, unknown> = {
+    query,
+    encoded_polyline: encodedPolyline,
+    ...(originLat !== undefined && originLon !== undefined
+      ? { origin_lat: originLat, origin_lon: originLon }
+      : {}),
+  };
   const resp = await axios.post<NearbyAmenityResult[]>(
     "/v1/cycling/places_search_along_route",
-    { query, encoded_polyline: encodedPolyline },
+    body,
     { signal, headers: await authHeader() },
   );
   return resp.data;

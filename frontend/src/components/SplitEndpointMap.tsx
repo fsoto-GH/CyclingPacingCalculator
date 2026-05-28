@@ -571,9 +571,12 @@ export default function SplitEndpointMap({
     lon: number;
     km: number;
   } | null>(null);
-  const [searchTarget, setSearchTarget] = useState<"main" | "intermediate">(
+  const [confirmTarget, setConfirmTarget] = useState<"main" | "intermediate">(
     "main",
   );
+  const [usedStopTarget, setUsedStopTarget] = useState<
+    "main" | "intermediate" | null
+  >(null);
   const { radiusM, selectedTypes, textQuery } = useContext(AmenityContext);
   const {
     paidApisEnabled,
@@ -583,6 +586,9 @@ export default function SplitEndpointMap({
     userSettings,
   } = useAppSettings();
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
+  const [searchKind, setSearchKind] = useState<"nearby" | "text" | "route">(
+    "nearby",
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const [searchAlongRouteOpen, setSearchAlongRouteOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -768,7 +774,7 @@ export default function SplitEndpointMap({
   }, [polyline, endLat, endLon, restStopCoords, intermediateStopCoords]);
 
   const handleSearchAlongRoute = useCallback(
-    (query: string) => {
+    (query: string, originPct: number) => {
       searchAbortRef.current?.abort();
       const ctrl = new AbortController();
       searchAbortRef.current = ctrl;
@@ -779,7 +785,24 @@ export default function SplitEndpointMap({
       const sampled = sampleTrackForRoute(slice, 1.0);
       const encodedPolyline = encodePolyline(sampled);
 
-      searchAlongRoute(query, encodedPolyline, ctrl.signal)
+      let originLat: number | undefined;
+      let originLon: number | undefined;
+      if (originPct > 0) {
+        const originKm = startKm + ((endKm - startKm) * originPct) / 100;
+        const pt = interpolateLatLon(gpxTrack, originKm);
+        if (pt) {
+          originLat = pt.lat;
+          originLon = pt.lon;
+        }
+      }
+
+      searchAlongRoute(
+        query,
+        encodedPolyline,
+        ctrl.signal,
+        originLat,
+        originLon,
+      )
         .then((raw) => {
           if (ctrl.signal.aborted) return;
           const results: NearbyAmenity[] = raw.map((a) => ({
@@ -796,6 +819,7 @@ export default function SplitEndpointMap({
             rawHours: a.raw_hours ?? null,
             placeId: a.place_id ?? null,
           }));
+          setSearchKind("route");
           setAmenities(results);
           setShowNearby(true);
           setShowList(true);
@@ -856,10 +880,10 @@ export default function SplitEndpointMap({
           .filter((r) => r.hours == null)
           .sort(byDistThenName);
         results = [...withHours, ...noHours];
+        setSearchKind("nearby");
         setAmenities(results);
         setShowNearby(true);
       } catch (err: unknown) {
-        if ((err as { name?: string }).name === "AbortError") return;
         const msg = (err as { message?: string }).message ?? "";
         if (msg.startsWith("OVERPASS_OOM:")) {
           setSearchError(
@@ -876,8 +900,12 @@ export default function SplitEndpointMap({
   );
 
   const runNearbySearch = useCallback(
-    (anchorLat: number, anchorLon: number, target: "main" | "intermediate") => {
-      setSearchTarget(target);
+    (
+      anchorLat: number,
+      anchorLon: number,
+      _target: "main" | "intermediate",
+    ) => {
+      mapRef.current?.flyTo([anchorLat, anchorLon], 14, { animate: false });
       searchCenterRef.current = { lat: anchorLat, lon: anchorLon };
       if (textQuery.trim() && enableGooglePlaces) {
         searchAbortRef.current?.abort();
@@ -909,6 +937,7 @@ export default function SplitEndpointMap({
               placeId: a.place_id ?? null,
             }));
             results.sort((a, b) => a.distanceM - b.distanceM);
+            setSearchKind("text");
             setAmenities(results);
             setShowNearby(true);
           })
@@ -926,19 +955,20 @@ export default function SplitEndpointMap({
     [textQuery, enableGooglePlaces, radiusM, handleSearch],
   );
 
-  function handleSelect(a: NearbyAmenity) {
+  function handleSelect(a: NearbyAmenity, target: "main" | "intermediate") {
     if (a.hours == null) {
       setConfirmStop(a);
+      setConfirmTarget(target);
       // showModal on next tick so the ref is rendered
       setTimeout(() => confirmDialogRef.current?.showModal(), 0);
       return;
     }
-    doSelect(a);
+    doSelect(a, target);
   }
 
-  function doSelect(a: NearbyAmenity) {
-    mapRef.current?.flyTo([a.lat, a.lon], 16);
-    const isIntermediate = searchTarget === "intermediate";
+  function doSelect(a: NearbyAmenity, target: "main" | "intermediate") {
+    mapRef.current?.flyTo([a.lat, a.lon], 14, { animate: false });
+    const isIntermediate = target === "intermediate";
     const callback = isIntermediate ? onSelectIntermediateStop : onSelectStop;
     if (!callback) return;
     const patch: Partial<RestStopForm> = {
@@ -959,7 +989,7 @@ export default function SplitEndpointMap({
       patch.sameHoursEveryDay = true;
       patch.allDays = { mode: "closed", opens: "06:00", closes: "22:00" };
     }
-    if (a.streetLine && a.hasLocality) {
+    if (a.streetLine && (a.hasLocality || a.placeId)) {
       callback({
         ...patch,
         address: a.address,
@@ -1134,7 +1164,10 @@ export default function SplitEndpointMap({
                       <button
                         type="button"
                         className="split-map-popup-btn split-map-popup-btn--grow"
-                        onClick={() => runNearbySearch(endLat, endLon, "main")}
+                        onClick={() => {
+                          runNearbySearch(endLat, endLon, "main");
+                          mapRef.current?.closePopup();
+                        }}
                       >
                         <i
                           className="fa-solid fa-magnifying-glass"
@@ -1206,7 +1239,10 @@ export default function SplitEndpointMap({
                       <button
                         type="button"
                         className="split-map-popup-btn split-map-popup-btn--grow"
-                        onClick={() => runNearbySearch(endLat, endLon, "main")}
+                        onClick={() => {
+                          runNearbySearch(endLat, endLon, "main");
+                          mapRef.current?.closePopup();
+                        }}
                       >
                         <i
                           className="fa-solid fa-magnifying-glass"
@@ -1285,13 +1321,14 @@ export default function SplitEndpointMap({
                       <button
                         type="button"
                         className="split-map-popup-btn split-map-popup-btn--grow"
-                        onClick={() =>
+                        onClick={() => {
                           runNearbySearch(
                             restStopCoords.lat,
                             restStopCoords.lon,
                             "main",
-                          )
-                        }
+                          );
+                          mapRef.current?.closePopup();
+                        }}
                       >
                         <i
                           className="fa-solid fa-magnifying-glass"
@@ -1375,13 +1412,14 @@ export default function SplitEndpointMap({
                       <button
                         type="button"
                         className="split-map-popup-btn split-map-popup-btn--grow"
-                        onClick={() =>
+                        onClick={() => {
                           runNearbySearch(
                             intermediateStopCoords.lat,
                             intermediateStopCoords.lon,
                             "intermediate",
-                          )
-                        }
+                          );
+                          mapRef.current?.closePopup();
+                        }}
                       >
                         <i
                           className="fa-solid fa-magnifying-glass"
@@ -1429,7 +1467,18 @@ export default function SplitEndpointMap({
                         className={`fa-solid ${AMENITY_FA_ICONS[a.amenity] ?? "fa-location-dot"} split-map-popup-type-icon`}
                         aria-hidden="true"
                       />
-                      <strong>{a.name}</strong>
+                      {a.placeId ? (
+                        <a
+                          href={`https://www.google.com/maps/place/?q=place_id:${a.placeId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="split-map-popup-name-link"
+                        >
+                          <strong>{a.name}</strong>
+                        </a>
+                      ) : (
+                        <strong>{a.name}</strong>
+                      )}
                     </div>
                     <div className="split-map-popup-type-badge">
                       {AMENITY_LABELS[a.amenity] ?? a.amenity}
@@ -1460,16 +1509,38 @@ export default function SplitEndpointMap({
                         </span>
                       ) : null}
                     </div>
-                    <button
-                      type="button"
-                      className="split-map-popup-btn"
-                      onClick={() => handleSelect(a)}
-                    >
-                      <i className="fa-solid fa-bookmark" aria-hidden="true" />{" "}
-                      {searchTarget === "intermediate"
-                        ? "Use as Intermediate Stop"
-                        : "Use as Rest Stop"}
-                    </button>
+                    <div className="split-map-popup-btn-row">
+                      <button
+                        type="button"
+                        className="split-map-popup-btn split-map-popup-btn--grow"
+                        onClick={() => {
+                          handleSelect(a, "main");
+                          mapRef.current?.closePopup();
+                        }}
+                      >
+                        <i
+                          className="fa-solid fa-bookmark"
+                          aria-hidden="true"
+                        />{" "}
+                        Rest Stop
+                      </button>
+                      {onSelectIntermediateStop && (
+                        <button
+                          type="button"
+                          className="split-map-popup-btn split-map-popup-btn--grow"
+                          onClick={() => {
+                            handleSelect(a, "intermediate");
+                            mapRef.current?.closePopup();
+                          }}
+                        >
+                          <i
+                            className="fa-solid fa-location-dot"
+                            aria-hidden="true"
+                          />{" "}
+                          Intermediate
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </Popup>
               </Marker>
@@ -1766,14 +1837,6 @@ export default function SplitEndpointMap({
           <div className="split-map-amenity-header">
             <span className="split-map-amenity-count">
               {amenities.length} stop{amenities.length !== 1 ? "s" : ""} found
-              {" · "}
-              <span
-                className={`split-map-amenity-target-label${searchTarget === "intermediate" ? " split-map-amenity-target-label--intermediate" : ""}`}
-              >
-                {searchTarget === "intermediate"
-                  ? "for Intermediate Rest Stop"
-                  : "for Rest Stop"}
-              </span>
             </span>
             <div className="split-map-amenity-header-actions">
               <a
@@ -1812,8 +1875,11 @@ export default function SplitEndpointMap({
           </div>
           {amenities.length === 0 ? (
             <div className="split-map-amenity-empty">
-              No stops found within {fmtDist(radiusM, unitSystem)}. Try
-              adjusting your search radius or stop types.
+              {searchKind === "route"
+                ? "No results found along the route. Try a different search term."
+                : searchKind === "text"
+                  ? `No results found. Try a different search term or adjusting your search radius.`
+                  : `No stops found within ${fmtDist(radiusM, unitSystem)}. Try adjusting your search radius or stop types.`}
             </div>
           ) : (
             amenities.map((a) => (
@@ -1859,22 +1925,48 @@ export default function SplitEndpointMap({
                     </span>
                   )}
                 </div>
-                <button
-                  type="button"
-                  className={`split-map-amenity-use-btn${usedStopId === a.id ? " split-map-amenity-use-btn--used" : ""}`}
-                  onClick={() => {
-                    handleSelect(a);
-                    if (usedStopTimerRef.current !== null)
-                      clearTimeout(usedStopTimerRef.current);
-                    setUsedStopId(a.id);
-                    usedStopTimerRef.current = setTimeout(
-                      () => setUsedStopId(null),
-                      1500,
-                    );
-                  }}
-                >
-                  {usedStopId === a.id ? "✓" : "Use"}
-                </button>
+                <div className="split-map-amenity-use-col">
+                  <button
+                    type="button"
+                    className={`split-map-amenity-use-btn${usedStopId === a.id && usedStopTarget === "main" ? " split-map-amenity-use-btn--used" : ""}`}
+                    onClick={() => {
+                      handleSelect(a, "main");
+                      if (usedStopTimerRef.current !== null)
+                        clearTimeout(usedStopTimerRef.current);
+                      setUsedStopId(a.id);
+                      setUsedStopTarget("main");
+                      usedStopTimerRef.current = setTimeout(() => {
+                        setUsedStopId(null);
+                        setUsedStopTarget(null);
+                      }, 1500);
+                    }}
+                  >
+                    {usedStopId === a.id && usedStopTarget === "main"
+                      ? "✓"
+                      : "Rest"}
+                  </button>
+                  {onSelectIntermediateStop && (
+                    <button
+                      type="button"
+                      className={`split-map-amenity-use-btn${usedStopId === a.id && usedStopTarget === "intermediate" ? " split-map-amenity-use-btn--used" : ""}`}
+                      onClick={() => {
+                        handleSelect(a, "intermediate");
+                        if (usedStopTimerRef.current !== null)
+                          clearTimeout(usedStopTimerRef.current);
+                        setUsedStopId(a.id);
+                        setUsedStopTarget("intermediate");
+                        usedStopTimerRef.current = setTimeout(() => {
+                          setUsedStopId(null);
+                          setUsedStopTarget(null);
+                        }, 1500);
+                      }}
+                    >
+                      {usedStopId === a.id && usedStopTarget === "intermediate"
+                        ? "✓"
+                        : "Interm."}
+                    </button>
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -1919,6 +2011,7 @@ export default function SplitEndpointMap({
                     placeId: a.place_id ?? null,
                   }));
                   results.sort((a, b) => a.distanceM - b.distanceM);
+                  setSearchKind("text");
                   setAmenities(results);
                   setShowNearby(true);
                 })
@@ -1975,9 +2068,10 @@ export default function SplitEndpointMap({
               className="action-btn action-btn-export"
               onClick={() => {
                 const stop = confirmStop;
+                const target = confirmTarget;
                 confirmDialogRef.current?.close();
                 setConfirmStop(null);
-                doSelect(stop);
+                doSelect(stop, target);
               }}
             >
               Use Anyway

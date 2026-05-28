@@ -16,6 +16,7 @@ import {
   useMap,
   AttributionControl,
 } from "react-leaflet";
+import { divIcon } from "leaflet";
 import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
 import type { Map as LeafletMap } from "leaflet";
 import type { GpxTrackPoint, RestStopForm, UnitSystem } from "../types";
@@ -92,6 +93,24 @@ function formatHoursCompact(hours: WeekHours | null): string {
       return `${g.label}: ${fmtTimeCompact(g.entry.opens)}–${fmtTimeCompact(g.entry.closes)}`;
     })
     .join(" · ");
+}
+
+function makeAmenityIcon(amenity: string, hasHours: boolean, is24h = false) {
+  const faIcon = AMENITY_FA_ICONS[amenity] ?? "fa-location-dot";
+  const color = AMENITY_COLORS[amenity] ?? "#94a3b8";
+  const cls = is24h
+    ? "split-amenity-pin split-amenity-pin--24h"
+    : `split-amenity-pin${hasHours ? "" : " split-amenity-pin--no-hours"}`;
+  const style = is24h
+    ? `background:linear-gradient(135deg,${color} 50%,#4ade80 50%);color:#fff;border-color:rgba(255,255,255,0.3)`
+    : `color:${color}`;
+  return divIcon({
+    html: `<div class="${cls}" style="${style}"><i class="fa-solid ${faIcon}"></i></div>`,
+    className: "",
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -13],
+  });
 }
 
 /** Small icon using Font Awesome with emoji fallback */
@@ -508,7 +527,7 @@ export default function TransitSegmentMap({
   }
 
   function doSelect(a: NearbyAmenity) {
-    mapRef.current?.flyTo([a.lat, a.lon], 16);
+    mapRef.current?.flyTo([a.lat, a.lon], 14, { animate: false });
     const patch: Partial<RestStopForm> = {
       enabled: true,
       name: a.name,
@@ -526,7 +545,7 @@ export default function TransitSegmentMap({
       patch.sameHoursEveryDay = true;
       patch.allDays = { mode: "closed", opens: "06:00", closes: "22:00" };
     }
-    if (a.streetLine && a.hasLocality) {
+    if (a.streetLine && (a.hasLocality || a.placeId)) {
       onSelectStop?.({ ...patch, address: a.address });
       return;
     }
@@ -698,19 +717,14 @@ export default function TransitSegmentMap({
           {/* Nearby amenity pins */}
           {showNearby &&
             amenities?.map((a) => (
-              <CircleMarker
+              <Marker
                 key={a.id}
-                center={[a.lat, a.lon]}
-                radius={7}
-                pathOptions={{
-                  color: "#1a1a2e",
-                  weight: 1.5,
-                  fillColor: AMENITY_COLORS[a.amenity] ?? "#94a3b8",
-                  fillOpacity: 0.95,
-                  ...(a.hours == null
-                    ? { dashArray: "4 4", color: "#64748b" }
-                    : {}),
-                }}
+                position={[a.lat, a.lon]}
+                icon={makeAmenityIcon(
+                  a.amenity,
+                  a.hours != null,
+                  a.hours?.every((d) => d.mode === "24h") ?? false,
+                )}
               >
                 <Popup>
                   <div className="split-map-popup">
@@ -719,7 +733,18 @@ export default function TransitSegmentMap({
                         amenity={a.amenity}
                         className="split-map-popup-type-icon"
                       />
-                      <strong>{a.name}</strong>
+                      {a.placeId ? (
+                        <a
+                          href={`https://www.google.com/maps/place/?q=place_id:${a.placeId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="split-map-popup-name-link"
+                        >
+                          <strong>{a.name}</strong>
+                        </a>
+                      ) : (
+                        <strong>{a.name}</strong>
+                      )}
                     </div>
                     <div className="split-map-popup-type-badge">
                       {AMENITY_LABELS[a.amenity] ?? a.amenity}
@@ -765,7 +790,7 @@ export default function TransitSegmentMap({
                     )}
                   </div>
                 </Popup>
-              </CircleMarker>
+              </Marker>
             ))}
         </MapContainer>
 

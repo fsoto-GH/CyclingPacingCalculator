@@ -3128,14 +3128,18 @@ export default function CourseForm() {
                   </button>
                   <button
                     type="button"
-                    className="signout-btn"
+                    className="signout-btn nav-btn"
                     onClick={logout}
                   >
                     Sign out
                   </button>
                 </>
               ) : (
-                <button type="button" className="signin-btn" onClick={login}>
+                <button
+                  type="button"
+                  className="signin-btn nav-btn"
+                  onClick={login}
+                >
                   Log in with Google
                 </button>
               )}

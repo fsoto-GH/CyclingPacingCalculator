@@ -82,6 +82,8 @@ async def get_google_tile_session(
         "language": "en-US",
         "region": "US",
     }
+    if map_type == "terrain":
+        payload["layerTypes"] = ["layerRoadmap"]
     if map_type == "dark":
         payload["styles"] = _DARK_MAP_STYLES
     
@@ -93,6 +95,7 @@ async def get_google_tile_session(
         )
 
     if resp.status_code != 200:
+        print(f"Google Maps tile session API returned {resp.status_code}: {resp.text}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to create Google Maps tile session.",

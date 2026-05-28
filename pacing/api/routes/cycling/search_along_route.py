@@ -7,6 +7,8 @@ the response contains places biased to that route via searchAlongRouteParameters
 
 Requires enable_google_places = True on the caller's account.
 """
+from typing import Optional
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -25,11 +27,15 @@ router = APIRouter(prefix="/v1/cycling", tags=["cycling"])
 class SearchAlongRouteRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=200)
     encoded_polyline: str = Field(..., min_length=1, max_length=32_000)
+    origin_lat: Optional[float] = Field(None, ge=-90, le=90)
+    origin_lon: Optional[float] = Field(None, ge=-180, le=180)
 
 
 async def _query_google_places_along_route(
     query: str,
     encoded_polyline: str,
+    origin_lat: Optional[float] = None,
+    origin_lon: Optional[float] = None,
 ) -> list[NearbyAmenity]:
     """
     Call Google Places Text Search (New) API with searchAlongRouteParameters.
@@ -59,7 +65,7 @@ async def _query_google_places_along_route(
             "places.regularOpeningHours,places.types"
         ),
     }
-    body = {
+    body: dict = {
         "textQuery": query,
         "searchAlongRouteParameters": {
             "polyline": {
@@ -67,6 +73,14 @@ async def _query_google_places_along_route(
             }
         },
     }
+    if origin_lat is not None and origin_lon is not None:
+        print(f"Using origin for searchAlongRouteParameters: {origin_lat}, {origin_lon}")
+        body["routingParameters"] = {
+            "origin": {
+                "latitude": origin_lat,
+                "longitude": origin_lon,
+            }
+        }
 
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(url, json=body, headers=headers)
@@ -137,7 +151,10 @@ async def places_search_along_route(
         )
     try:
         return await _query_google_places_along_route(
-            body.query, body.encoded_polyline
+            body.query,
+            body.encoded_polyline,
+            origin_lat=body.origin_lat,
+            origin_lon=body.origin_lon,
         )
     except Exception as exc:
         raise HTTPException(
