@@ -170,6 +170,8 @@ When your account has `enable_google_places` enabled, a **Google Places text sea
 | `RIDEWITHGPS_CLIENT_ID`        | Backend        | No                     | RideWithGPS OAuth client ID                                                               |
 | `RIDEWITHGPS_CLIENT_SECRET`    | Backend        | No                     | RideWithGPS OAuth client secret                                                           |
 | `SUPABASE_URL`                 | Backend        | If SF=true             | Supabase project URL (for token verification)                                             |
+| `FRONTEND_URL`                 | Backend        | Yes (prod)             | Primary frontend origin used by CORS and auth flows                                       |
+| `FRONTEND_URLS`                | Backend        | No                     | Comma-separated extra frontend origins (use when hosting on both Render and GitHub Pages) |
 | `DATABASE_URL_LOCAL`           | Backend        | If IS_LOCAL            | PostgreSQL connection string for local DB                                                 |
 | `DATABASE_URL_SUPABASE`        | Backend        | If !IS_LOCAL           | PostgreSQL connection string for Supabase DB                                              |
 | `IS_LOCAL`                     | Backend        | No                     | `true` = use local Docker DB; `false` = use Supabase DB                                   |

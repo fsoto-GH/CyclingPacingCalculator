@@ -24,13 +24,15 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Cycling Pacing Calculator API", version="1.0.0")
 
+_local_dev_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+_cors_origins = list(dict.fromkeys(settings.allowed_frontend_origins + _local_dev_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.frontend_url,
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

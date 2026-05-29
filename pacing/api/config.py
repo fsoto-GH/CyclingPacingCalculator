@@ -41,6 +41,19 @@ class Settings(BaseSettings):
 
     # Frontend / CORS origin.
     frontend_url: str = "http://localhost:5173"
+    # Optional comma-separated list of additional frontend origins.
+    # Example:
+    # FRONTEND_URLS=https://cyclingpacingcalculator.onrender.com,https://fsoto-gh.github.io
+    frontend_urls: Optional[str] = None
+
+    @property
+    def allowed_frontend_origins(self) -> list[str]:
+        origins = [self.frontend_url]
+        if self.frontend_urls:
+            extras = [x.strip() for x in self.frontend_urls.split(",") if x.strip()]
+            origins.extend(extras)
+        # Preserve order while removing duplicates
+        return list(dict.fromkeys(origins))
 
     # ── Paid / premium API keys (all optional) ────────────────────────────────
     # Google Places API for higher-quality nearby-stop data.
