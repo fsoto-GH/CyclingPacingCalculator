@@ -752,9 +752,8 @@ export default function SplitFormComponent({
                     {hasDist && (
                       <span className="split-header-city">
                         {etaInfo && (
-                          /* Display a yellow border if there is an intermediate stop */
                           <span
-                            className={`eta-badge eta-${etaInfo.status} ${value.intermediate_stop?.enabled ? "intermediate-stop-set" : ""}`}
+                            className={`eta-badge eta-${etaInfo.status}`}
                             title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel}) ${value.intermediate_stop?.enabled ? `& "${value.intermediate_stop.name}" (${intermHoursInfo!.hoursLabel})` : ""}`}
                           >
                             {value.rest_stop.enabled &&
@@ -767,6 +766,15 @@ export default function SplitFormComponent({
                             {etaInfo.status === "near-open" && "Near open"}
                             {etaInfo.status === "near-close" && "Near close"}
                             {etaInfo.status === "closed" && "Closed"}
+                          </span>
+                        )}
+                        {value.intermediate_stop?.enabled && (
+                          <span
+                            className="intermediate-stop-asterisk"
+                            title={`Intermediate stop set${value.intermediate_stop.name ? `: ${value.intermediate_stop.name}` : ""}`}
+                            aria-label="Intermediate stop set"
+                          >
+                            *
                           </span>
                         )}
                         {!nearbyCity_fetching &&

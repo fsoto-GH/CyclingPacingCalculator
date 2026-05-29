@@ -5113,7 +5113,7 @@ dialog {
 /* ── ETA Badge ── */
 .eta-badge {
   display: inline-block;
-  margin-right: 0.5rem;
+  margin-right: 0.2rem;
   padding: 0.1rem 0.5rem;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -8756,6 +8756,22 @@ path.polyline-clickable {
   color: #f59e0b;
 }
 
-.intermediate-stop-set {
-  border-right: 2px solid rgba(245, 159, 11, 0.786);
+.intermediate-stop-asterisk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.92em;
+  line-height: 1;
+  color: #f59e0b;
+  text-shadow: 0 0 4px rgba(245, 158, 11, 0.35);
+}
+
+/* Keep the stop marker spacing visually consistent across Planning and Projections. */
+.split-header-city .intermediate-stop-asterisk {
+  margin-inline: 0.3rem;
+}
+
+.projections-view .proj-split-header-status .intermediate-stop-asterisk {
+  margin-inline: 0;
 }

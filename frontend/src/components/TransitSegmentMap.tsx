@@ -185,17 +185,63 @@ function formatDistFromKm(km: number, unitSystem: UnitSystem): string {
   })} km`;
 }
 
+function isFiniteCoord(v: number): boolean {
+  return Number.isFinite(v);
+}
+
+function isValidLatLon(lat: number, lon: number): boolean {
+  return (
+    isFiniteCoord(lat) &&
+    isFiniteCoord(lon) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lon >= -180 &&
+    lon <= 180
+  );
+}
+
+function sanitizePoint(
+  point: { lat: number; lon: number } | null,
+): { lat: number; lon: number } | null {
+  if (!point) return null;
+  if (!isValidLatLon(point.lat, point.lon)) return null;
+  return point;
+}
+
 function FitBoundsOnMount({ bounds }: { bounds: LatLngBoundsExpression }) {
   const map = useMap();
   const hasFitRef = useRef(false);
   useEffect(() => {
     if (hasFitRef.current) return;
-    try {
-      map.fitBounds(bounds, { padding: [24, 24] });
-      hasFitRef.current = true;
-    } catch {
-      // Ignore transient errors during StrictMode unmount/remount.
-    }
+    let cancelled = false;
+    let rafId: number | null = null;
+
+    const tryFit = () => {
+      if (cancelled || hasFitRef.current) return;
+      const container = map.getContainer();
+      const rect = container.getBoundingClientRect();
+      if (
+        container.offsetParent === null ||
+        rect.width <= 1 ||
+        rect.height <= 1
+      ) {
+        rafId = requestAnimationFrame(tryFit);
+        return;
+      }
+      try {
+        map.fitBounds(bounds, { padding: [24, 24] });
+        hasFitRef.current = true;
+      } catch {
+        // Hidden or not-ready maps can transiently throw; retry next frame.
+        rafId = requestAnimationFrame(tryFit);
+      }
+    };
+
+    tryFit();
+    return () => {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, [map, bounds]);
   return null;
 }
@@ -206,7 +252,20 @@ function MapInvalidator() {
     let alive = true;
     const invalidate = () => {
       if (!alive) return;
-      map.invalidateSize();
+      const container = map.getContainer();
+      const rect = container.getBoundingClientRect();
+      if (
+        container.offsetParent === null ||
+        rect.width <= 1 ||
+        rect.height <= 1
+      ) {
+        return;
+      }
+      try {
+        map.invalidateSize();
+      } catch {
+        // Ignore transient layout races while the map is mounting/unmounting.
+      }
     };
 
     invalidate();
@@ -318,33 +377,42 @@ export default function TransitSegmentMap({
   }, [mapStyle]);
 
   // ── Route geometry ─────────────────────────────────────────────────────────
-  const minKm = Math.min(startKm, endKm);
-  const maxKm = Math.max(startKm, endKm);
+  const safeStartKm = isFiniteCoord(startKm) ? startKm : null;
+  const safeEndKm = isFiniteCoord(endKm) ? endKm : null;
+  const minKm =
+    safeStartKm != null && safeEndKm != null
+      ? Math.min(safeStartKm, safeEndKm)
+      : null;
+  const maxKm =
+    safeStartKm != null && safeEndKm != null
+      ? Math.max(safeStartKm, safeEndKm)
+      : null;
 
   const polyline = useMemo(() => {
+    if (minKm == null || maxKm == null) return [] as [number, number][];
     const slice = sliceTrackPoints(gpxTrack, minKm, maxKm);
-    return decimateTrack(slice);
+    return decimateTrack(slice).filter((p) => isValidLatLon(p[0], p[1]));
   }, [gpxTrack, minKm, maxKm]);
 
-  const startPoint = useMemo(
-    () =>
-      interpolateLatLon(gpxTrack, startKm) ??
-      (polyline.length > 0
-        ? { lat: polyline[0][0], lon: polyline[0][1] }
-        : null),
-    [gpxTrack, startKm, polyline],
-  );
-  const endPoint = useMemo(
-    () =>
-      interpolateLatLon(gpxTrack, endKm) ??
-      (polyline.length > 0
+  const startPoint = useMemo(() => {
+    const fromTrack =
+      safeStartKm != null ? interpolateLatLon(gpxTrack, safeStartKm) : null;
+    const fallback =
+      polyline.length > 0 ? { lat: polyline[0][0], lon: polyline[0][1] } : null;
+    return sanitizePoint(fromTrack ?? fallback);
+  }, [gpxTrack, safeStartKm, polyline]);
+  const endPoint = useMemo(() => {
+    const fromTrack =
+      safeEndKm != null ? interpolateLatLon(gpxTrack, safeEndKm) : null;
+    const fallback =
+      polyline.length > 0
         ? {
             lat: polyline[polyline.length - 1][0],
             lon: polyline[polyline.length - 1][1],
           }
-        : null),
-    [gpxTrack, endKm, polyline],
-  );
+        : null;
+    return sanitizePoint(fromTrack ?? fallback);
+  }, [gpxTrack, safeEndKm, polyline]);
 
   const endLat = endPoint?.lat ?? 0;
   const endLon = endPoint?.lon ?? 0;
@@ -366,7 +434,12 @@ export default function TransitSegmentMap({
   const restStopIcon = useMemo(() => makeRestStopIcon(), []);
 
   const restStopCoords = useMemo(() => {
-    if (restStop?.enabled && restStop?.lat != null && restStop?.lon != null) {
+    if (
+      restStop?.enabled &&
+      restStop?.lat != null &&
+      restStop?.lon != null &&
+      isValidLatLon(restStop.lat, restStop.lon)
+    ) {
       return { lat: restStop.lat, lon: restStop.lon };
     }
     return null;
@@ -392,6 +465,15 @@ export default function TransitSegmentMap({
     const minLon = Math.min(...lons);
     const maxLon = Math.max(...lons);
 
+    if (
+      !isFiniteCoord(minLat) ||
+      !isFiniteCoord(maxLat) ||
+      !isFiniteCoord(minLon) ||
+      !isFiniteCoord(maxLon)
+    ) {
+      return null;
+    }
+
     const latPad = Math.max((maxLat - minLat) * 0.08, 0.0015);
     const lonPad = Math.max((maxLon - minLon) * 0.08, 0.0015);
 
@@ -400,6 +482,11 @@ export default function TransitSegmentMap({
       [maxLat + latPad, maxLon + lonPad],
     ];
   }, [startPoint, endPoint, polyline, restStopCoords]);
+
+  const safeAmenities = useMemo(
+    () => amenities?.filter((a) => isValidLatLon(a.lat, a.lon)) ?? null,
+    [amenities],
+  );
 
   // ── Fullscreen ─────────────────────────────────────────────────────────────
   async function toggleFullscreen() {
@@ -541,6 +628,7 @@ export default function TransitSegmentMap({
   }
 
   function doSelect(a: NearbyAmenity) {
+    if (!isValidLatLon(a.lat, a.lon)) return;
     mapRef.current?.flyTo([a.lat, a.lon], 14, { animate: false });
     const patch: Partial<RestStopForm> = {
       enabled: true,
@@ -639,7 +727,7 @@ export default function TransitSegmentMap({
             <Popup>
               <strong>Transit start</strong>
               <br />
-              {formatDistFromKm(startKm, unitSystem)}
+              {formatDistFromKm(safeStartKm ?? 0, unitSystem)}
               <br />
               <div className="split-map-popup-links">
                 <a
@@ -675,7 +763,7 @@ export default function TransitSegmentMap({
             <Popup>
               <strong>Transit end</strong>
               <br />
-              {formatDistFromKm(endKm, unitSystem)}
+              {formatDistFromKm(safeEndKm ?? 0, unitSystem)}
               <br />
               <div className="split-map-popup-links">
                 <a
@@ -731,7 +819,7 @@ export default function TransitSegmentMap({
 
           {/* Nearby amenity pins */}
           {showNearby &&
-            amenities?.map((a) => (
+            safeAmenities?.map((a) => (
               <Marker
                 key={a.id}
                 position={[a.lat, a.lon]}
@@ -979,7 +1067,8 @@ export default function TransitSegmentMap({
         <div className="split-map-amenity-list">
           <div className="split-map-amenity-header">
             <span className="split-map-amenity-count">
-              {amenities.length} stop{amenities.length !== 1 ? "s" : ""} found
+              {safeAmenities?.length ?? 0} stop
+              {(safeAmenities?.length ?? 0) !== 1 ? "s" : ""} found
             </span>
             <div className="split-map-amenity-header-actions">
               <a
@@ -1016,13 +1105,13 @@ export default function TransitSegmentMap({
               </button>
             </div>
           </div>
-          {amenities.length === 0 ? (
+          {(safeAmenities?.length ?? 0) === 0 ? (
             <div className="split-map-amenity-empty">
               No stops found within {fmtDist(radiusM, unitSystem)}. Try
               adjusting your search radius or stop types.
             </div>
           ) : (
-            amenities.map((a) => (
+            safeAmenities?.map((a) => (
               <div key={a.id} className="split-map-amenity-row">
                 <span className="split-map-amenity-icon">
                   <AmenityFaIcon amenity={a.amenity} />

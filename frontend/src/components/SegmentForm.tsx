@@ -35,6 +35,7 @@ import { FieldError } from "./FieldError";
 import NumberInput from "./NumberInput";
 import ConfirmModal from "./ConfirmModal";
 import InsertZone from "./InsertZone";
+import MapErrorBoundary from "./MapErrorBoundary";
 
 interface SegmentFormProps {
   segIndex: number;
@@ -780,27 +781,33 @@ export default function SegmentFormComponent({
                             <div className="map-loading">Loading map…</div>
                           }
                         >
-                          <TransitSegmentMap
-                            gpxTrack={gpxTrack}
-                            startKm={firstProfile.startKm}
-                            endKm={lastProfile.endKm}
-                            unitSystem={unitSystem}
-                            segmentColor={segColor}
-                            restStop={transitSplit.rest_stop}
-                            onSelectStop={(patch) =>
-                              update({
-                                splits: [
-                                  {
-                                    ...transitSplit,
-                                    rest_stop: {
-                                      ...transitSplit.rest_stop,
-                                      ...patch,
+                          <MapErrorBoundary
+                            boundaryName={`segment-${segIndex}-transit-map`}
+                            resetKey={`${segIndex}:${firstProfile.startKm}:${lastProfile.endKm}`}
+                            fallbackText="Transit map unavailable"
+                          >
+                            <TransitSegmentMap
+                              gpxTrack={gpxTrack}
+                              startKm={firstProfile.startKm}
+                              endKm={lastProfile.endKm}
+                              unitSystem={unitSystem}
+                              segmentColor={segColor}
+                              restStop={transitSplit.rest_stop}
+                              onSelectStop={(patch) =>
+                                update({
+                                  splits: [
+                                    {
+                                      ...transitSplit,
+                                      rest_stop: {
+                                        ...transitSplit.rest_stop,
+                                        ...patch,
+                                      },
                                     },
-                                  },
-                                ],
-                              })
-                            }
-                          />
+                                  ],
+                                })
+                              }
+                            />
+                          </MapErrorBoundary>
                         </Suspense>
                       );
                     })()}
