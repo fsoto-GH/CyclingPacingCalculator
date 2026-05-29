@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: cycling-pacing-calculator
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: /bin/sh -c 'uvicorn pacing.api.main:app --host 0.0.0.0 --port ${PORT:-10000}'
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: IS_LOCAL
+        value: "false"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: "lax"
+      - key: VITE_ENABLE_SERVER_FUNCTIONS
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: RIDEWITHGPS_API_KEY
+        sync: false
+      - key: RIDEWITHGPS_CLIENT_ID
+        sync: false
+      - key: RIDEWITHGPS_CLIENT_SECRET
+        sync: false
