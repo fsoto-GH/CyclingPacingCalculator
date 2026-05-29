@@ -39,7 +39,6 @@ _HARDCODED_ALLOWED: set[str] = {
 
 def _callback_url(request: Request) -> str:
     """Absolute URL of this backend's OAuth callback endpoint."""
-    print(request.base_url)
     return str(request.base_url).rstrip("/") + "/v1/cycling/rwgps/oauth/callback"
 
 
@@ -85,8 +84,6 @@ async def oauth_start(
             detail="RIDEWITHGPS_CLIENT_ID is not configured on this server.",
         )
     
-    print(_callback_url(request))
-
     qs = urllib.parse.urlencode(
         {
             "client_id": settings.ridewithgps_client_id,
