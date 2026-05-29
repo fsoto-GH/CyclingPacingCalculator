@@ -8,6 +8,7 @@ import type {
   SegmentForm,
   DayHoursEntry,
   SubSplitMode,
+  SplitGpxProfile,
 } from "./types";
 import { tzLocalStringToUtcIso } from "./utils";
 import { minutesToSeconds, parseOptionalFloat } from "./utils";
@@ -61,6 +62,7 @@ interface CourseSubSplitDefaults {
 function serializeSplit(
   split: SplitForm,
   courseDefaults: CourseSubSplitDefaults,
+  detectedEndTimezone?: string | null,
 ): SplitPayload {
   const effectiveMode: SubSplitMode = split.sub_split_override
     ? split.sub_split_mode
@@ -105,8 +107,12 @@ function serializeSplit(
   const speed = parseOptionalFloat(split.moving_speed);
   if (speed !== null) payload.moving_speed = speed;
 
-  if (split.differentTimezone && split.timezone) {
-    payload.end_timezone = split.timezone;
+  const resolvedEndTimezone =
+    split.differentTimezone && split.timezone
+      ? split.timezone
+      : (detectedEndTimezone ?? null);
+  if (resolvedEndTimezone) {
+    payload.end_timezone = resolvedEndTimezone;
   }
 
   return payload;
@@ -115,6 +121,7 @@ function serializeSplit(
 function serializeSegment(
   seg: SegmentForm,
   courseDefaults: CourseSubSplitDefaults,
+  segGpxProfiles?: (SplitGpxProfile | null)[] | null,
 ): SegmentPayload {
   if (seg.nullified) {
     const transitFormSplit = seg.splits[0];
@@ -125,8 +132,16 @@ function serializeSegment(
       adjustment_time: 0,
     };
 
-    if (transitFormSplit?.differentTimezone && transitFormSplit.timezone) {
-      transitSplit.end_timezone = transitFormSplit.timezone;
+    const detectedTransitEndTimezone =
+      segGpxProfiles && segGpxProfiles.length > 0
+        ? (segGpxProfiles[segGpxProfiles.length - 1]?.endTimezone ?? null)
+        : null;
+    const resolvedTransitEndTimezone =
+      transitFormSplit?.differentTimezone && transitFormSplit.timezone
+        ? transitFormSplit.timezone
+        : detectedTransitEndTimezone;
+    if (resolvedTransitEndTimezone) {
+      transitSplit.end_timezone = resolvedTransitEndTimezone;
     }
 
     const restStop = transitFormSplit
@@ -149,7 +164,13 @@ function serializeSegment(
 
   const payload: SegmentPayload = {
     name: seg.name?.trim() || null,
-    splits: seg.splits.map((s) => serializeSplit(s, courseDefaults)),
+    splits: seg.splits.map((s, splitIdx) =>
+      serializeSplit(
+        s,
+        courseDefaults,
+        segGpxProfiles?.[splitIdx]?.endTimezone ?? null,
+      ),
+    ),
     sleep_time: minutesToSeconds(seg.sleep_time) ?? 0,
     no_end_down_time: !seg.include_end_down_time,
   };
@@ -169,7 +190,10 @@ function serializeSegment(
   return payload;
 }
 
-export function serializeCourse(form: CourseForm): CoursePayload {
+export function serializeCourse(
+  form: CourseForm,
+  gpxProfiles?: (SplitGpxProfile[] | null)[] | null,
+): CoursePayload {
   const courseDefaults: CourseSubSplitDefaults = {
     sub_split_mode: form.sub_split_mode ?? "hour",
     sub_split_count: form.sub_split_count ?? "1",
@@ -178,7 +202,9 @@ export function serializeCourse(form: CourseForm): CoursePayload {
     sub_split_distances: form.sub_split_distances ?? "",
   };
   return {
-    segments: form.segments.map((s) => serializeSegment(s, courseDefaults)),
+    segments: form.segments.map((s, segIdx) =>
+      serializeSegment(s, courseDefaults, gpxProfiles?.[segIdx] ?? null),
+    ),
     mode: form.mode,
     init_moving_speed: parseFloat(form.init_moving_speed),
     min_moving_speed: parseFloat(form.min_moving_speed),

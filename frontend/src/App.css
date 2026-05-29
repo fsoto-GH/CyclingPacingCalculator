@@ -5113,7 +5113,7 @@ dialog {
 /* ── ETA Badge ── */
 .eta-badge {
   display: inline-block;
-  margin-right: 0.5rem;
+  margin-right: 0.2rem;
   padding: 0.1rem 0.5rem;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -5365,6 +5365,42 @@ dialog {
   font-size: 0.76rem;
   white-space: pre-wrap;
   margin-top: 0.2rem;
+}
+
+/* ── Split Notes section ── */
+.split-results-notes {
+  margin-top: 0.75rem;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.82rem;
+}
+
+.split-results-notes-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  background: #1c1c1c;
+  border-bottom: 1px solid #2a2a2a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #94a3b8;
+}
+
+.split-results-notes-label {
+  flex: 1;
+}
+
+.split-results-notes-body {
+  padding: 0.55rem 0.75rem;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .split-results-stop-hours {
@@ -8720,6 +8756,22 @@ path.polyline-clickable {
   color: #f59e0b;
 }
 
-.intermediate-stop-set {
-  border-right: 2px solid rgba(245, 159, 11, 0.786);
+.intermediate-stop-asterisk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.92em;
+  line-height: 1;
+  color: #f59e0b;
+  text-shadow: 0 0 4px rgba(245, 158, 11, 0.35);
+}
+
+/* Keep the stop marker spacing visually consistent across Planning and Projections. */
+.split-header-city .intermediate-stop-asterisk {
+  margin-inline: 0.3rem;
+}
+
+.projections-view .proj-split-header-status .intermediate-stop-asterisk {
+  margin-inline: 0;
 }
