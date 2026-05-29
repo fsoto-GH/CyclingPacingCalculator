@@ -2,6 +2,17 @@ import axios from "axios";
 import type { CoursePayload, CourseDetail } from "./types";
 import { supabase } from "./supabaseClient";
 
+// For split-origin deploys (e.g. GitHub Pages frontend + Render backend),
+// allow overriding the API origin at build time.
+const configuredApiBase = (
+  import.meta.env.VITE_API_BASE_URL as string | undefined
+)
+  ?.trim()
+  .replace(/\/+$/, "");
+if (configuredApiBase) {
+  axios.defaults.baseURL = configuredApiBase;
+}
+
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 
 /**

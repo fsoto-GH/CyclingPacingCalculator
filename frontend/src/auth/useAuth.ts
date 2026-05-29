@@ -3,10 +3,13 @@ import { useAppSettings } from "../AppSettingsContext";
 
 /** Initiates Google OAuth login via Supabase Auth. */
 export function login() {
+  // Keep the deployed path (e.g. GitHub Pages project subpath) instead of
+  // redirecting only to origin.
+  const redirectTo = window.location.href.split("#")[0];
   supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: window.location.origin,
+      redirectTo,
     },
   });
 }
