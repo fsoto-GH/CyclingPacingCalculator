@@ -2855,7 +2855,7 @@ export default function CourseForm() {
 
     const run = async () => {
       try {
-        const payload = serializeCourse(form);
+        const payload = serializeCourse(form, gpxProfiles);
         if (useEngine === "client") {
           if (!cancelled) {
             setResult(processCourse(payload));
@@ -2921,8 +2921,10 @@ export default function CourseForm() {
       cancelled = true;
       clearTimeout(timer);
     };
+    // Keep dependencies narrow intentionally; include gpxProfiles so timezone
+    // endpoint data can trigger recalculation once GPX profiling completes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allErrors, form]);
+  }, [allErrors, form, gpxProfiles, useEngine]);
 
   return (
     <AllErrorsContext.Provider value={allErrors}>

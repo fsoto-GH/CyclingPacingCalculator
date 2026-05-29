@@ -682,6 +682,9 @@ function ProjectionSegment({
     (lastFormSplit?.differentTimezone && lastFormSplit.timezone
       ? lastFormSplit.timezone
       : null);
+  const segmentDisplayStartTz = isTransitSegment
+    ? (segmentEndTz ?? segmentStartTz ?? courseTz)
+    : (segmentStartTz ?? courseTz);
   const nextStartTime =
     segment.sleep_time_hours > 0
       ? new Date(
@@ -897,6 +900,7 @@ function ProjectionSegment({
     (transitFormSplit?.differentTimezone && transitFormSplit.timezone
       ? transitFormSplit.timezone
       : null);
+  const transitDisplayStartTz = transitEndTz ?? transitStartTz ?? courseTz;
   const transitTimeHours = segment.elapsed_time_hours;
 
   const segRestStopEtaInfos = useMemo(() => {
@@ -1199,7 +1203,7 @@ function ProjectionSegment({
 
           <div className="proj-segment-header-startend">
             <span className="proj-city-start">
-              {fmtInTz(segment.start_time, segmentStartTz ?? courseTz)}
+              {fmtInTz(segment.start_time, segmentDisplayStartTz)}
             </span>
             <span className="proj-city-sep"> &mdash; </span>
             <span className="proj-city-end">
@@ -1730,10 +1734,7 @@ function ProjectionSegment({
                   <div>
                     <dt title="Transit start time">Start</dt>
                     <dd>
-                      {fmtInTz(
-                        transitSplit.start_time,
-                        transitStartTz ?? courseTz,
-                      )}
+                      {fmtInTz(transitSplit.start_time, transitDisplayStartTz)}
                     </dd>
                   </div>
                   <div>
@@ -1780,7 +1781,6 @@ function ProjectionSegment({
                 (transitFormSplit.rest_stop.name ||
                   transitFormSplit.rest_stop.address ||
                   transitFormSplit.rest_stop.alt ||
-                  transitFormSplit.notes ||
                   transitEtaInfo) && (
                   <div className="split-results-stops">
                     <div className="split-results-stops-header">
@@ -1821,11 +1821,6 @@ function ProjectionSegment({
                             {transitFormSplit.rest_stop.address}
                           </div>
                         )}
-                        {transitFormSplit.notes && (
-                          <div className="split-results-rs-notes">
-                            {transitFormSplit.notes}
-                          </div>
-                        )}
                       </div>
                       {transitEtaInfo && (
                         <div
@@ -1843,6 +1838,18 @@ function ProjectionSegment({
                     </div>
                   </div>
                 )}
+
+              {transitFormSplit?.notes && (
+                <div className="split-results-notes">
+                  <div className="split-results-notes-header">
+                    <i className="fa-solid fa-note-sticky" aria-hidden="true" />
+                    <span className="split-results-notes-label">Notes</span>
+                  </div>
+                  <div className="split-results-notes-body">
+                    {transitFormSplit.notes}
+                  </div>
+                </div>
+              )}
 
               {transitMapAvailable && (
                 <div className="split-two-pane">
@@ -2766,7 +2773,6 @@ function ProjectionSplit({
               (formSplit.rest_stop.name ||
                 formSplit.rest_stop.address ||
                 formSplit.rest_stop.alt ||
-                formSplit.notes ||
                 etaInfo);
             const hasInterm =
               formSplit?.intermediate_stop?.enabled &&
@@ -2816,11 +2822,6 @@ function ProjectionSplit({
                       {formSplit.rest_stop.address && (
                         <div className="split-results-rs-address">
                           {formSplit.rest_stop.address}
-                        </div>
-                      )}
-                      {formSplit.notes && (
-                        <div className="split-results-rs-notes">
-                          {formSplit.notes}
                         </div>
                       )}
                     </div>
@@ -2893,6 +2894,16 @@ function ProjectionSplit({
               </div>
             );
           })()}
+
+          {formSplit?.notes && (
+            <div className="split-results-notes">
+              <div className="split-results-notes-header">
+                <i className="fa-solid fa-note-sticky" aria-hidden="true" />
+                <span className="split-results-notes-label">Notes</span>
+              </div>
+              <div className="split-results-notes-body">{formSplit.notes}</div>
+            </div>
+          )}
 
           {mapAvailable && (
             <div className="split-two-pane">

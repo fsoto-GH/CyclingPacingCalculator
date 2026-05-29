@@ -1,4 +1,11 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react";
 
 const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
 import type {
@@ -134,8 +141,10 @@ export default function SegmentFormComponent({
     !!value.moving_speed ||
     !!value.min_moving_speed;
   const [showOptional, setShowOptional] = useState(hasOptionalValues);
-  const update = (patch: Partial<SegmentForm>) =>
-    onChange({ ...value, ...patch });
+  const update = useCallback(
+    (patch: Partial<SegmentForm>) => onChange({ ...value, ...patch }),
+    [onChange, value],
+  );
   const sLabel = speedLabel(unitSystem);
   const dLabel = distanceLabel(unitSystem);
   const prefix = `seg${segIndex}`;
@@ -313,6 +322,45 @@ export default function SegmentFormComponent({
     courseTz,
     gpxProfiles,
   );
+
+  // Transit segments don't render SplitForm, so mirror split-level timezone
+  // auto-detection here to keep transit end timezone in sync with GPX.
+  const transitSplit = value.splits[0] ?? null;
+  const detectedTransitEndTz =
+    gpxProfiles && gpxProfiles.length > 0
+      ? (gpxProfiles[gpxProfiles.length - 1]?.endTimezone ?? null)
+      : null;
+
+  useEffect(() => {
+    if (!value.nullified || !transitSplit) return;
+    if (transitSplit.tzManuallySet) return;
+
+    if (detectedTransitEndTz && detectedTransitEndTz !== courseTz) {
+      if (
+        !transitSplit.differentTimezone ||
+        transitSplit.timezone !== detectedTransitEndTz
+      ) {
+        update({
+          splits: [
+            {
+              ...transitSplit,
+              differentTimezone: true,
+              timezone: detectedTransitEndTz,
+            },
+          ],
+        });
+      }
+    } else if (transitSplit.differentTimezone) {
+      update({
+        splits: [
+          {
+            ...transitSplit,
+            differentTimezone: false,
+          },
+        ],
+      });
+    }
+  }, [courseTz, detectedTransitEndTz, transitSplit, value.nullified, update]);
 
   // Aggregate GPX stats across all splits
   const validProfiles = (gpxProfiles ?? []).filter(
