@@ -411,12 +411,6 @@ export default function UserSettingsModal({
           <div className="user-settings-section">
             <p className="user-settings-hint">
               Applied as the starting map style for all map views.
-              {!enableGoogleMaps && (
-                <span className="user-settings-hint-warn">
-                  {" "}
-                  Google map styles require a valid Google Maps API key.
-                </span>
-              )}
             </p>
             <div className="field">
               <label htmlFor="usm-map-style">Map style</label>
