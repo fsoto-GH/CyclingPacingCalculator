@@ -1,0 +1,50 @@
+name: Deploy Frontend To GitHub Pages Subpath
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-pages-subpath
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        env:
+          VITE_ENABLE_SERVER_FUNCTIONS: "true"
+          VITE_API_BASE_URL: https://cyclingpacingcalculator.onrender.com
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+
+      - name: Deploy static site to fsoto-gh.github.io
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.PAGES_REPO_TOKEN }}
+          external_repository: fsoto-gh/fsoto-gh.github.io
+          publish_branch: main
+          publish_dir: ./static
+          destination_dir: pages/cycling/calculator
+          keep_files: true
+          commit_message: Deploy calculator from ${{ github.repository }}@${{ github.sha }}

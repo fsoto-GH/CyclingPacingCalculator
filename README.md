@@ -156,22 +156,23 @@ When your account has `enable_google_places` enabled, a **Google Places text sea
 
 ## 🔑 Environment Variables
 
-| Variable                       | Where used     | Required     | Description                                                             |
-| ------------------------------ | -------------- | ------------ | ----------------------------------------------------------------------- |
-| `VITE_ENABLE_SERVER_FUNCTIONS` | Frontend build | No           | Set `true` to enable auth, race plans, RWGPS search, Google maps/places |
-| `VITE_SUPABASE_URL`            | Frontend build | If SF=true   | Supabase project URL for Google OAuth                                   |
-| `VITE_SUPABASE_ANON_KEY`       | Frontend build | If SF=true   | Supabase anon/public key                                                |
-| `VITE_GOOGLE_CLIENT_ID`        | Frontend build | If SF=true   | Google OAuth client ID (also used for Sign-In button)                   |
-| `GOOGLE_CLIENT_ID`             | Backend        | If SF=true   | Same Google OAuth client ID (backend validation)                        |
-| `GOOGLE_CLIENT_SECRET`         | Backend        | If SF=true   | Google OAuth client secret                                              |
-| `GOOGLE_PLACES_API_KEY`        | Backend        | No           | Enables Google Places nearby-stop search for flagged users              |
-| `RIDEWITHGPS_API_KEY`          | Backend        | No           | Enables RideWithGPS route search and OAuth                              |
-| `RIDEWITHGPS_CLIENT_ID`        | Backend        | No           | RideWithGPS OAuth client ID                                             |
-| `RIDEWITHGPS_CLIENT_SECRET`    | Backend        | No           | RideWithGPS OAuth client secret                                         |
-| `SUPABASE_URL`                 | Backend        | If SF=true   | Supabase project URL (for token verification)                           |
-| `DATABASE_URL_LOCAL`           | Backend        | If IS_LOCAL  | PostgreSQL connection string for local DB                               |
-| `DATABASE_URL_SUPABASE`        | Backend        | If !IS_LOCAL | PostgreSQL connection string for Supabase DB                            |
-| `IS_LOCAL`                     | Backend        | No           | `true` = use local Docker DB; `false` = use Supabase DB                 |
+| Variable                       | Where used     | Required               | Description                                                                               |
+| ------------------------------ | -------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
+| `VITE_ENABLE_SERVER_FUNCTIONS` | Frontend build | No                     | Set `true` to enable auth, race plans, RWGPS search, Google maps/places                   |
+| `VITE_API_BASE_URL`            | Frontend build | If split-origin deploy | Backend origin for `/v1/...` calls when frontend is hosted separately (e.g. GitHub Pages) |
+| `VITE_SUPABASE_URL`            | Frontend build | If SF=true             | Supabase project URL for Google OAuth                                                     |
+| `VITE_SUPABASE_ANON_KEY`       | Frontend build | If SF=true             | Supabase anon/public key                                                                  |
+| `VITE_GOOGLE_CLIENT_ID`        | Frontend build | If SF=true             | Google OAuth client ID (also used for Sign-In button)                                     |
+| `GOOGLE_CLIENT_ID`             | Backend        | If SF=true             | Same Google OAuth client ID (backend validation)                                          |
+| `GOOGLE_CLIENT_SECRET`         | Backend        | If SF=true             | Google OAuth client secret                                                                |
+| `GOOGLE_PLACES_API_KEY`        | Backend        | No                     | Enables Google Places nearby-stop search for flagged users                                |
+| `RIDEWITHGPS_API_KEY`          | Backend        | No                     | Enables RideWithGPS route search and OAuth                                                |
+| `RIDEWITHGPS_CLIENT_ID`        | Backend        | No                     | RideWithGPS OAuth client ID                                                               |
+| `RIDEWITHGPS_CLIENT_SECRET`    | Backend        | No                     | RideWithGPS OAuth client secret                                                           |
+| `SUPABASE_URL`                 | Backend        | If SF=true             | Supabase project URL (for token verification)                                             |
+| `DATABASE_URL_LOCAL`           | Backend        | If IS_LOCAL            | PostgreSQL connection string for local DB                                                 |
+| `DATABASE_URL_SUPABASE`        | Backend        | If !IS_LOCAL           | PostgreSQL connection string for Supabase DB                                              |
+| `IS_LOCAL`                     | Backend        | No                     | `true` = use local Docker DB; `false` = use Supabase DB                                   |
 
 ---
 

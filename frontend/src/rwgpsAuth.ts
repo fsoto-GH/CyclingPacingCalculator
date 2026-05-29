@@ -22,6 +22,9 @@ import { supabase } from "./supabaseClient";
 
 const TOKEN_KEY = "rwgps_access_token";
 const USER_ID_KEY = "rwgps_user_id";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)
+  ?.trim()
+  .replace(/\/+$/, "");
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
@@ -116,9 +119,10 @@ export function startRwgpsOAuth(): Promise<RwgpsAuthResult> {
         const accessToken = data.session?.access_token ?? "";
 
         const state = encodeURIComponent(window.location.origin);
+        const base = API_BASE ?? "";
         const url = accessToken
-          ? `/v1/cycling/rwgps/oauth/start?state=${state}&access_token=${encodeURIComponent(accessToken)}`
-          : `/v1/cycling/rwgps/oauth/start?state=${state}`;
+          ? `${base}/v1/cycling/rwgps/oauth/start?state=${state}&access_token=${encodeURIComponent(accessToken)}`
+          : `${base}/v1/cycling/rwgps/oauth/start?state=${state}`;
         try {
           popupWindow.location.href = url;
         } catch {
@@ -128,8 +132,9 @@ export function startRwgpsOAuth(): Promise<RwgpsAuthResult> {
       .catch(() => {
         // Even if we can't read the session, proceed without a token.
         const state = encodeURIComponent(window.location.origin);
+        const base = API_BASE ?? "";
         try {
-          popupWindow.location.href = `/v1/cycling/rwgps/oauth/start?state=${state}`;
+          popupWindow.location.href = `${base}/v1/cycling/rwgps/oauth/start?state=${state}`;
         } catch {
           fail(new Error("Failed to launch authorization popup."));
         }
