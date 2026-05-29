@@ -1768,6 +1768,22 @@ export default function CourseForm() {
     if (!lastSeg || lastSeg.split_details.length === 0) return null;
     return lastSeg.split_details[lastSeg.split_details.length - 1].end_timezone;
   }, [result]);
+  const rideOnlyTotals = useMemo(() => {
+    if (!result) {
+      return { distance: 0, movingH: 0, activeH: 0 };
+    }
+    return result.segment_details.reduce(
+      (acc, seg, idx) => {
+        if (!seg || form.segments[idx]?.nullified) return acc;
+        return {
+          distance: acc.distance + seg.distance,
+          movingH: acc.movingH + seg.moving_time_hours,
+          activeH: acc.activeH + seg.active_time_hours,
+        };
+      },
+      { distance: 0, movingH: 0, activeH: 0 },
+    );
+  }, [form.segments, result]);
 
   // Stable string key from split distances only — doesn't change when unrelated
   // fields (rest stop, speed, etc.) are edited, so profiles aren't recomputed
@@ -4727,32 +4743,26 @@ export default function CourseForm() {
                           </dd>
                         </div>
                         <div>
-                          <dt title="Average moving speed across the course">
+                          <dt title="Average moving speed across ride segments (excludes transit)">
                             Speed
                           </dt>
                           <dd>
-                            {result.moving_time_hours > 0
+                            {rideOnlyTotals.movingH > 0
                               ? (
-                                  result.distance / result.moving_time_hours
+                                  rideOnlyTotals.distance /
+                                  rideOnlyTotals.movingH
                                 ).toFixed(2)
                               : "0.00"}{" "}
                             {sLabel}
                           </dd>
                         </div>
                         <div>
-                          <dt title="Average pace for the course">Pace</dt>
+                          <dt title="Average pace across ride segments (excludes transit)">
+                            Pace
+                          </dt>
                           <dd>
-                            {(Math.max(
-                              0,
-                              result.elapsed_time_hours -
-                                result.sleep_time_hours,
-                            ) > 0
-                              ? result.distance /
-                                Math.max(
-                                  0,
-                                  result.elapsed_time_hours -
-                                    result.sleep_time_hours,
-                                )
+                            {(rideOnlyTotals.activeH > 0
+                              ? rideOnlyTotals.distance / rideOnlyTotals.activeH
                               : 0
                             ).toFixed(2)}{" "}
                             {sLabel}
