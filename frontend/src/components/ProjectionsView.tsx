@@ -686,7 +686,7 @@ function ProjectionSegment({
       ? lastFormSplit.timezone
       : null);
   const segmentDisplayStartTz = isTransitSegment
-    ? (segmentEndTz ?? segmentStartTz ?? courseTz)
+    ? (segmentStartTz ?? segmentEndTz ?? courseTz)
     : (segmentStartTz ?? courseTz);
   const nextStartTime =
     segment.sleep_time_hours > 0
@@ -903,7 +903,7 @@ function ProjectionSegment({
     (transitFormSplit?.differentTimezone && transitFormSplit.timezone
       ? transitFormSplit.timezone
       : null);
-  const transitDisplayStartTz = transitEndTz ?? transitStartTz ?? courseTz;
+  const transitDisplayStartTz = transitStartTz ?? transitEndTz ?? courseTz;
   const transitTimeHours = segment.elapsed_time_hours;
 
   const segRestStopEtaInfos = useMemo(() => {
