@@ -24,7 +24,6 @@ class Settings(BaseSettings):
 
     @property
     def active_database_url(self) -> str:
-        print(self.is_local, self.database_url_local, self.database_url_supabase)
         """Resolve the database URL based on IS_LOCAL, falling back to DATABASE_URL."""
         if self.is_local and self.database_url_local:
             return self.database_url_local
