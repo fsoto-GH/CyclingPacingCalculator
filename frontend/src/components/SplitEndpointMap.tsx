@@ -444,9 +444,12 @@ function ZoomableMarkers({
 
 function FitBounds({ bounds }: { bounds: LatLngBoundsExpression }) {
   const map = useMap();
+  const hasFitRef = useRef(false);
   useEffect(() => {
+    if (hasFitRef.current) return;
     try {
       map.fitBounds(bounds, { padding: [20, 20] });
+      hasFitRef.current = true;
     } catch {
       // Silently ignore: can fire during unmount (StrictMode double-remove)
       // or when bounds are degenerate (e.g. Infinity from an empty polyline).

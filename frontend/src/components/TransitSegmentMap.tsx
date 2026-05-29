@@ -185,29 +185,43 @@ function formatDistFromKm(km: number, unitSystem: UnitSystem): string {
   })} km`;
 }
 
-function MapInvalidator({ bounds }: { bounds: LatLngBoundsExpression }) {
+function FitBoundsOnMount({ bounds }: { bounds: LatLngBoundsExpression }) {
+  const map = useMap();
+  const hasFitRef = useRef(false);
+  useEffect(() => {
+    if (hasFitRef.current) return;
+    try {
+      map.fitBounds(bounds, { padding: [24, 24] });
+      hasFitRef.current = true;
+    } catch {
+      // Ignore transient errors during StrictMode unmount/remount.
+    }
+  }, [map, bounds]);
+  return null;
+}
+
+function MapInvalidator() {
   const map = useMap();
   useEffect(() => {
     let alive = true;
-    const recenter = () => {
+    const invalidate = () => {
       if (!alive) return;
       map.invalidateSize();
-      map.fitBounds(bounds, { padding: [24, 24] });
     };
 
-    recenter();
+    invalidate();
     const container = map.getContainer();
     const ro = new ResizeObserver(() => {
-      requestAnimationFrame(recenter);
+      requestAnimationFrame(invalidate);
     });
     ro.observe(container);
-    window.addEventListener("resize", recenter);
+    window.addEventListener("resize", invalidate);
     return () => {
       alive = false;
       ro.disconnect();
-      window.removeEventListener("resize", recenter);
+      window.removeEventListener("resize", invalidate);
     };
-  }, [map, bounds]);
+  }, [map]);
   return null;
 }
 
@@ -586,7 +600,8 @@ export default function TransitSegmentMap({
           style={{ height: "100%", width: "100%" }}
         >
           <AttributionControl position="bottomleft" />
-          <MapInvalidator bounds={bounds} />
+          <FitBoundsOnMount bounds={bounds} />
+          <MapInvalidator />
           <ScrollWheelActivator />
           {activeTileUrl != null && (
             <TileLayer
