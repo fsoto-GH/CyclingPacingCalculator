@@ -55,6 +55,20 @@ interface RouteMarker {
   segIdx: number;
   splitIdx: number;
   notes?: string;
+  googlePlaceId?: string | null;
+  mapLink?: string;
+}
+
+function googleMapsSearchUrl(
+  name: string,
+  lat: number,
+  lon: number,
+  placeId?: string | null,
+): string {
+  if (placeId) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${placeId}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}`;
 }
 
 interface CourseMapProps {
@@ -331,19 +345,11 @@ function SplitMarker({
         <br />
         <div className="split-map-popup-links">
           <a
-            href={`https://www.google.com/maps?q=${m.lat},${m.lon}`}
+            href={googleMapsSearchUrl(m.label, m.lat, m.lon, m.googlePlaceId)}
             target="_blank"
             rel="noopener noreferrer"
           >
             Google Maps ↗
-          </a>
-          {" · "}
-          <a
-            href={`https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=15/${m.lat}/${m.lon}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            OSM ↗
           </a>
         </div>
         {m.notes && (
@@ -356,13 +362,14 @@ function SplitMarker({
           <>
             <br />
             <button
-              className="map-popup-nav-btn"
+              className="split-map-popup-btn split-map-popup-btn--grow"
               onClick={() => {
                 map.closePopup();
                 onMarkerClick(m.segIdx, m.splitIdx);
               }}
             >
-              ↓ Go to split
+              <i className="fa-solid fa-arrow-down" aria-hidden="true" /> Go to
+              split
             </button>
           </>
         )}
@@ -396,38 +403,42 @@ function StopMarkerBase({
   return (
     <Marker position={[m.lat, m.lon]} icon={icon}>
       <Popup>
-        <strong>{m.label}</strong>
+        {m.mapLink ? (
+          <a
+            href={m.mapLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="split-map-popup-name-link"
+          >
+            <strong>{m.label}</strong>
+          </a>
+        ) : (
+          <strong>{m.label}</strong>
+        )}
         <br />
         {m.distanceStr}
         <br />
         <div className="split-map-popup-links">
           <a
-            href={`https://www.google.com/maps?q=${m.lat},${m.lon}`}
+            href={googleMapsSearchUrl(m.label, m.lat, m.lon, m.googlePlaceId)}
             target="_blank"
             rel="noopener noreferrer"
           >
             Google Maps ↗
-          </a>
-          {" · "}
-          <a
-            href={`https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=17/${m.lat}/${m.lon}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            OSM ↗
           </a>
         </div>
         {canNav && (
           <>
             <br />
             <button
-              className="map-popup-nav-btn"
+              className="split-map-popup-btn split-map-popup-btn--grow"
               onClick={() => {
                 map.closePopup();
                 onMarkerClick(m.segIdx, m.splitIdx);
               }}
             >
-              ↓ Go to split
+              <i className="fa-solid fa-arrow-down" aria-hidden="true" /> Go to
+              split
             </button>
           </>
         )}
@@ -615,11 +626,20 @@ export default function CourseMap({
         result.push({
           lat: coord.lat,
           lon: coord.lon,
-          label: `🛑 ${rs.name}`,
+          label: `${rs.name}`,
           distanceStr: `${toUserDist(endKm).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${dLabel}`,
           segIdx: si,
           splitIdx: sj,
           role: "stop",
+          googlePlaceId: rs.googlePlaceId,
+          mapLink:
+            rs.alt ||
+            googleMapsSearchUrl(
+              rs.name,
+              coord.lat,
+              coord.lon,
+              rs.googlePlaceId,
+            ),
         });
       }
     }
@@ -655,11 +675,20 @@ export default function CourseMap({
         result.push({
           lat: coord.lat,
           lon: coord.lon,
-          label: `🔶 ${iStop.name}`,
+          label: `${iStop.name}`,
           distanceStr: distStr,
           segIdx: si,
           splitIdx: sj,
           role: "intermediate",
+          googlePlaceId: iStop.googlePlaceId,
+          mapLink:
+            iStop.alt ||
+            googleMapsSearchUrl(
+              iStop.name,
+              coord.lat,
+              coord.lon,
+              iStop.googlePlaceId,
+            ),
         });
       }
     }

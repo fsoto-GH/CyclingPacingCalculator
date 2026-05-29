@@ -59,7 +59,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "features",
     secTitle: "Advanced Features & Permissions",
     keywords:
-      "permission permissions gated restricted whitelist allowlist feature toggle account flag entitlement access denied forbidden 403 enable_google_maps enable_google_places google maps tiles terrain satellite dark google tile session places text search places_search_along_route maps api key places api key account access missing option missing map layers missing search service email contact help troubleshoot issue bug oauth redirect callback render github pages split origin cors support",
+      "permission permissions gated restricted whitelist allowlist feature toggle account flag entitlement access denied forbidden 403 enable_google_maps enable_google_places google maps tiles terrain satellite dark google tile session places text search places_search_along_route maps api key places api key account access missing option missing map layers missing search help troubleshoot issue bug oauth redirect callback render github pages split origin cors support",
   },
   {
     catKey: "features",
@@ -471,12 +471,8 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     </li>
                   </ul>
                   <p>
-                    If these options are missing for your account, reach out to
-                    the{" "}
-                    <a href="mailto:ultra-cycling-planner@gen-lang-client-0006850797.iam.gserviceaccount.com">
-                      service email
-                    </a>
-                    .
+                    If these options are missing for your account, they are
+                    currently gated by account access.
                   </p>
                 </Section>
 

@@ -473,6 +473,20 @@ export default function SplitFormComponent({
   const intermediateStop =
     value.intermediate_stop ?? DEFAULT_INTERMEDIATE_REST_STOP;
 
+  // If the split gets shortened below the intermediate-stop threshold,
+  // hide/disable any previously-set intermediate stop so map/popup UI stays consistent.
+  useEffect(() => {
+    if (intermediateAvailable) return;
+    if (!intermediateStop.enabled) return;
+    update({
+      intermediate_stop: {
+        ...intermediateStop,
+        enabled: false,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intermediateAvailable, intermediateStop.enabled]);
+
   // Compute the midpoint distance string in the appropriate mode/units
   const computeIntermediateMidpoint = (): string => {
     if (mode === "target_distance") {
@@ -1257,9 +1271,11 @@ export default function SplitFormComponent({
                 intermediateStop={value.intermediate_stop}
                 intermediateKm={intermediateKm}
                 onSelectIntermediateStop={(patch) =>
-                  update({
-                    intermediate_stop: { ...intermediateStop, ...patch },
-                  })
+                  intermediateAvailable
+                    ? update({
+                        intermediate_stop: { ...intermediateStop, ...patch },
+                      })
+                    : undefined
                 }
                 onPolylineClick={(absoluteKm, lat, lon) => {
                   let formDist: number;
@@ -1389,7 +1405,6 @@ export default function SplitFormComponent({
                   (value.rest_stop.name ||
                     value.rest_stop.address ||
                     value.rest_stop.alt ||
-                    value.notes ||
                     etaInfo);
                 const hasInterm =
                   value.intermediate_stop?.enabled &&
@@ -1439,11 +1454,6 @@ export default function SplitFormComponent({
                           {value.rest_stop.address && (
                             <div className="split-results-rs-address">
                               {value.rest_stop.address}
-                            </div>
-                          )}
-                          {value.notes && (
-                            <div className="split-results-rs-notes">
-                              {value.notes}
                             </div>
                           )}
                         </div>
@@ -1516,6 +1526,20 @@ export default function SplitFormComponent({
                   </div>
                 );
               })()}
+              {!!value.notes?.trim() && (
+                <div className="split-results-stops">
+                  <div className="split-results-stops-header">
+                    <i
+                      className="fa-regular fa-note-sticky"
+                      aria-hidden="true"
+                    />
+                    <span className="split-results-stops-label">
+                      Split Notes
+                    </span>
+                  </div>
+                  <div className="split-results-rs-notes">{value.notes}</div>
+                </div>
+              )}
               {splitResult.sub_splits.length > 0 && (
                 <>
                   <button

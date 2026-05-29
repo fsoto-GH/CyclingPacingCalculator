@@ -57,10 +57,6 @@ function App() {
                   rel="noopener noreferrer"
                 >
                   Render.com link
-                </a>{" "}
-                or contact the{" "}
-                <a href="mailto:ultra-cycling-planner@gen-lang-client-0006850797.iam.gserviceaccount.com">
-                  service email
                 </a>
                 .
               </span>
