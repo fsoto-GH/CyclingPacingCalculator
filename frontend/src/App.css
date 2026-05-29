@@ -6243,6 +6243,11 @@ dialog {
   flex: none;
 }
 
+.leaflet-control-attribution a {
+  color: #94a3b8;
+  text-decoration: none;
+}
+
 /* In form-only mode, map col fills full width */
 .split-map-col--full {
   flex: 1;
@@ -6678,12 +6683,7 @@ dialog {
 }
 
 .split-map-popup-name-link {
-  text-decoration: none;
-  color: inherit;
-}
-.split-map-popup-name-link:hover strong {
-  color: #93c5fd;
-  text-decoration: underline;
+  color: #cccccc;
 }
 
 .split-map-popup-type-icon {
@@ -8616,6 +8616,7 @@ path.polyline-clickable {
   border-top: 1px solid #2a2a2a;
   padding: 0.7rem 1rem;
   text-align: center;
+  font-family: var(--font-body);
   font-size: 0.72rem;
   color: #555;
   user-select: none;
@@ -8639,17 +8640,20 @@ path.polyline-clickable {
 }
 
 .app-footer-copy,
-.app-footer-attrib {
+.app-footer-attrib,
+.app-footer-help {
   color: #555;
 }
 
-.app-footer-attrib a {
+.app-footer-attrib a,
+.app-footer-help a {
   color: #6b7280;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.app-footer-attrib a:hover {
+.app-footer-attrib a:hover,
+.app-footer-help a:hover {
   color: #9ca3af;
 }
 

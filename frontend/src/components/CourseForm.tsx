@@ -3643,25 +3643,27 @@ export default function CourseForm() {
                   <i className="fas fa-download"></i> Import
                 </button>
               )}
-              {activeTab === "projections" &&
-                weatherAvailable &&
-                !hourlyWeather && (
-                  <button
-                    type="button"
-                    className={`segments-toggle-btn segments-toggle-btn--forecast${weatherLoading ? " segments-toggle-btn--loading" : ""}`}
-                    onClick={handleFetchWeather}
-                    disabled={weatherLoading}
-                    title="Load weather forecast for each split (Open-Meteo, 16-day window)"
-                  >
-                    {weatherLoading ? (
-                      "Loading forecast…"
-                    ) : (
-                      <>
-                        <i className="fa-solid fa-cloud-sun" /> Forecast
-                      </>
-                    )}
-                  </button>
-                )}
+              {activeTab === "projections" && !hourlyWeather && (
+                <button
+                  type="button"
+                  className={`segments-toggle-btn segments-toggle-btn--forecast${weatherLoading ? " segments-toggle-btn--loading" : ""}`}
+                  onClick={handleFetchWeather}
+                  disabled={!weatherAvailable || weatherLoading}
+                  title={
+                    weatherAvailable
+                      ? "Load weather forecast for each split (Open-Meteo, 16-day window)"
+                      : "Weather forecast is only available for historical dates or within 16 days of the current date"
+                  }
+                >
+                  {weatherLoading ? (
+                    "Loading forecast…"
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-cloud-sun" /> Forecast
+                    </>
+                  )}
+                </button>
+              )}
               {activeTab === "projections" && gpxTrack && (
                 <button
                   type="button"

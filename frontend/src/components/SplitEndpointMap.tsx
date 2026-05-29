@@ -978,7 +978,9 @@ export default function SplitEndpointMap({
       lon: a.lon,
       googlePlaceId: a.placeId ?? undefined,
       ...(a.placeId
-        ? { alt: `https://www.google.com/maps/place/?q=place_id:${a.placeId}` }
+        ? {
+            alt: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`,
+          }
         : {}),
     };
     if (a.hours) {
@@ -1469,7 +1471,7 @@ export default function SplitEndpointMap({
                       />
                       {a.placeId ? (
                         <a
-                          href={`https://www.google.com/maps/place/?q=place_id:${a.placeId}`}
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="split-map-popup-name-link"
@@ -1490,7 +1492,10 @@ export default function SplitEndpointMap({
                       />
                       {fmtDist(a.distanceM, unitSystem)} away
                       {a.address && (
-                        <span className="split-map-popup-addr">
+                        <span
+                          className="split-map-popup-addr"
+                          title={a.address}
+                        >
                           {" "}
                           · {a.address}
                         </span>
@@ -1891,7 +1896,18 @@ export default function SplitEndpointMap({
                   />
                 </span>
                 <div className="split-map-amenity-info">
-                  <span className="split-map-amenity-name">{a.name}</span>
+                  {a.placeId ? (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="split-map-amenity-name"
+                    >
+                      {a.name}
+                    </a>
+                  ) : (
+                    <span className="split-map-amenity-name">{a.name}</span>
+                  )}
                   <span className="split-map-amenity-meta">
                     {AMENITY_LABELS[a.amenity] ?? a.amenity} ·{" "}
                     {fmtDist(a.distanceM, unitSystem)}

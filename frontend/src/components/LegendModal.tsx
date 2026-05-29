@@ -57,6 +57,12 @@ const SEARCH_INDEX: SearchEntry[] = [
   // Features
   {
     catKey: "features",
+    secTitle: "Advanced Features & Permissions",
+    keywords:
+      "permission permissions gated restricted whitelist allowlist feature toggle account flag entitlement access denied forbidden 403 enable_google_maps enable_google_places google maps tiles terrain satellite dark google tile session places text search places_search_along_route maps api key places api key account access missing option missing map layers missing search service email contact help troubleshoot issue bug oauth redirect callback render github pages split origin cors support",
+  },
+  {
+    catKey: "features",
     secTitle: "Import",
     keywords: "import json restore configuration indexeddb filename autoload",
   },
@@ -449,6 +455,31 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
               {/* ── Features ── */}
               <Category title="✨ Features" catKey="features">
+                <Section title="Advanced Features & Permissions">
+                  <p>
+                    Some advanced features are permission-based and only appear
+                    for accounts with access enabled:
+                  </p>
+                  <ul>
+                    <li>
+                      <strong>Google Maps tile layers</strong> (Maps, Satellite,
+                      Terrain, Dark)
+                    </li>
+                    <li>
+                      <strong>Google Places search</strong> in Nearby Stops,
+                      including <strong>Search Along Route</strong>
+                    </li>
+                  </ul>
+                  <p>
+                    If these options are missing for your account, reach out to
+                    the{" "}
+                    <a href="mailto:ultra-cycling-planner@gen-lang-client-0006850797.iam.gserviceaccount.com">
+                      service email
+                    </a>
+                    .
+                  </p>
+                </Section>
+
                 <Section title="Import">
                   <p>
                     Upload a previously exported JSON file to restore a course
@@ -891,10 +922,11 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                 <Section title="Browser & Device Support">
                   <p>
                     This app requires a modern desktop or tablet browser.
-                    Minimum supported viewport width is <strong>390 px</strong>{" "}
-                    (iPhone 12/13/14 Pro portrait), but at that size some
-                    features are constrained — maps, elevation charts, and
-                    results tables are cramped.
+                    Minimum supported viewport width is <strong>430 px</strong>{" "}
+                    (iPhone 14 Pro portrait), but at that size some features are
+                    constrained — maps, elevation charts, and results tables are
+                    cramped. For a better mobile experience, use landscape
+                    orientation or a larger device.
                   </p>
                   <p>
                     <strong>600 px or wider is strongly recommended</strong> for
