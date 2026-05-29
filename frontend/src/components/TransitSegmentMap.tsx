@@ -535,9 +535,7 @@ export default function TransitSegmentMap({
       lon: a.lon,
       googlePlaceId: a.placeId ?? undefined,
       ...(a.placeId
-        ? {
-            alt: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`,
-          }
+        ? { alt: `https://www.google.com/maps/place/?q=place_id:${a.placeId}` }
         : {}),
     };
     if (a.hours) {
@@ -737,7 +735,7 @@ export default function TransitSegmentMap({
                       />
                       {a.placeId ? (
                         <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`}
+                          href={`https://www.google.com/maps/place/?q=place_id:${a.placeId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="split-map-popup-name-link"
@@ -758,10 +756,7 @@ export default function TransitSegmentMap({
                       />
                       {fmtDist(a.distanceM, unitSystem)} away
                       {a.address && (
-                        <span
-                          className="split-map-popup-addr"
-                          title={a.address}
-                        >
+                        <span className="split-map-popup-addr">
                           {" "}
                           · {a.address}
                         </span>
@@ -1018,18 +1013,7 @@ export default function TransitSegmentMap({
                   <AmenityFaIcon amenity={a.amenity} />
                 </span>
                 <div className="split-map-amenity-info">
-                  {a.placeId ? (
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`}
-                      className="split-map-amenity-name"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {a.name}
-                    </a>
-                  ) : (
-                    <span className="split-map-amenity-name">{a.name}</span>
-                  )}
+                  <span className="split-map-amenity-name">{a.name}</span>
                   <span className="split-map-amenity-meta">
                     {AMENITY_LABELS[a.amenity] ?? a.amenity} ·{" "}
                     {fmtDist(a.distanceM, unitSystem)}

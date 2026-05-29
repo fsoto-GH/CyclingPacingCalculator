@@ -262,30 +262,6 @@ function SemPopupHoursGrid({ hours }: { hours: WeekHours }) {
   );
 }
 
-/** Find the nearest cumulative-km position on the gpx track to a clicked lat/lon,
- * clamped to [minKm, maxKm]. */
-function findNearestKmOnTrack(
-  track: GpxTrackPoint[],
-  lat: number,
-  lon: number,
-  minKm: number,
-  maxKm: number,
-): number {
-  let bestKm = (minKm + maxKm) / 2;
-  let bestDist2 = Infinity;
-  for (const pt of track) {
-    if (pt.cumDist < minKm - 0.05 || pt.cumDist > maxKm + 0.05) continue;
-    const dlat = pt.lat - lat;
-    const dlon = pt.lon - lon;
-    const d2 = dlat * dlat + dlon * dlon;
-    if (d2 < bestDist2) {
-      bestDist2 = d2;
-      bestKm = pt.cumDist;
-    }
-  }
-  return bestKm;
-}
-
 /** Small distance label pinned to the route. */
 function makeTickIcon(label: string) {
   return divIcon({
@@ -569,7 +545,6 @@ export default function SplitEndpointMap({
   const [pendingClick, setPendingClick] = useState<{
     lat: number;
     lon: number;
-    km: number;
   } | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<"main" | "intermediate">(
     "main",
@@ -978,9 +953,7 @@ export default function SplitEndpointMap({
       lon: a.lon,
       googlePlaceId: a.placeId ?? undefined,
       ...(a.placeId
-        ? {
-            alt: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`,
-          }
+        ? { alt: `https://www.google.com/maps/place/?q=place_id:${a.placeId}` }
         : {}),
     };
     if (a.hours) {
@@ -1072,14 +1045,7 @@ export default function SplitEndpointMap({
                   ? {
                       click: (e) => {
                         const { lat, lng: lon } = e.latlng;
-                        const km = findNearestKmOnTrack(
-                          gpxTrack,
-                          lat,
-                          lon,
-                          startKm,
-                          endKm,
-                        );
-                        setPendingClick({ lat, lon, km });
+                        setPendingClick({ lat, lon });
                       },
                     }
                   : undefined
@@ -1087,33 +1053,56 @@ export default function SplitEndpointMap({
             />
           )}
 
-          {/* Intermediate stop placement popup from polyline click */}
+          {/* Search anchor popup from polyline click */}
           {pendingClick && onPolylineClick && (
             <Popup
               position={[pendingClick.lat, pendingClick.lon]}
               eventHandlers={{ remove: () => setPendingClick(null) }}
             >
               <div className="split-map-popup">
-                <strong>Set as Intermediate Stop?</strong>
-                <br />
-                <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>
+                <div className="split-map-popup-type-badge">Route Point</div>
+                <div className="split-map-popup-meta">
+                  <i
+                    className="fa-solid fa-location-dot split-map-popup-row-icon"
+                    aria-hidden="true"
+                  />
                   {pendingClick.lat.toFixed(5)}, {pendingClick.lon.toFixed(5)}
-                </span>
-                <br />
-                <button
-                  type="button"
-                  className="split-map-popup-btn"
-                  onClick={() => {
-                    onPolylineClick(
-                      pendingClick.km,
-                      pendingClick.lat,
-                      pendingClick.lon,
-                    );
-                    setPendingClick(null);
-                  }}
-                >
-                  Set as Intermediate Stop
-                </button>
+                </div>
+                <div className="split-map-popup-btn-row">
+                  <button
+                    type="button"
+                    className="split-map-popup-btn split-map-popup-btn--grow"
+                    onClick={() => {
+                      runNearbySearch(
+                        pendingClick.lat,
+                        pendingClick.lon,
+                        "intermediate",
+                      );
+                      setPendingClick(null);
+                      mapRef.current?.closePopup();
+                    }}
+                  >
+                    <i
+                      className="fa-solid fa-magnifying-glass"
+                      aria-hidden="true"
+                    />{" "}
+                    Nearby Stops
+                  </button>
+                  <button
+                    type="button"
+                    className="split-map-popup-btn split-map-popup-btn--icon"
+                    onClick={() => {
+                      searchCenterRef.current = {
+                        lat: pendingClick.lat,
+                        lon: pendingClick.lon,
+                      };
+                      setModalOpen(true);
+                    }}
+                    title="Configure stop criteria"
+                  >
+                    <i className="fa-solid fa-gear" aria-hidden="true" />
+                  </button>
+                </div>
               </div>
             </Popup>
           )}
@@ -1471,7 +1460,7 @@ export default function SplitEndpointMap({
                       />
                       {a.placeId ? (
                         <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`}
+                          href={`https://www.google.com/maps/place/?q=place_id:${a.placeId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="split-map-popup-name-link"
@@ -1492,10 +1481,7 @@ export default function SplitEndpointMap({
                       />
                       {fmtDist(a.distanceM, unitSystem)} away
                       {a.address && (
-                        <span
-                          className="split-map-popup-addr"
-                          title={a.address}
-                        >
+                        <span className="split-map-popup-addr">
                           {" "}
                           · {a.address}
                         </span>
@@ -1896,18 +1882,7 @@ export default function SplitEndpointMap({
                   />
                 </span>
                 <div className="split-map-amenity-info">
-                  {a.placeId ? (
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.name)}&query_place_id=${a.placeId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="split-map-amenity-name"
-                    >
-                      {a.name}
-                    </a>
-                  ) : (
-                    <span className="split-map-amenity-name">{a.name}</span>
-                  )}
+                  <span className="split-map-amenity-name">{a.name}</span>
                   <span className="split-map-amenity-meta">
                     {AMENITY_LABELS[a.amenity] ?? a.amenity} ·{" "}
                     {fmtDist(a.distanceM, unitSystem)}

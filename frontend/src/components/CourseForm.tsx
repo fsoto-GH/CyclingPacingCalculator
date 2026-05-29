@@ -3105,7 +3105,7 @@ export default function CourseForm() {
                     strokeLinecap="round"
                   />
                 </svg>
-                Search RideWithGPS
+                Search Routes
               </button>
             )}
           </div>
@@ -3331,7 +3331,7 @@ export default function CourseForm() {
                     strokeLinecap="round"
                   />
                 </svg>
-                Search RideWithGPS
+                Search Routes
               </button>
             )}
             {SERVER_FUNCTIONS_ENABLED && <div className="mobile-divider" />}
