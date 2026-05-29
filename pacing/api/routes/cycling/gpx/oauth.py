@@ -48,7 +48,7 @@ def _safe_opener_origin(state: str, request: Request) -> str:
     to the backend's own origin so the postMessage is still sent somewhere
     (even if the opener doesn't receive it, this prevents open-redirect abuse).
     """
-    allowed = _HARDCODED_ALLOWED | {settings.frontend_url}
+    allowed = _HARDCODED_ALLOWED | set(settings.allowed_frontend_origins)
     if state and state in allowed:
         return state
     return str(request.base_url).rstrip("/")
