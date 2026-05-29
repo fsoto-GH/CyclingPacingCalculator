@@ -181,6 +181,8 @@ export default function ProjectionsView({
       segRollingBefore[i] = { ...acc };
       const seg = result.segment_details[i];
       if (seg) {
+        const isTransit = !!form.segments[i]?.nullified;
+        if (isTransit) continue;
         acc = {
           movingH: acc.movingH + seg.moving_time_hours,
           downH: acc.downH + seg.down_time_hours,
