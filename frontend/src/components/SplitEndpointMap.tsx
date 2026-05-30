@@ -524,6 +524,8 @@ interface SplitEndpointMapProps {
   intermediateKm?: number | null;
   /** Called when user clicks the route polyline to place an intermediate stop. */
   onPolylineClick?: (km: number, lat: number, lon: number) => void;
+  /** Enables Planning-only controls such as Search along route. */
+  showPlanningControls?: boolean;
 }
 
 export default function SplitEndpointMap({
@@ -541,6 +543,7 @@ export default function SplitEndpointMap({
   intermediateStop,
   intermediateKm,
   onPolylineClick,
+  showPlanningControls = false,
 }: SplitEndpointMapProps) {
   const [showNearby, setShowNearby] = useState(false);
   const [showList, setShowList] = useState(false);
@@ -1745,7 +1748,7 @@ export default function SplitEndpointMap({
             </button>
           )}
           {/* Search along route */}
-          {paidApisEnabled && enableGooglePlaces && (
+          {showPlanningControls && paidApisEnabled && enableGooglePlaces && (
             <button
               type="button"
               className="split-map-reset-btn"
