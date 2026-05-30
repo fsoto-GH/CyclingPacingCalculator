@@ -4623,6 +4623,22 @@ export default function CourseForm() {
               <div className="projections-tab">
                 {result && (
                   <div className="course-proj-summary">
+                    {form.description?.trim() && (
+                      <div className="split-results-notes">
+                        <div className="split-results-notes-header">
+                          <i
+                            className="fa-solid fa-note-sticky"
+                            aria-hidden="true"
+                          />
+                          <span className="split-results-notes-label">
+                            Course Description
+                          </span>
+                        </div>
+                        <div className="split-results-notes-body">
+                          {form.description.trim()}
+                        </div>
+                      </div>
+                    )}
                     <div className="split-results-panel">
                       <dl className="split-results-grid">
                         <div>

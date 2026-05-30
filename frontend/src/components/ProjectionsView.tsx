@@ -2052,6 +2052,20 @@ function ProjectionSplit({
     return mode === "target_distance" ? dKm : (profile?.startKm ?? 0) + dKm;
   }, [formSplit?.intermediate_stop, mode, unitSystem, profile?.startKm]);
 
+  const intermediateDistFromStart = useMemo(() => {
+    const is = formSplit?.intermediate_stop;
+    if (!is?.enabled || !is.distance.trim()) return null;
+    const d = parseFloat(is.distance);
+    if (!Number.isFinite(d)) return null;
+    return d.toLocaleString(undefined, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+  }, [
+    formSplit?.intermediate_stop?.enabled,
+    formSplit?.intermediate_stop?.distance,
+  ]);
+
   const intermHoursInfo = useMemo(() => {
     const is = formSplit?.intermediate_stop;
     if (!is?.enabled) return null;
@@ -2871,6 +2885,14 @@ function ProjectionSplit({
                       <span className="split-results-rs-badge split-results-rs-badge--interm">
                         Intermediate Stop
                       </span>
+                      {intermediateDistFromStart && (
+                        <span
+                          className="rs-interm-dist"
+                          title="Distance from split start to this stop"
+                        >
+                          {` (~${intermediateDistFromStart} ${dLabel})`}
+                        </span>
+                      )}
                       {(formSplit.intermediate_stop.name ||
                         formSplit.intermediate_stop.alt) && (
                         <div className="split-results-rs-name">
