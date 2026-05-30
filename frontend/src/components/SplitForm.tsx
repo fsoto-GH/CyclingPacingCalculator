@@ -1271,6 +1271,7 @@ export default function SplitFormComponent({
                 endLon={displayProfile!.endLon}
                 endpointDefined={endpointDefined}
                 unitSystem={unitSystem}
+                showPlanningControls={true}
                 restStop={value.rest_stop}
                 onSelectStop={(patch) =>
                   update({ rest_stop: { ...value.rest_stop, ...patch } })
