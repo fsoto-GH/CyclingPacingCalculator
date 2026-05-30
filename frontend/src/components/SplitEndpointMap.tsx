@@ -88,6 +88,18 @@ function fmtDist(m: number, unitSystem: UnitSystem): string {
     : `${(m / 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`;
 }
 
+function googleMapsSearchUrl(
+  name: string,
+  lat: number,
+  lon: number,
+  placeId?: string | null,
+): string {
+  if (placeId) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${placeId}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}`;
+}
+
 /** Forward azimuth in degrees (0 = north, clockwise). */
 function computeBearing(
   lat1: number,
@@ -1141,19 +1153,11 @@ export default function SplitEndpointMap({
                   </div>
                   <div className="split-map-popup-links">
                     <a
-                      href={`https://www.google.com/maps?q=${endLat},${endLon}`}
+                      href={googleMapsSearchUrl("Split endpoint", endLat, endLon)}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
                       Google Maps ↗
-                    </a>
-                    {" · "}
-                    <a
-                      href={`https://www.openstreetmap.org/?mlat=${endLat}&mlon=${endLon}#map=15/${endLat}/${endLon}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      OSM ↗
                     </a>
                   </div>
                   {onSelectStop && (
@@ -1216,19 +1220,11 @@ export default function SplitEndpointMap({
                   </div>
                   <div className="split-map-popup-links">
                     <a
-                      href={`https://www.google.com/maps?q=${endLat},${endLon}`}
+                      href={googleMapsSearchUrl("Split endpoint", endLat, endLon)}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
                       Google Maps ↗
-                    </a>
-                    {" · "}
-                    <a
-                      href={`https://www.openstreetmap.org/?mlat=${endLat}&mlon=${endLon}#map=15/${endLat}/${endLon}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      OSM ↗
                     </a>
                   </div>
                   {onSelectStop && (
@@ -1298,19 +1294,18 @@ export default function SplitEndpointMap({
                   </div>
                   <div className="split-map-popup-links">
                     <a
-                      href={`https://www.google.com/maps?q=${restStopCoords.lat},${restStopCoords.lon}`}
+                      href={googleMapsSearchUrl(
+                        restStop?.name ||
+                          restStop?.address ||
+                          `${restStopCoords.lat},${restStopCoords.lon}`,
+                        restStopCoords.lat,
+                        restStopCoords.lon,
+                        restStop?.googlePlaceId,
+                      )}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
                       Google Maps ↗
-                    </a>
-                    {" · "}
-                    <a
-                      href={`https://www.openstreetmap.org/?mlat=${restStopCoords.lat}&mlon=${restStopCoords.lon}#map=17/${restStopCoords.lat}/${restStopCoords.lon}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      OSM ↗
                     </a>
                   </div>
                   {onSelectStop && (
@@ -1389,19 +1384,18 @@ export default function SplitEndpointMap({
                   </div>
                   <div className="split-map-popup-links">
                     <a
-                      href={`https://www.google.com/maps?q=${intermediateStopCoords.lat},${intermediateStopCoords.lon}`}
+                      href={googleMapsSearchUrl(
+                        intermediateStop.name ||
+                          intermediateStop.address ||
+                          `${intermediateStopCoords.lat},${intermediateStopCoords.lon}`,
+                        intermediateStopCoords.lat,
+                        intermediateStopCoords.lon,
+                        intermediateStop.googlePlaceId,
+                      )}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
                       Google Maps ↗
-                    </a>
-                    {" · "}
-                    <a
-                      href={`https://www.openstreetmap.org/?mlat=${intermediateStopCoords.lat}&mlon=${intermediateStopCoords.lon}#map=17/${intermediateStopCoords.lat}/${intermediateStopCoords.lon}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      OSM ↗
                     </a>
                   </div>
                   {onSelectIntermediateStop && (
@@ -2051,7 +2045,12 @@ export default function SplitEndpointMap({
               enter them manually after adding the stop.
             </p>
             <a
-              href={`https://www.google.com/maps/search/${encodeURIComponent(confirmStop.name)}/@${confirmStop.lat},${confirmStop.lon},17z`}
+              href={googleMapsSearchUrl(
+                confirmStop.name,
+                confirmStop.lat,
+                confirmStop.lon,
+                confirmStop.placeId,
+              )}
               target="_blank"
               rel="noopener noreferrer"
               className="no-hours-confirm__maps-link"

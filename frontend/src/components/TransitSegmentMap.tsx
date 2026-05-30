@@ -63,6 +63,18 @@ function fmtTimeCompact(hhmm: string): string {
     : `${h12}:${String(m).padStart(2, "0")}${suffix}`;
 }
 
+function googleMapsSearchUrl(
+  name: string,
+  lat: number,
+  lon: number,
+  placeId?: string | null,
+): string {
+  if (placeId) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${placeId}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lon}`)}`;
+}
+
 function dayEntryKey(e: WeekHours[0]): string {
   return `${e.mode}|${e.opens}|${e.closes}`;
 }
@@ -731,19 +743,15 @@ export default function TransitSegmentMap({
               <br />
               <div className="split-map-popup-links">
                 <a
-                  href={`https://www.google.com/maps?q=${startPoint.lat},${startPoint.lon}`}
+                  href={googleMapsSearchUrl(
+                    "Transit start",
+                    startPoint.lat,
+                    startPoint.lon,
+                  )}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   Google Maps ↗
-                </a>
-                {" · "}
-                <a
-                  href={`https://www.openstreetmap.org/?mlat=${startPoint.lat}&mlon=${startPoint.lon}#map=15/${startPoint.lat}/${startPoint.lon}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  OSM ↗
                 </a>
               </div>
             </Popup>
@@ -767,19 +775,11 @@ export default function TransitSegmentMap({
               <br />
               <div className="split-map-popup-links">
                 <a
-                  href={`https://www.google.com/maps?q=${endLat},${endLon}`}
+                  href={googleMapsSearchUrl("Transit end", endLat, endLon)}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   Google Maps ↗
-                </a>
-                {" · "}
-                <a
-                  href={`https://www.openstreetmap.org/?mlat=${endLat}&mlon=${endLon}#map=15/${endLat}/${endLon}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  OSM ↗
                 </a>
               </div>
             </Popup>
@@ -798,19 +798,18 @@ export default function TransitSegmentMap({
                 <br />
                 <div className="split-map-popup-links">
                   <a
-                    href={`https://www.google.com/maps?q=${restStopCoords.lat},${restStopCoords.lon}`}
+                    href={googleMapsSearchUrl(
+                      restStop?.name ||
+                        restStop?.address ||
+                        `${restStopCoords.lat},${restStopCoords.lon}`,
+                      restStopCoords.lat,
+                      restStopCoords.lon,
+                      restStop?.googlePlaceId,
+                    )}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
                     Google Maps ↗
-                  </a>
-                  {" · "}
-                  <a
-                    href={`https://www.openstreetmap.org/?mlat=${restStopCoords.lat}&mlon=${restStopCoords.lon}#map=17/${restStopCoords.lat}/${restStopCoords.lon}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    OSM ↗
                   </a>
                 </div>
               </Popup>
@@ -1250,7 +1249,12 @@ export default function TransitSegmentMap({
               enter them manually after adding the stop.
             </p>
             <a
-              href={`https://www.google.com/maps/search/${encodeURIComponent(confirmStop.name)}/@${confirmStop.lat},${confirmStop.lon},17z`}
+              href={googleMapsSearchUrl(
+                confirmStop.name,
+                confirmStop.lat,
+                confirmStop.lon,
+                confirmStop.placeId,
+              )}
               target="_blank"
               rel="noopener noreferrer"
               className="no-hours-confirm__maps-link"
