@@ -1092,16 +1092,6 @@ export default function CourseForm() {
     setActivePlan(null);
   }, []);
 
-  // Reset form and active plan when the user logs out so a subsequent login
-  // cannot see or accidentally overwrite a previous user's plan.
-  const prevUserIdRef = useRef<string | undefined>(user?.id);
-  useEffect(() => {
-    if (prevUserIdRef.current !== undefined && user === null) {
-      handleReset();
-    }
-    prevUserIdRef.current = user?.id;
-  }, [user, handleReset]);
-
   const handleConfirmReset = useCallback(() => {
     handleReset();
     setConfirmResetOpen(false);
@@ -3376,7 +3366,7 @@ export default function CourseForm() {
                     </button>
                     <button
                       type="button"
-                      className="signout-btn"
+                      className="signout-btn nav-btn"
                       onClick={() => {
                         logout();
                         setNavOpen(false);

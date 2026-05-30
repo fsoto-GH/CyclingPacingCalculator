@@ -9,6 +9,7 @@ import { useMap } from "react-leaflet";
 import type { RestStopForm, IntermediateRestStopForm } from "../types";
 import { forwardGeocode, parseHighPrecisionCoordinateAddress } from "./geocode";
 import { divIcon } from "leaflet";
+import type { Map as LeafletMap } from "leaflet";
 import type { GpxTrackPoint, UnitSystem } from "../types";
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
@@ -127,7 +128,9 @@ export function useRestStopGeocode(
  */
 export function useIntermediateStopGeocode(
   intermediateStop: IntermediateRestStopForm | null | undefined,
-  onSelectStop: ((patch: Partial<IntermediateRestStopForm>) => void) | undefined,
+  onSelectStop:
+    | ((patch: Partial<IntermediateRestStopForm>) => void)
+    | undefined,
 ): void {
   const abortRef = useRef<AbortController | null>(null);
   const lastGeocodedAddressRef = useRef<string | null>(null);
@@ -169,6 +172,47 @@ export function useIntermediateStopGeocode(
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intermediateStop?.enabled, intermediateStop?.address, onSelectStop]);
+}
+
+/** Safely invalidates a Leaflet map only when its container is actually visible. */
+export function safeInvalidateMap(map: LeafletMap | null | undefined): void {
+  if (!map) return;
+  const container = map.getContainer();
+  const rect = container.getBoundingClientRect();
+  if (container.offsetParent === null || rect.width <= 1 || rect.height <= 1) {
+    return;
+  }
+  try {
+    map.invalidateSize();
+  } catch {
+    // Ignore transient layout races while mounting/unmounting.
+  }
+}
+
+/** Keeps Leaflet size calculations in sync while avoiding hidden-container invalidation. */
+export function MapVisibilityInvalidator() {
+  const map = useMap();
+  useEffect(() => {
+    let alive = true;
+    const invalidate = () => {
+      if (!alive) return;
+      safeInvalidateMap(map);
+    };
+
+    invalidate();
+    const container = map.getContainer();
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(invalidate);
+    });
+    ro.observe(container);
+    window.addEventListener("resize", invalidate);
+    return () => {
+      alive = false;
+      ro.disconnect();
+      window.removeEventListener("resize", invalidate);
+    };
+  }, [map]);
+  return null;
 }
 
 export function ScrollWheelActivator() {

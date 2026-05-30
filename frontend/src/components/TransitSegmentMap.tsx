@@ -24,7 +24,9 @@ import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
 import {
   decimateTrack,
   fmtDist,
+  MapVisibilityInvalidator,
   makeRestStopIcon,
+  safeInvalidateMap,
   ScrollWheelActivator,
   useRestStopGeocode,
 } from "../calculator/mapUtils";
@@ -258,44 +260,6 @@ function FitBoundsOnMount({ bounds }: { bounds: LatLngBoundsExpression }) {
   return null;
 }
 
-function MapInvalidator() {
-  const map = useMap();
-  useEffect(() => {
-    let alive = true;
-    const invalidate = () => {
-      if (!alive) return;
-      const container = map.getContainer();
-      const rect = container.getBoundingClientRect();
-      if (
-        container.offsetParent === null ||
-        rect.width <= 1 ||
-        rect.height <= 1
-      ) {
-        return;
-      }
-      try {
-        map.invalidateSize();
-      } catch {
-        // Ignore transient layout races while the map is mounting/unmounting.
-      }
-    };
-
-    invalidate();
-    const container = map.getContainer();
-    const ro = new ResizeObserver(() => {
-      requestAnimationFrame(invalidate);
-    });
-    ro.observe(container);
-    window.addEventListener("resize", invalidate);
-    return () => {
-      alive = false;
-      ro.disconnect();
-      window.removeEventListener("resize", invalidate);
-    };
-  }, [map]);
-  return null;
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface TransitSegmentMapProps {
@@ -321,6 +285,10 @@ export default function TransitSegmentMap({
 }: TransitSegmentMapProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
+
+  const invalidateVisibleMap = useCallback(() => {
+    safeInvalidateMap(mapRef.current);
+  }, []);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [resolvedGoogleUrl, setResolvedGoogleUrl] = useState<string | null>(
     null,
@@ -507,11 +475,11 @@ export default function TransitSegmentMap({
     if (!document.fullscreenElement) {
       await host.requestFullscreen();
       setIsFullscreen(true);
-      setTimeout(() => mapRef.current?.invalidateSize(), 0);
+      setTimeout(invalidateVisibleMap, 0);
     } else {
       await document.exitFullscreen();
       setIsFullscreen(false);
-      setTimeout(() => mapRef.current?.invalidateSize(), 0);
+      setTimeout(invalidateVisibleMap, 0);
     }
   }
 
@@ -520,11 +488,11 @@ export default function TransitSegmentMap({
       const host = canvasRef.current;
       const active = !!host && document.fullscreenElement === host;
       setIsFullscreen(active);
-      setTimeout(() => mapRef.current?.invalidateSize(), 0);
+      setTimeout(invalidateVisibleMap, 0);
     };
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
-  }, []);
+  }, [invalidateVisibleMap]);
 
   // ── Nearby search handlers ─────────────────────────────────────────────────
   const handleSearch = useCallback(
@@ -701,7 +669,7 @@ export default function TransitSegmentMap({
         >
           <AttributionControl position="bottomleft" />
           <FitBoundsOnMount bounds={bounds} />
-          <MapInvalidator />
+          <MapVisibilityInvalidator />
           <ScrollWheelActivator />
           {activeTileUrl != null && (
             <TileLayer

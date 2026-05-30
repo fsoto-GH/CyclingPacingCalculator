@@ -35,6 +35,7 @@ import type {
 import type { RestStopForm, IntermediateRestStopForm } from "../types";
 import { interpolateLatLon, sliceTrackPoints } from "../calculator/gpxParser";
 import { distanceLabel, SEGMENT_COLORS } from "../utils";
+import { MapVisibilityInvalidator } from "../calculator/mapUtils";
 import {
   MAP_TILE_LAYERS,
   MapTileLayerKey,
@@ -1062,6 +1063,7 @@ export default function CourseMap({
         >
           <Pane name="route-lines" style={{ zIndex: 393 }} />
           <Pane name="route-labels" style={{ zIndex: 397 }} />
+          <MapVisibilityInvalidator />
           <ScrollWheelActivator />
           {showMarkers && (
             <ZoomableMarkers gpxTrack={gpxTrack} unitSystem={unitSystem} />
