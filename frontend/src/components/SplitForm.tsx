@@ -39,6 +39,7 @@ import TimezoneSelect from "./TimezoneSelect";
 import { FieldError } from "./FieldError";
 import NumberInput from "./NumberInput";
 import ConfirmModal from "./ConfirmModal";
+import MapErrorBoundary from "./MapErrorBoundary";
 const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
 
 interface SplitFormProps {
@@ -1260,10 +1261,14 @@ export default function SplitFormComponent({
 
           // ── Map content (SplitEndpointMap) ──
           const mapContent = mapAvailable ? (
-            <Suspense
-              fallback={<div className="map-loading">Loading map…</div>}
+            <MapErrorBoundary
+              resetKey={`${displayProfile?.endLat},${displayProfile?.endLon}`}
+              boundaryName="split-endpoint-map"
             >
-              <SplitEndpointMap
+              <Suspense
+                fallback={<div className="map-loading">Loading map…</div>}
+              >
+                <SplitEndpointMap
                 gpxTrack={gpxTrack!}
                 startKm={displayProfile!.startKm}
                 endKm={displayProfile!.endKm}
@@ -1308,7 +1313,8 @@ export default function SplitFormComponent({
                   });
                 }}
               />
-            </Suspense>
+              </Suspense>
+            </MapErrorBoundary>
           ) : null;
 
           // ── Results panel content ──

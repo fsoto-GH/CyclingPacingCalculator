@@ -39,6 +39,7 @@ import {
 } from "../calculator/overpass";
 import { reverseGeocode } from "../calculator/geocode";
 import {
+  MapVisibilityInvalidator,
   useRestStopGeocode,
   useIntermediateStopGeocode,
 } from "../calculator/mapUtils";
@@ -459,38 +460,29 @@ function FitBounds({ bounds }: { bounds: LatLngBoundsExpression }) {
   const hasFitRef = useRef(false);
   useEffect(() => {
     if (hasFitRef.current) return;
-    try {
-      map.fitBounds(bounds, { padding: [20, 20] });
-      hasFitRef.current = true;
-    } catch {
-      // Silently ignore: can fire during unmount (StrictMode double-remove)
-      // or when bounds are degenerate (e.g. Infinity from an empty polyline).
-    }
-  }, [map, bounds]);
-  return null;
-}
-
-// Calls invalidateSize after mount and whenever the map container resizes.
-// Uses map.getContainer() so no external ref is needed — the container is
-// always available inside a MapContainer child component.
-function MapInvalidator() {
-  const map = useMap();
-  useEffect(() => {
-    map.invalidateSize();
     const container = map.getContainer();
-    // Skip invalidateSize when the container is hidden (e.g. tab-panel--hidden
-    // applies display:none). Calling it on a 0×0 container corrupts Leaflet's
-    // internal centre/zoom state and causes "Invalid LatLng (NaN,NaN)" errors
-    // when the panel becomes visible again.
-    const ro = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect;
-      if (width > 0 && height > 0) {
-        map.invalidateSize();
+    const fitIfVisible = () => {
+      if (hasFitRef.current) return;
+      const { width, height } = container.getBoundingClientRect();
+      if (width <= 0 || height <= 0) return;
+      try {
+        map.fitBounds(bounds, { padding: [20, 20] });
+        hasFitRef.current = true;
+      } catch {
+        // Silently ignore: can fire during unmount (StrictMode double-remove)
+        // or when bounds are degenerate (e.g. Infinity from an empty polyline).
       }
+    };
+
+    fitIfVisible();
+    if (hasFitRef.current) return;
+
+    const ro = new ResizeObserver(() => {
+      fitIfVisible();
     });
     ro.observe(container);
     return () => ro.disconnect();
-  }, [map]);
+  }, [map, bounds]);
   return null;
 }
 
@@ -1004,6 +996,13 @@ export default function SplitEndpointMap({
     } as Partial<IntermediateRestStopForm>);
   }
 
+  // Guard against NaN coordinates — can occur transiently when the parent
+  // re-renders with an incomplete profile (e.g. during tab switch).
+  // Returning null prevents Leaflet from throwing "Invalid LatLng (NaN, NaN)".
+  if (!Number.isFinite(endLat) || !Number.isFinite(endLon)) {
+    return <div className="split-endpoint-map" />;
+  }
+
   return (
     <div className="split-endpoint-map">
       <div className="split-endpoint-map-canvas" ref={canvasRef}>
@@ -1020,7 +1019,7 @@ export default function SplitEndpointMap({
           <AttributionControl position="bottomleft" />
           <Pane name="route-lines" style={{ zIndex: 393 }} />
           <Pane name="route-labels" style={{ zIndex: 397 }} />
-          <MapInvalidator />
+          <MapVisibilityInvalidator />
           <ScrollWheelActivator />
           <FitBounds bounds={bounds} />
           {(() => {
