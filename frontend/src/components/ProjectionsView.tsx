@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import tzlookup from "tz-lookup";
 import type {
   CourseForm as CourseFormState,
   CourseDetail,
@@ -23,6 +24,7 @@ import {
   buildDetailedNearDetail,
   checkArrivalVsHoursDetailed,
   dayIndexInTimezone,
+  formatArrivalTimeWithTz,
   formatIsoInTzShort,
   formatRatioPercent,
   formatRawDualRatio,
@@ -34,6 +36,10 @@ import {
   weatherCodeLabel,
   windDirectionLabel,
 } from "../calculator/weather";
+import {
+  findNearestTrackPoint,
+  interpolateLatLon,
+} from "../calculator/gpxParser";
 
 const SplitEndpointMap = lazy(() => import("./SplitEndpointMap"));
 const TransitSegmentMap = lazy(() => import("./TransitSegmentMap"));
@@ -45,6 +51,8 @@ interface EtaInfo {
   statusWord: string;
   hoursLabel: string;
   nearDetail: string | null;
+  arrivalTime: string;
+  timezone?: string;
 }
 
 function buildEtaInfo(
@@ -90,7 +98,15 @@ function buildEtaInfo(
     closed: "Closed",
   };
 
-  return { status, statusWord: statusWords[status], hoursLabel, nearDetail };
+  const arrivalTime = formatArrivalTimeWithTz(splitResult.end_time, tz);
+  return {
+    status,
+    statusWord: statusWords[status],
+    hoursLabel,
+    nearDetail,
+    arrivalTime,
+    timezone: tz,
+  };
 }
 
 const fmtInTz = formatIsoInTzShort;
@@ -1830,7 +1846,10 @@ function ProjectionSegment({
                           className={`split-results-stop-hours split-results-stop-hours--${transitEtaInfo.status}`}
                         >
                           <span className="split-results-stop-dot" />
-                          <span>{transitEtaInfo.hoursLabel}</span>
+                          <span>{transitEtaInfo.hoursLabel} </span>
+                          <span>
+                            &mdash;{`ETA ${transitEtaInfo.arrivalTime}`}
+                          </span>
                           {transitEtaInfo.nearDetail && (
                             <span className="split-results-stop-near">
                               {transitEtaInfo.nearDetail}
@@ -2066,15 +2085,133 @@ function ProjectionSplit({
     formSplit?.intermediate_stop?.distance,
   ]);
 
-  const intermHoursInfo = useMemo(() => {
+  const intermediateEtaIso = useMemo(() => {
     const is = formSplit?.intermediate_stop;
     if (!is?.enabled) return null;
-    const dayIdx = dayIndexInTimezone(split.end_time, courseTz);
+
+    const startMs = Date.parse(split.start_time);
+    const endMs = Date.parse(split.end_time);
+    if (
+      !Number.isFinite(startMs) ||
+      !Number.isFinite(endMs) ||
+      endMs < startMs
+    ) {
+      return null;
+    }
+
+    let ratio: number | null = null;
+
+    // Prefer profile km interpolation because it works in both relative and
+    // target-distance modes and stays aligned with the GPX split endpoints.
+    if (intermediateKm != null && profile) {
+      const denom = profile.endKm - profile.startKm;
+      if (Number.isFinite(denom) && denom > 0) {
+        ratio = (intermediateKm - profile.startKm) / denom;
+      }
+    }
+
+    // Fallback: use entered split-relative distance if available.
+    if (ratio == null) {
+      const stopDist = parseFloat(is.distance);
+      let relStopDist = stopDist;
+      if (Number.isFinite(stopDist) && mode === "target_distance" && profile) {
+        const splitStartUser =
+          profile.startKm / (unitSystem === "imperial" ? KM_PER_MI : 1);
+        relStopDist = stopDist - splitStartUser;
+      }
+      if (
+        Number.isFinite(relStopDist) &&
+        Number.isFinite(split.distance) &&
+        split.distance > 0
+      ) {
+        ratio = relStopDist / split.distance;
+      }
+    }
+
+    if (ratio == null || !Number.isFinite(ratio)) return null;
+    const clamped = Math.max(0, Math.min(1, ratio));
+    const etaMs = startMs + (endMs - startMs) * clamped;
+    return new Date(etaMs).toISOString();
+  }, [
+    formSplit?.intermediate_stop,
+    split.start_time,
+    split.end_time,
+    intermediateKm,
+    profile,
+    split.distance,
+  ]);
+
+  const intermediateStopTz = useMemo(() => {
+    const fallbackTz = splitEndTz ?? courseTz;
+    const is = formSplit?.intermediate_stop;
+    if (!is?.enabled) return fallbackTz;
+
+    let lat: number | null = null;
+    let lon: number | null = null;
+
+    if (
+      is.lat != null &&
+      is.lon != null &&
+      Number.isFinite(is.lat) &&
+      Number.isFinite(is.lon)
+    ) {
+      if (
+        gpxTrack &&
+        gpxTrack.length > 0 &&
+        profile &&
+        Number.isFinite(profile.startKm) &&
+        Number.isFinite(profile.endKm)
+      ) {
+        const snapped = findNearestTrackPoint(
+          gpxTrack,
+          is.lat,
+          is.lon,
+          profile.startKm,
+          profile.endKm,
+        );
+        if (snapped) {
+          lat = snapped.lat;
+          lon = snapped.lon;
+        }
+      }
+
+      if (lat == null || lon == null) {
+        lat = is.lat;
+        lon = is.lon;
+      }
+    } else if (intermediateKm != null && gpxTrack && gpxTrack.length > 0) {
+      const pt = interpolateLatLon(gpxTrack, intermediateKm);
+      if (pt) {
+        lat = pt.lat;
+        lon = pt.lon;
+      }
+    }
+
+    if (lat == null || lon == null) return fallbackTz;
+
+    try {
+      return tzlookup(lat, lon);
+    } catch {
+      return fallbackTz;
+    }
+  }, [
+    splitEndTz,
+    courseTz,
+    formSplit?.intermediate_stop,
+    intermediateKm,
+    gpxTrack,
+    profile,
+  ]);
+
+  const intermHoursInfo = useMemo(() => {
+    const is = formSplit?.intermediate_stop;
+    if (!is?.enabled || !intermediateEtaIso) return null;
+    const dayIdx = dayIndexInTimezone(intermediateEtaIso, intermediateStopTz);
     const entry = is.sameHoursEveryDay ? is.allDays : is.perDay[dayIdx];
     const status = checkArrivalVsHoursDetailed(
-      split.end_time,
+      intermediateEtaIso,
       entry,
-      courseTz,
+      intermediateStopTz,
       etaMarginOpen,
       etaMarginClose,
     );
@@ -2082,7 +2219,12 @@ function ProjectionSplit({
     const hoursLabel = hoursLabelForEntry(entry);
     const nearDetail =
       status === "near-open" || status === "near-close"
-        ? buildDetailedNearDetail(status, split.end_time, entry, courseTz)
+        ? buildDetailedNearDetail(
+            status,
+            intermediateEtaIso,
+            entry,
+            intermediateStopTz,
+          )
         : null;
     const statusWords: Record<string, string> = {
       open: "Open",
@@ -2090,11 +2232,22 @@ function ProjectionSplit({
       "near-close": "Near close",
       closed: "Closed",
     };
-    return { status, statusWord: statusWords[status], hoursLabel, nearDetail };
+    const arrivalTime = formatArrivalTimeWithTz(
+      intermediateEtaIso,
+      intermediateStopTz,
+    );
+    return {
+      status,
+      statusWord: statusWords[status],
+      hoursLabel,
+      nearDetail,
+      arrivalTime,
+      timezone: intermediateStopTz,
+    };
   }, [
     formSplit?.intermediate_stop,
-    split.end_time,
-    courseTz,
+    intermediateEtaIso,
+    intermediateStopTz,
     etaMarginOpen,
     etaMarginClose,
   ]);
@@ -2327,7 +2480,7 @@ function ProjectionSplit({
               <>
                 <span
                   className={`eta-badge eta-${etaInfo.status}`}
-                  title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel}) ${formSplit?.intermediate_stop?.enabled ? `& "${formSplit.intermediate_stop.name}" (${intermHoursInfo!.hoursLabel})` : ""}`}
+                  title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})${formSplit?.intermediate_stop?.enabled && intermHoursInfo ? ` | ${formSplit.intermediate_stop.name || "Intermediate stop"}: ${intermHoursInfo.statusWord} (${intermHoursInfo.nearDetail ? intermHoursInfo.nearDetail : intermHoursInfo.hoursLabel})` : ""}`}
                 >
                   {formSplit?.rest_stop.name && (
                     <span className="proj-segment-city">
@@ -2345,8 +2498,8 @@ function ProjectionSplit({
             )}
             {formSplit?.intermediate_stop?.enabled && (
               <span
-                className="intermediate-stop-asterisk"
-                title={`Intermediate stop set${formSplit.intermediate_stop.name ? `: ${formSplit.intermediate_stop.name}` : ""}`}
+                className={`intermediate-stop-asterisk${intermHoursInfo ? ` intermediate-stop-asterisk--${intermHoursInfo.status}` : ""}`}
+                title={`Intermediate stop${formSplit.intermediate_stop.name ? `: ${formSplit.intermediate_stop.name}` : ""}${intermHoursInfo ? ` | ${intermHoursInfo.statusWord} (${intermHoursInfo.nearDetail ? intermHoursInfo.nearDetail : intermHoursInfo.hoursLabel})` : ""}`}
                 aria-label="Intermediate stop set"
               >
                 *
@@ -2824,55 +2977,6 @@ function ProjectionSplit({
                   </span>
                 </div>
 
-                {hasRest && (
-                  <div className="split-results-stop-row">
-                    <div className="split-results-stop-icon split-results-stop-icon--rest">
-                      <i
-                        className="fa-solid fa-location-dot"
-                        aria-hidden="true"
-                      />
-                    </div>
-                    <div className="split-results-stop-body">
-                      <span className="split-results-rs-badge">Rest Stop</span>
-                      {(formSplit.rest_stop.name ||
-                        formSplit.rest_stop.alt) && (
-                        <div className="split-results-rs-name">
-                          {formSplit.rest_stop.alt ? (
-                            <a
-                              href={formSplit.rest_stop.alt}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {formSplit.rest_stop.name ||
-                                formSplit.rest_stop.alt}
-                            </a>
-                          ) : (
-                            formSplit.rest_stop.name
-                          )}
-                        </div>
-                      )}
-                      {formSplit.rest_stop.address && (
-                        <div className="split-results-rs-address">
-                          {formSplit.rest_stop.address}
-                        </div>
-                      )}
-                    </div>
-                    {etaInfo && (
-                      <div
-                        className={`split-results-stop-hours split-results-stop-hours--${etaInfo.status}`}
-                      >
-                        <span className="split-results-stop-dot" />
-                        <span>{etaInfo.hoursLabel}</span>
-                        {etaInfo.nearDetail && (
-                          <span className="split-results-stop-near">
-                            {etaInfo.nearDetail}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {hasInterm && (
                   <div className="split-results-stop-row">
                     <div className="split-results-stop-icon split-results-stop-icon--interm">
@@ -2882,7 +2986,9 @@ function ProjectionSplit({
                       />
                     </div>
                     <div className="split-results-stop-body">
-                      <span className="split-results-rs-badge split-results-rs-badge--interm">
+                      <span
+                        className={`split-results-rs-badge split-results-rs-badge--interm${intermHoursInfo ? ` split-results-rs-badge--status-${intermHoursInfo.status}` : ""}`}
+                      >
                         Intermediate Stop
                       </span>
                       {intermediateDistFromStart && (
@@ -2919,12 +3025,74 @@ function ProjectionSplit({
                     {intermHoursInfo && (
                       <div
                         className={`split-results-stop-hours split-results-stop-hours--${intermHoursInfo.status}`}
+                        title={
+                          intermHoursInfo.timezone
+                            ? `Resolved timezone: ${intermHoursInfo.timezone}`
+                            : undefined
+                        }
                       >
                         <span className="split-results-stop-dot" />
                         <span>{intermHoursInfo.hoursLabel}</span>
+                        <span>
+                          &mdash;{`ETA ${intermHoursInfo.arrivalTime}`}
+                        </span>
                         {intermHoursInfo.nearDetail && (
                           <span className="split-results-stop-near">
                             {intermHoursInfo.nearDetail}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {hasRest && (
+                  <div className="split-results-stop-row">
+                    <div className="split-results-stop-icon split-results-stop-icon--rest">
+                      <i
+                        className="fa-solid fa-location-dot"
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="split-results-stop-body">
+                      <span
+                        className={`split-results-rs-badge${etaInfo ? ` split-results-rs-badge--status-${etaInfo.status}` : ""}`}
+                      >
+                        Rest Stop
+                      </span>
+                      {(formSplit.rest_stop.name ||
+                        formSplit.rest_stop.alt) && (
+                        <div className="split-results-rs-name">
+                          {formSplit.rest_stop.alt ? (
+                            <a
+                              href={formSplit.rest_stop.alt}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {formSplit.rest_stop.name ||
+                                formSplit.rest_stop.alt}
+                            </a>
+                          ) : (
+                            formSplit.rest_stop.name
+                          )}
+                        </div>
+                      )}
+                      {formSplit.rest_stop.address && (
+                        <div className="split-results-rs-address">
+                          {formSplit.rest_stop.address}
+                        </div>
+                      )}
+                    </div>
+                    {etaInfo && (
+                      <div
+                        className={`split-results-stop-hours split-results-stop-hours--${etaInfo.status}`}
+                      >
+                        <span className="split-results-stop-dot" />
+                        <span>{etaInfo.hoursLabel}</span>
+                        <span>&mdash;{`ETA ${etaInfo.arrivalTime}`}</span>
+                        {etaInfo.nearDetail && (
+                          <span className="split-results-stop-near">
+                            {etaInfo.nearDetail}
                           </span>
                         )}
                       </div>
