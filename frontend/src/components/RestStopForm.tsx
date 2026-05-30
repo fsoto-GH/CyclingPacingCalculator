@@ -10,6 +10,7 @@ interface EtaInfo {
   hoursLabel: string;
   nearDetail: string | null;
   arrivalTime: string;
+  timezone?: string;
 }
 
 interface RestStopFormProps {
@@ -264,7 +265,14 @@ export default function RestStopFormComponent({
 
           {/* ETA status */}
           {etaInfo && (
-            <div className={`rs-eta-row eta-${etaInfo.status}`}>
+            <div
+              className={`rs-eta-row eta-${etaInfo.status}`}
+              title={
+                etaInfo.timezone
+                  ? `Resolved timezone: ${etaInfo.timezone}`
+                  : undefined
+              }
+            >
               ETA {etaInfo.arrivalTime} — <strong>{etaInfo.statusWord}</strong>
               {etaInfo.hoursLabel !== "24 hours" &&
                 etaInfo.hoursLabel !== "Closed" && <> ({etaInfo.hoursLabel})</>}

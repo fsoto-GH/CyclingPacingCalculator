@@ -25,7 +25,14 @@ import {
   minutesToHms,
   SEGMENT_COLORS,
 } from "../utils";
-import { buildSegmentTimezoneSequence } from "../timeMath";
+import {
+  buildDetailedNearDetail,
+  buildSegmentTimezoneSequence,
+  checkArrivalVsHoursDetailed,
+  dayIndexInTimezone,
+  formatArrivalTimeWithTz,
+  hoursLabelForEntry,
+} from "../timeMath";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import { SteepBadge } from "./GradeTooltip";
@@ -92,6 +99,14 @@ interface SegmentFormProps {
   etaMarginClose?: number;
   onZoomToSegment?: () => void;
   onZoomToSplit?: (splitIdx: number) => void;
+}
+
+interface EtaInfo {
+  status: "open" | "near-open" | "near-close" | "closed";
+  statusWord: string;
+  hoursLabel: string;
+  nearDetail: string | null;
+  arrivalTime: string;
 }
 
 export default function SegmentFormComponent({
@@ -445,6 +460,67 @@ export default function SegmentFormComponent({
         })()
       : null;
 
+  const transitEtaInfo: EtaInfo | null = (() => {
+    const transitSplitResult = splitResults?.[0] ?? null;
+    const transitSplit = value.splits[0];
+    if (
+      !value.nullified ||
+      !transitSplitResult ||
+      !transitSplit ||
+      !transitSplit.rest_stop.enabled
+    ) {
+      return null;
+    }
+
+    const rs = transitSplit.rest_stop;
+    const tz =
+      transitSplitResult.end_timezone ||
+      (transitSplit.differentTimezone && transitSplit.timezone
+        ? transitSplit.timezone
+        : courseTz);
+    const dayIdx = dayIndexInTimezone(transitSplitResult.end_time, tz);
+    const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
+    const status = checkArrivalVsHoursDetailed(
+      transitSplitResult.end_time,
+      entry,
+      tz,
+      etaMarginOpen,
+      etaMarginClose,
+    );
+    if (!status) return null;
+
+    const hoursLabel = hoursLabelForEntry(entry);
+    const nearDetail =
+      status === "near-open" || status === "near-close"
+        ? buildDetailedNearDetail(
+            status,
+            transitSplitResult.end_time,
+            entry,
+            tz,
+          )
+        : null;
+
+    const statusWords: Record<string, string> = {
+      open: "Open",
+      "near-open": "Near open",
+      "near-close": "Near close",
+      closed: "Closed",
+    };
+
+    const arrivalTime = formatArrivalTimeWithTz(
+      transitSplitResult.end_time,
+      tz,
+    );
+
+    return {
+      status,
+      statusWord: statusWords[status],
+      hoursLabel,
+      nearDetail,
+      arrivalTime,
+    };
+  })();
+
   return (
     <div
       className={`segment-form${transitJumpPulse ? " segment-form--transit-jump-pulse" : ""}`}
@@ -748,6 +824,7 @@ export default function SegmentFormComponent({
                   <RestStopFormComponent
                     prefix={`${prefix}-transit-rs`}
                     value={transitSplit.rest_stop}
+                    etaInfo={transitEtaInfo}
                     onChange={(rs) =>
                       update({ splits: [{ ...transitSplit, rest_stop: rs }] })
                     }

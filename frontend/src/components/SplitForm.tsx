@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense, useMemo } from "react";
+import tzlookup from "tz-lookup";
 import type {
   SplitForm,
   SubSplitMode,
@@ -31,6 +32,7 @@ interface EtaInfo {
   hoursLabel: string; // e.g. "6:00 AM - 10:00 PM" or "24 hours" or "Closed"
   nearDetail: string | null; // e.g. "5 min before opening" or "10 min after closing"
   arrivalTime: string; // e.g. "1:31 PM EDT"
+  timezone?: string;
 }
 
 import TimeInput from "./TimeInput";
@@ -412,35 +414,8 @@ export default function SplitFormComponent({
       hoursLabel,
       nearDetail,
       arrivalTime,
+      timezone: tz,
     };
-  })();
-
-  const intermHoursInfo = (() => {
-    const is = value.intermediate_stop;
-    if (!is?.enabled || !splitResult) return null;
-    const tz = splitEndTz ?? courseTz;
-    const dayIdx = dayIndexInTimezone(splitResult.end_time, tz);
-    const entry = is.sameHoursEveryDay ? is.allDays : is.perDay[dayIdx];
-    const status = checkArrivalVsHoursDetailed(
-      splitResult.end_time,
-      entry,
-      tz,
-      etaMarginOpen,
-      etaMarginClose,
-    );
-    if (!status) return null;
-    const hoursLabel = hoursLabelForEntry(entry);
-    const nearDetail =
-      status === "near-open" || status === "near-close"
-        ? buildDetailedNearDetail(status, splitResult.end_time, entry, tz)
-        : null;
-    const statusWords: Record<string, string> = {
-      open: "Open",
-      "near-open": "Near open",
-      "near-close": "Near close",
-      closed: "Closed",
-    };
-    return { status, statusWord: statusWords[status], hoursLabel, nearDetail };
   })();
 
   // Timezone badge — shown whenever a split timezone override is active,
@@ -560,6 +535,165 @@ export default function SplitFormComponent({
     displayProfile,
     unitSystem,
   ]);
+
+  const intermediateEtaIso = (() => {
+    if (!splitResult || !value.intermediate_stop?.enabled) return null;
+
+    const startMs = Date.parse(splitResult.start_time);
+    const endMs = Date.parse(splitResult.end_time);
+    if (
+      !Number.isFinite(startMs) ||
+      !Number.isFinite(endMs) ||
+      endMs < startMs
+    ) {
+      return null;
+    }
+
+    let ratio: number | null = null;
+
+    // Prefer GPX-profile interpolation because it is correct in both
+    // relative-distance and target-distance split modes.
+    if (intermediateKm != null && displayProfile) {
+      const denomKm = displayProfile.endKm - displayProfile.startKm;
+      if (Number.isFinite(denomKm) && denomKm > 0) {
+        ratio = (intermediateKm - displayProfile.startKm) / denomKm;
+      }
+    }
+
+    // Fallback to form-entered distance. In target-distance mode this value
+    // is cumulative from route start, so convert it to split-relative first.
+    if (ratio == null) {
+      const rawStopDist = parseFloat(value.intermediate_stop.distance);
+      let relStopDist = rawStopDist;
+
+      if (Number.isFinite(rawStopDist) && mode === "target_distance") {
+        const splitEndUser =
+          cumulativeDist != null ? cumulativeDist : parseFloat(value.distance);
+        const splitLenUserNum = Number(splitDistUser);
+        if (
+          Number.isFinite(splitEndUser) &&
+          Number.isFinite(splitLenUserNum)
+        ) {
+          const splitStartUser = splitEndUser - splitLenUserNum;
+          relStopDist = rawStopDist - splitStartUser;
+        }
+      }
+
+      const denom = splitDistUser ?? parseFloat(value.distance);
+
+      if (
+        Number.isFinite(relStopDist) &&
+        Number.isFinite(denom) &&
+        denom > 0
+      ) {
+        ratio = relStopDist / denom;
+      }
+    }
+
+    if (ratio == null || !Number.isFinite(ratio)) return null;
+    const clamped = Math.max(0, Math.min(1, ratio));
+    const etaMs = startMs + (endMs - startMs) * clamped;
+    return new Date(etaMs).toISOString();
+  })();
+
+  const intermediateStopTz = useMemo(() => {
+    const fallbackTz = splitEndTz ?? courseTz;
+    if (!intermediateStop.enabled) return fallbackTz;
+
+    let lat: number | null = null;
+    let lon: number | null = null;
+
+    if (
+      intermediateStop.lat != null &&
+      intermediateStop.lon != null &&
+      Number.isFinite(intermediateStop.lat) &&
+      Number.isFinite(intermediateStop.lon)
+    ) {
+      if (
+        gpxTrack &&
+        gpxTrack.length > 0 &&
+        displayProfile &&
+        Number.isFinite(displayProfile.startKm) &&
+        Number.isFinite(displayProfile.endKm)
+      ) {
+        const snapped = findNearestTrackPoint(
+          gpxTrack,
+          intermediateStop.lat,
+          intermediateStop.lon,
+          displayProfile.startKm,
+          displayProfile.endKm,
+        );
+        if (snapped) {
+          lat = snapped.lat;
+          lon = snapped.lon;
+        }
+      }
+
+      if (lat == null || lon == null) {
+        lat = intermediateStop.lat;
+        lon = intermediateStop.lon;
+      }
+    } else if (intermediateKm != null && gpxTrack && gpxTrack.length > 0) {
+      const pt = interpolateLatLon(gpxTrack, intermediateKm);
+      if (pt) {
+        lat = pt.lat;
+        lon = pt.lon;
+      }
+    }
+
+    if (lat == null || lon == null) return fallbackTz;
+
+    try {
+      return tzlookup(lat, lon);
+    } catch {
+      return fallbackTz;
+    }
+  }, [
+    splitEndTz,
+    courseTz,
+    intermediateStop.enabled,
+    intermediateStop.lat,
+    intermediateStop.lon,
+    intermediateKm,
+    gpxTrack,
+    displayProfile,
+  ]);
+
+  const intermHoursInfo = (() => {
+    const is = value.intermediate_stop;
+    if (!is?.enabled || !splitResult || !intermediateEtaIso) return null;
+    const tz = intermediateStopTz;
+    const dayIdx = dayIndexInTimezone(intermediateEtaIso, tz);
+    const entry = is.sameHoursEveryDay ? is.allDays : is.perDay[dayIdx];
+    const status = checkArrivalVsHoursDetailed(
+      intermediateEtaIso,
+      entry,
+      tz,
+      etaMarginOpen,
+      etaMarginClose,
+    );
+    if (!status) return null;
+    const hoursLabel = hoursLabelForEntry(entry);
+    const nearDetail =
+      status === "near-open" || status === "near-close"
+        ? buildDetailedNearDetail(status, intermediateEtaIso, entry, tz)
+        : null;
+    const statusWords: Record<string, string> = {
+      open: "Open",
+      "near-open": "Near open",
+      "near-close": "Near close",
+      closed: "Closed",
+    };
+    const arrivalTime = formatArrivalTimeWithTz(intermediateEtaIso, tz);
+    return {
+      status,
+      statusWord: statusWords[status],
+      hoursLabel,
+      nearDetail,
+      arrivalTime,
+      timezone: tz,
+    };
+  })();
 
   return (
     <div
@@ -755,7 +889,7 @@ export default function SplitFormComponent({
                         {etaInfo && (
                           <span
                             className={`eta-badge eta-${etaInfo.status}`}
-                            title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel}) ${value.intermediate_stop?.enabled ? `& "${value.intermediate_stop.name}" (${intermHoursInfo!.hoursLabel})` : ""}`}
+                            title={`${etaInfo.statusWord} (${etaInfo.nearDetail ? etaInfo.nearDetail : etaInfo.hoursLabel})${value.intermediate_stop?.enabled && intermHoursInfo ? ` | ${value.intermediate_stop.name || "Intermediate stop"}: ${intermHoursInfo.statusWord} (${intermHoursInfo.nearDetail ? intermHoursInfo.nearDetail : intermHoursInfo.hoursLabel})` : ""}`}
                           >
                             {value.rest_stop.enabled &&
                               (value.rest_stop.name?.trim() || "Rest stop")}
@@ -771,8 +905,8 @@ export default function SplitFormComponent({
                         )}
                         {value.intermediate_stop?.enabled && (
                           <span
-                            className="intermediate-stop-asterisk"
-                            title={`Intermediate stop set${value.intermediate_stop.name ? `: ${value.intermediate_stop.name}` : ""}`}
+                            className={`intermediate-stop-asterisk${intermHoursInfo ? ` intermediate-stop-asterisk--${intermHoursInfo.status}` : ""}`}
+                            title={`Intermediate stop${value.intermediate_stop.name ? `: ${value.intermediate_stop.name}` : ""}${intermHoursInfo ? ` | ${intermHoursInfo.statusWord} (${intermHoursInfo.nearDetail ? intermHoursInfo.nearDetail : intermHoursInfo.hoursLabel})` : ""}`}
                             aria-label="Intermediate stop set"
                           >
                             *
@@ -1222,6 +1356,14 @@ export default function SplitFormComponent({
                           allDays: intermediateStop.allDays,
                           perDay: intermediateStop.perDay,
                         }}
+                        etaInfo={
+                          intermHoursInfo
+                            ? {
+                                ...intermHoursInfo,
+                                arrivalTime: intermHoursInfo.arrivalTime,
+                              }
+                            : null
+                        }
                         onChange={(rs) =>
                           update({
                             intermediate_stop: {
@@ -1526,6 +1668,11 @@ export default function SplitFormComponent({
                         {intermHoursInfo && (
                           <div
                             className={`split-results-stop-hours split-results-stop-hours--${intermHoursInfo.status}`}
+                            title={
+                              intermHoursInfo.timezone
+                                ? `Resolved timezone: ${intermHoursInfo.timezone}`
+                                : undefined
+                            }
                           >
                             <span className="split-results-stop-dot" />
                             <span>{intermHoursInfo.hoursLabel}</span>
