@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # FRONTEND_URLS=https://cyclingpacingcalculator.onrender.com,https://fsoto-gh.github.io
     frontend_urls: Optional[str] = None
 
+    # Public backend origin (scheme + host, no trailing slash), used for
+    # absolute callback URL generation when the app is behind a reverse proxy.
+    # Example: https://cyclingpacingcalculator.onrender.com
+    backend_url: Optional[str] = None
+
     @property
     def allowed_frontend_origins(self) -> list[str]:
         origins = [self.frontend_url]

@@ -39,7 +39,8 @@ _HARDCODED_ALLOWED: set[str] = {
 
 def _callback_url(request: Request) -> str:
     """Absolute URL of this backend's OAuth callback endpoint."""
-    return str(request.base_url).rstrip("/") + "/v1/cycling/rwgps/oauth/callback"
+    base = settings.backend_url or str(request.base_url)
+    return base.rstrip("/") + "/v1/cycling/rwgps/oauth/callback"
 
 
 def _safe_opener_origin(state: str, request: Request) -> str:
