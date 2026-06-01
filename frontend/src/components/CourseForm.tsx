@@ -3440,15 +3440,17 @@ export default function CourseForm() {
                   </span>
                   {" · "}
                   <span className="split-header-meta-item split-header-meta-item--gain">
+                    <i className="fa-solid fa-arrow-up" aria-hidden="true" />{" "}
                     {form.unitSystem === "imperial"
-                      ? `⬆ ${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
-                      : `⬆ ${Math.round(bannerGainM).toLocaleString()} m`}
+                      ? `${Math.round(bannerGainM * 3.28084).toLocaleString()} ft`
+                      : `${Math.round(bannerGainM).toLocaleString()} m`}
                   </span>
                   {" · "}
                   <span className="split-header-meta-item split-header-meta-item--loss">
+                    <i className="fa-solid fa-arrow-down" aria-hidden="true" />{" "}
                     {form.unitSystem === "imperial"
-                      ? `⬇ ${Math.round(bannerLossM * 3.28084).toLocaleString()} ft`
-                      : `⬇ ${Math.round(bannerLossM).toLocaleString()} m`}
+                      ? `${Math.round(bannerLossM * 3.28084).toLocaleString()} ft`
+                      : `${Math.round(bannerLossM).toLocaleString()} m`}
                   </span>
                   {" · "}
                   <span className="split-header-meta-item">
