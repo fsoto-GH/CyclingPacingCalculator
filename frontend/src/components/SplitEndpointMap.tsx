@@ -963,7 +963,9 @@ export default function SplitEndpointMap({
       lon: a.lon,
       googlePlaceId: a.placeId ?? undefined,
       ...(a.placeId
-        ? { alt: `https://www.google.com/maps/place/?q=place_id:${a.placeId}` }
+        ? {
+            alt: `https://www.google.com/maps/search/?api=1&query=bp&query_place_id=${a.placeId}`,
+          }
         : {}),
     };
     if (a.hours) {
@@ -1152,7 +1154,11 @@ export default function SplitEndpointMap({
                   </div>
                   <div className="split-map-popup-links">
                     <a
-                      href={googleMapsSearchUrl("Split endpoint", endLat, endLon)}
+                      href={googleMapsSearchUrl(
+                        "Split endpoint",
+                        endLat,
+                        endLon,
+                      )}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -1219,7 +1225,11 @@ export default function SplitEndpointMap({
                   </div>
                   <div className="split-map-popup-links">
                     <a
-                      href={googleMapsSearchUrl("Split endpoint", endLat, endLon)}
+                      href={googleMapsSearchUrl(
+                        "Split endpoint",
+                        endLat,
+                        endLon,
+                      )}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -1459,7 +1469,7 @@ export default function SplitEndpointMap({
                       />
                       {a.placeId ? (
                         <a
-                          href={`https://www.google.com/maps/place/?q=place_id:${a.placeId}`}
+                          href={`https://www.google.com/maps/search/?api=1&query=bp&query_place_id=${a.placeId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="split-map-popup-name-link"

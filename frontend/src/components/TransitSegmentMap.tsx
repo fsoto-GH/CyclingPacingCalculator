@@ -617,7 +617,9 @@ export default function TransitSegmentMap({
       lon: a.lon,
       googlePlaceId: a.placeId ?? undefined,
       ...(a.placeId
-        ? { alt: `https://www.google.com/maps/place/?q=place_id:${a.placeId}` }
+        ? {
+            alt: `https://www.google.com/maps/search/?api=1&query=bp&query_place_id=${a.placeId}`,
+          }
         : {}),
     };
     if (a.hours) {
@@ -805,7 +807,7 @@ export default function TransitSegmentMap({
                       />
                       {a.placeId ? (
                         <a
-                          href={`https://www.google.com/maps/place/?q=place_id:${a.placeId}`}
+                          href={`https://www.google.com/maps/search/?api=1&query=bp&query_place_id=${a.placeId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="split-map-popup-name-link"
