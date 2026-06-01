@@ -14,7 +14,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from pacing.api.auth.deps import CurrentUser, get_optional_user, get_google_places_user
+from pacing.api.auth.deps import CurrentUser, get_current_user, get_google_places_user
 from pacing.api.config import settings
 
 router = APIRouter(prefix="/v1/cycling", tags=["cycling"])
@@ -328,12 +328,12 @@ async def nearby_stops(
         None,
         description="Comma-separated OSM amenity types to include",
     ),
-    current_user: Optional[CurrentUser] = Depends(get_optional_user),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Return nearby amenities for the given coordinates.
     Uses Google Places when GOOGLE_PLACES_API_KEY is configured and the caller
-    has enable_google_places = True; falls back to Overpass (open, no auth).
+    has enable_google_places = True; falls back to Overpass.
     """
     types: list[str] = (
         [_sanitize(t) for t in amenity_filter.split(",") if _sanitize(t)]
@@ -343,7 +343,6 @@ async def nearby_stops(
 
     use_google = (
         bool(settings.google_places_api_key)
-        and current_user is not None
         and current_user.enable_google_places
     )
 

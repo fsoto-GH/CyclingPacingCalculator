@@ -191,7 +191,7 @@ export async function searchAlongRoute(
   return resp.data;
 }
 
-// ── Weather (proxy) ───────────────────────────────────────────────────────────
+// ── Weather (direct Open-Meteo) ──────────────────────────────────────────────
 
 export async function getForecast(
   lats: string,
@@ -203,22 +203,31 @@ export async function getForecast(
     endDate?: string;
   },
 ): Promise<unknown> {
+  const baseUrl =
+    mode === "archive"
+      ? "https://historical-forecast-api.open-meteo.com/v1/forecast"
+      : "https://api.open-meteo.com/v1/forecast";
+
   const params: Record<string, string | number> = {
-    lat: lats,
-    lon: lons,
-    mode,
+    latitude: lats,
+    longitude: lons,
+    minutely_15:
+      "temperature_2m,apparent_temperature,precipitation,rain,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+    hourly: "precipitation_probability,cloud_cover,is_day,relative_humidity_2m",
+    models: "best_match",
+    timeformat: "iso8601",
   };
+
   if (mode === "forecast" && options?.forecastDays) {
     params.forecast_days = options.forecastDays;
   }
-  if (mode === "archive" && options?.startDate && options?.endDate) {
+
+  if (options?.startDate && options?.endDate) {
     params.start_date = options.startDate;
     params.end_date = options.endDate;
   }
-  const resp = await axios.get<unknown>("/v1/cycling/forecast", {
-    params,
-    withCredentials: true,
-  });
+
+  const resp = await axios.get<unknown>(baseUrl, { params });
   return resp.data;
 }
 
