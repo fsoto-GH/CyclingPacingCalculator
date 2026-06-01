@@ -619,14 +619,16 @@ export default function SegmentFormComponent({
                 className="split-header-meta-item split-header-meta-item--gain"
                 title="Elevation gain"
               >
-                ⬆ {toElevUnit(aggGpx.elevGainM)}
+                <i className="fa-solid fa-arrow-up"></i>{" "}
+                {toElevUnit(aggGpx.elevGainM)}
                 {elevUnit}
               </span>
               <span
                 className="split-header-meta-item split-header-meta-item--loss"
                 title="Elevation loss"
               >
-                ⬇ {toElevUnit(aggGpx.elevLossM)}
+                <i className="fa-solid fa-arrow-down"></i>{" "}
+                {toElevUnit(aggGpx.elevLossM)}
                 {elevUnit}
               </span>
               <span
