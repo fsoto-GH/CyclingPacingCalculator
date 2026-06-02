@@ -11,7 +11,7 @@ function App() {
           <CourseForm />
           <footer className="app-footer">
             <div className="app-footer-inner">
-              <span className="app-footer-name">Cycling Pacing Calculator</span>
+              <span className="app-footer-name">Ultra Cycling Planner</span>
               <span className="app-footer-sep" aria-hidden="true">
                 ·
               </span>

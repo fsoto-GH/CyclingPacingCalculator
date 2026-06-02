@@ -33,9 +33,9 @@ const SEARCH_INDEX: SearchEntry[] = [
   // Tips
   {
     catKey: "tips",
-    secTitle: "Upload Simple GPX Files",
+    secTitle: "Optimal GPX Files",
     keywords:
-      "ridewithgps komoot activity noisy track points elevation device large slow",
+      "ridewithgps komoot activity noisy track points elevation device large slow simple optimal route export gpx file",
   },
   {
     catKey: "tips",
@@ -52,7 +52,8 @@ const SEARCH_INDEX: SearchEntry[] = [
   {
     catKey: "tips",
     secTitle: "Share a Course via URL",
-    keywords: "share url export import json file send",
+    keywords:
+      "share url export import json file send public account logged in ridewithgps gpx route recipient",
   },
   // Features
   {
@@ -111,7 +112,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "features",
     secTitle: "Rest Stop Open Hours",
     keywords:
-      "rest stop open closed near arrival hours schedule day timezone badge green yellow red 30 minutes",
+      "rest stop open closed near arrival hours schedule day timezone badge green yellow red 30 minutes endpoint eta intermediate timezone aware location",
   },
   {
     catKey: "features",
@@ -150,14 +151,14 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "features",
     secTitle: "Weather on the Projections Tab",
     keywords:
-      "weather projections forecast archive open-meteo temperature wind humidity rain precipitation headwind tailwind crosswind segment split stats rainy splits avg humidity wind direction wind impact cardinal bearing hi lo high low range icon cloud conditions",
+      "weather projections forecast archive open-meteo temperature wind humidity rain precipitation headwind tailwind crosswind segment split stats rainy splits avg humidity wind direction wind impact cardinal bearing hi lo high low range icon cloud conditions start endpoint samples",
   },
   // Disclaimers
   {
     catKey: "disclaimers",
     secTitle: "Weather Data Accuracy",
     keywords:
-      "weather accuracy sampling granularity splits segments forecast archive open-meteo temperature wind hourly sample resolution detail",
+      "weather accuracy sampling granularity splits segments forecast archive open-meteo temperature wind hourly sample resolution detail start endpoint endpoints between",
   },
   {
     catKey: "disclaimers",
@@ -169,7 +170,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "disclaimers",
     secTitle: "Data Accuracy",
     keywords:
-      "accuracy openstreetmap volunteer data address hours verify planning race event",
+      "accuracy openstreetmap volunteer data address hours verify planning race event google maps permission granted accurate maps",
   },
   {
     catKey: "disclaimers",
@@ -407,11 +408,11 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
             <>
               {/* ── Tips ── */}
               <Category title="💡 Tips" catKey="tips">
-                <Section title="Upload Simple GPX Files">
+                <Section title="Optimal GPX Files">
                   <p>
                     Processing a large course can take a long time depending on
-                    your device. Prefer simple GPX files — e.g. a planned route
-                    export from <strong>RideWithGPS</strong> or{" "}
+                    your device. Prefer simple GPX files — for example, a
+                    planned route export from <strong>RideWithGPS</strong> or{" "}
                     <strong>Komoot</strong> — over activity files recorded on a
                     device. Activity files can contain tens of thousands of
                     noisy track points that slow parsing and inflate elevation
@@ -443,12 +444,13 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                 <Section title="Share a Course via URL">
                   <p>
-                    To share a course, use the <strong>Export JSON</strong>{" "}
-                    button in the toolbar and send the downloaded file. The
-                    recipient can import it with the{" "}
-                    <strong>Import JSON</strong> button. If the course has a GPX
-                    file and the recipient uploads the same GPX, all elevation
-                    and map data will be restored as well.
+                    Once you have an account and are logged in, you can share a
+                    plan via URL as long as it is public. If the plan uses an
+                    uploaded GPX file, the recipient must have the same GPX
+                    route to see the full map and elevation details. If the plan
+                    uses a <strong>RideWithGPS</strong> route, the recipient
+                    must also log in to RideWithGPS so the route can be
+                    restored.
                   </p>
                 </Section>
               </Category>
@@ -652,9 +654,11 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                 <Section title="Rest Stop Open Hours">
                   <p>
                     Each split can have a rest stop with per-day open hours (or
-                    a single schedule for every day). The calculator predicts
-                    your arrival time in the stop's local timezone and badges
-                    the result as{" "}
+                    a single schedule for every day). The calculator uses the
+                    endpoint ETA when checking the stop, since the rest stop is
+                    assumed to be the end of the split. Intermediate rest stops
+                    are checked using their own location timezone. The result is
+                    badged as{" "}
                     <span style={{ color: "#4ade80" }}>
                       <i className="fas fa-circle" /> Open
                     </span>
@@ -766,7 +770,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     When a <strong>start time</strong> and{" "}
                     <strong>GPS coordinates</strong> (from a loaded GPX) are
                     available, the Projections tab fetches weather data for each
-                    split's departure and arrival points from{" "}
+                    split's start and endpoint points from{" "}
                     <strong>Open-Meteo</strong>. Dates within the 16-day
                     forecast window use the live forecast; earlier dates fall
                     back to the Open-Meteo historical archive.
@@ -865,12 +869,13 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
               <Category title="⚠️ Disclaimers" catKey="disclaimers">
                 <Section title="Weather Data Accuracy">
                   <p>
-                    Weather data is <strong>sampled at split endpoints</strong>{" "}
-                    — one hourly data point per split start and end. Accuracy is
-                    therefore only as granular as the distance of your splits
-                    and segments. A split spanning 80 miles produces a single
-                    sample at each end; conditions along the middle are not
-                    captured.
+                    Weather data is{" "}
+                    <strong>sampled at split start and end points</strong> — one
+                    hourly sample is taken at the start of each split and
+                    another at the endpoint. Accuracy is therefore only as
+                    granular as the distance of your splits and segments. A
+                    split spanning 80 miles produces only two samples;
+                    conditions along the middle are not captured.
                   </p>
                   <p>
                     <strong>
@@ -941,7 +946,9 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     Rest stop data, addresses, and open hours are supplied by{" "}
                     <strong>OpenStreetMap</strong> volunteers. Accuracy varies —{" "}
                     <strong>verify addresses and hours independently</strong>{" "}
-                    before relying on them for race or event planning.
+                    before relying on them for race or event planning. If you
+                    have Google Maps permission granted, the data should be as
+                    accurate as what appears in Google Maps for the same place.
                   </p>
                 </Section>
 
