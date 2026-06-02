@@ -3411,6 +3411,15 @@ h4 {
   gap: 6px;
 }
 
+/* Let clicks pass through empty stack space; only controls capture input. */
+[class$="map-controls-stack"] {
+  pointer-events: none;
+}
+
+[class$="map-controls-stack"] > * {
+  pointer-events: auto;
+}
+
 .map-fullscreen-btn,
 .map-reset-btn,
 .map-markers-btn,

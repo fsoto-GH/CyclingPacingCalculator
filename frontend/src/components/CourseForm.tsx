@@ -573,6 +573,7 @@ export default function CourseForm() {
   const [activePlan, setActivePlan] = useState<RacePlanSummary | null>(() =>
     loadActivePlan(),
   );
+  const pendingLoadedPlanCleanSnapshotRef = useRef<string | null>(null);
   const [updatePlanError, setUpdatePlanError] = useState<string | null>(null);
   const [savePlanOpen, setSavePlanOpen] = useState(false);
   const [savePlanPublic, setSavePlanPublic] = useState(false);
@@ -1381,6 +1382,15 @@ export default function CourseForm() {
     return stableStringify(form) !== clean;
   }, [activePlan, form]);
 
+  // After loading a plan, snapshot the actually-committed form state as clean.
+  // This avoids false "dirty" when post-load normalization changes form shape.
+  useEffect(() => {
+    const pendingPlanId = pendingLoadedPlanCleanSnapshotRef.current;
+    if (!pendingPlanId || activePlan?.id !== pendingPlanId) return;
+    savePlanCleanState(pendingPlanId, form);
+    pendingLoadedPlanCleanSnapshotRef.current = null;
+  }, [activePlan, form]);
+
   // Guard that intercepts example loads when the form has data.
   const handleLoadExampleGuarded = useCallback(
     (example: CourseFormState, gpxUrl?: string, urlName?: string) => {
@@ -1534,8 +1544,8 @@ export default function CourseForm() {
       handleLoadExample(loadedForm);
       // handleLoadExample clears activePlan; restore it after.
       setActivePlan(plan);
-      // Snapshot clean state so dirty tracking works from first edit.
-      savePlanCleanState(plan.id, loadedForm);
+      // Snapshot clean state after the loaded form is committed.
+      pendingLoadedPlanCleanSnapshotRef.current = plan.id;
 
       // RWGPS route: handleLoadExample already called setRwgpsRestorePending.
       if (loadedForm.rwgpsRouteId) return;
