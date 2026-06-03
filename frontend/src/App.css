@@ -5624,6 +5624,16 @@ dialog {
   color: inherit;
 }
 
+.split-metrics-chart {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.4rem 0.4rem 0.2rem;
+  background: #181a1f;
+  border: 1px solid #2d3748;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Grade bucket column chart in Projections accordion (grade on X, % on Y) ── */
 .grade-dist-bar {
   margin-top: 0.2rem;

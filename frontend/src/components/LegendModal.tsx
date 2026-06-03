@@ -153,6 +153,12 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords:
       "weather projections forecast archive open-meteo temperature wind humidity rain precipitation headwind tailwind crosswind segment split stats rainy splits avg humidity wind direction wind impact cardinal bearing hi lo high low range icon cloud conditions start endpoint samples",
   },
+  {
+    catKey: "features",
+    secTitle: "Split Metrics Chart (SMC)",
+    keywords:
+      "split metrics chart smc distance elevation gain loss difficulty score formula weights steep avg grade max grade descent no gpx tooltip x axis split number",
+  },
   // Disclaimers
   {
     catKey: "disclaimers",
@@ -357,7 +363,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                 onClick={() => setExpandAllSignal((s) => s + 1)}
                 title="Expand all sections"
               >
-                ▼ Expand
+                <i className="fa-solid fa-caret-down"></i> Expand
               </button>
               <button
                 type="button"
@@ -365,7 +371,7 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                 onClick={() => setCollapseAllSignal((s) => s + 1)}
                 title="Collapse all sections"
               >
-                ▶ Collapse
+                <i className="fa-solid fa-caret-right"></i> Collapse
               </button>
             </div>
           )}
@@ -822,6 +828,213 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     departure and arrival points of each split are also
                     available inside the Results accordion.
                   </p>
+                </Section>
+
+                <Section title="Split Metrics Chart (SMC)">
+                  <p>
+                    In <strong>Projections</strong> <em>More details</em>, the
+                    <strong> Split Metrics</strong> chart summarizes each split
+                    in one view:
+                  </p>
+                  <ul>
+                    <li>
+                      <strong>Distance bar</strong> — split distance in your
+                      selected units.
+                    </li>
+                    <li>
+                      <strong>Elevation bars</strong> — split elevation gain and
+                      loss (shown only when GPX profile data is available).
+                    </li>
+                    <li>
+                      <strong>Difficulty line</strong> — a 0-100 score per split
+                      (also GPX-dependent).
+                    </li>
+                  </ul>
+                  <p>
+                    The x-axis shows only split numbers (
+                    <strong>1, 2, 3…</strong>) for compact readability. Hover
+                    any point/bar to see detailed labels with <em>segment</em>{" "}
+                    and <em>split name</em>.
+                  </p>
+                  <p>
+                    If no GPX/course profile is loaded, the chart intentionally
+                    shows <strong>distance only</strong> (no elevation and no
+                    difficulty line).
+                  </p>
+
+                  <h4>Difficulty Score Parameters</h4>
+                  <ul>
+                    <li>
+                      <strong>Steep percentage</strong> (<code>steepPct</code>):
+                      percent of split distance with steep grade.
+                    </li>
+                    <li>
+                      <strong>Average climb grade</strong> (
+                      <code>avgGradePct</code>): average positive grade across
+                      the split.
+                    </li>
+                    <li>
+                      <strong>Maximum climb grade</strong> (
+                      <code>maxGradePct</code>): steepest uphill point on the
+                      split.
+                    </li>
+                    <li>
+                      <strong>Minimum descent grade</strong> (
+                      <code>minGradePct</code>): the steepest downhill point,
+                      used as a severity signal.
+                    </li>
+                    <li>
+                      <strong>Steep descent share</strong> (
+                      <code>gradeBuckets.bn8..bn18plus</code>): proportion of
+                      split distance spent on sustained steeper descents.
+                    </li>
+                    <li>
+                      <strong>Grade-bucket distribution</strong> (
+                      <code>gradeBuckets</code>): used to estimate how variable
+                      and "spiky" the split is.
+                    </li>
+                  </ul>
+
+                  <h4>Calculation Details</h4>
+                  <p>
+                    The current implementation publishes three component
+                    subscores and a total:
+                  </p>
+                  <p>
+                    <code>
+                      climb = clamp(0..60, steepPct*0.5 + max(0, avgGradePct)*5
+                      + max(0, maxGradePct-3)*2.5)
+                    </code>
+                  </p>
+                  <p>
+                    <code>
+                      minDescentSeverity = clamp(0..1, (-minGradePct - 4)/10)
+                    </code>
+                  </p>
+                  <p>
+                    <code>
+                      steepDescentPct = bn8 + bn10 + bn12 + bn14 + bn16 + bn18 +
+                      bn18plus
+                    </code>
+                  </p>
+                  <p>
+                    <code>
+                      descentDistribution = clamp(0..1, steepDescentPct/35)
+                    </code>
+                  </p>
+                  <p>
+                    <code>
+                      technicalDescent = clamp(0..25, 25*(0.4*minDescentSeverity
+                      + 0.6*descentDistribution))
+                    </code>
+                  </p>
+                  <p>
+                    <code>
+                      variability = clamp(0..15, spreadComponent +
+                      distributionComponent)
+                    </code>
+                  </p>
+                  <p>where:</p>
+                  <ul>
+                    <li>
+                      <code>
+                        spreadComponent = clamp(0..8,
+                        abs(maxGradePct-minGradePct)/2)
+                      </code>
+                    </li>
+                    <li>
+                      <code>
+                        distributionComponent = clamp(0..7, extremePct*0.08 +
+                        mixedPct*0.03)
+                      </code>
+                    </li>
+                    <li>
+                      <code>extremePct</code> sums buckets at |grade| &gt;= 10%.
+                    </li>
+                    <li>
+                      <code>mixedPct</code> sums buckets at |grade| in the 4-8%
+                      range.
+                    </li>
+                  </ul>
+                  <p>
+                    <code>
+                      totalDifficulty = clamp(0..100, climb + technicalDescent +
+                      variability)
+                    </code>
+                  </p>
+                  <p>Notes:</p>
+                  <ul>
+                    <li>
+                      Scores are <strong>heuristic</strong> (engineering
+                      weights), not from physiological model fitting.
+                    </li>
+                    <li>
+                      The result is clamped to <strong>0-100</strong> for
+                      readability and stable chart scaling.
+                    </li>
+                    <li>
+                      Component caps are explicit: <strong>60/25/15</strong>
+                      for climb / technical descent / variability.
+                    </li>
+                    <li>
+                      GPX-driven fields are required. If GPX profiles are
+                      unavailable, only distance is shown.
+                    </li>
+                  </ul>
+
+                  <h4>Pros</h4>
+                  <p>
+                    Compared with distance-only ranking, the SMC difficulty
+                    score is usually better for pacing decisions because it
+                    captures <em>where</em> the effort is concentrated (steep
+                    ramps and technical descents), not just how far you travel.
+                  </p>
+                  <ul>
+                    <li>
+                      Fast and deterministic: updates instantly as split/GPX
+                      data changes.
+                    </li>
+                    <li>
+                      Includes both climbing load and descent technicality.
+                    </li>
+                    <li>
+                      Normalized 0-100 scale makes split-to-split comparison
+                      easy.
+                    </li>
+                  </ul>
+
+                  <h4>Cons</h4>
+                  <ul>
+                    <li>
+                      Not rider-specific: ignores power, weight, fatigue model,
+                      bike setup, and road surface quality.
+                    </li>
+                    <li>Sensitive to GPX quality and smoothing assumptions.</li>
+                    <li>
+                      Does not include weather, heat, wind, or stop complexity
+                      in the score.
+                    </li>
+                  </ul>
+
+                  <h4>How It Can Be Improved</h4>
+                  <ul>
+                    <li>
+                      Calibrate coefficients with historical ride outcomes (RPE,
+                      split completion times, or normalized power).
+                    </li>
+                    <li>
+                      Add rider-specific profile inputs (climbing strength,
+                      descending confidence, fatigue resistance).
+                    </li>
+                    <li>
+                      Add weather- and surface-aware adjustments when forecast
+                      and route metadata are present.
+                    </li>
+                    <li>
+                      Consider publishing component subscores (climb,
+                      technical-descent, variability) for better explainability.
+                    </li>
+                  </ul>
                 </Section>
 
                 <Section title="Auto-Name from City Labels">

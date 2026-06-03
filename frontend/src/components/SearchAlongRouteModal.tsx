@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 interface SearchAlongRouteModalProps {
   open: boolean;
   onClose: () => void;
-  /** query: search term; originPct: 0 = no origin bias, 1–100 = % along split */
+  /** query: search term; originPct: 0 = no origin bias, 1-100 = % along split */
   onSearch: (query: string, originPct: number) => void;
 }
 
