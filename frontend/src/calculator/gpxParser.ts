@@ -389,26 +389,63 @@ export function computeSplitProfile(
       bucketKm[gradeBucketKey(absGrade, signedGradePct <= 0)] += segDistKm;
     }
   }
-  // Min/max grade: use a 100 m sliding window to suppress GPS elevation noise.
-  // Point-to-point grade on raw GPS data (often 2–10 m apart) can produce
-  // impossible values (e.g. -177%) due to ±3–5 m vertical accuracy on GPS devices.
-  const GRADE_WINDOW_KM = 0.1;
-  let rIdx = 0;
-  for (let li = 0; li < slice.length - 1; li++) {
-    if (rIdx <= li) rIdx = li + 1;
-    while (
-      rIdx < slice.length - 1 &&
-      slice[rIdx].cumDist - slice[li].cumDist < GRADE_WINDOW_KM
-    ) {
-      rIdx++;
+  // Min/max grade: use a centered 250 m regression window to suppress GPS noise.
+  // A single bad elevation sample can still dominate a point-to-point delta,
+  // so we fit a local line through the surrounding points instead.
+  const GRADE_WINDOW_KM = 0.2;
+  const GRADE_WINDOW_HALF_KM = GRADE_WINDOW_KM / 2;
+  let left = 0;
+  let right = -1;
+  let count = 0;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXX = 0;
+  let sumXY = 0;
+
+  const addPoint = (idx: number): void => {
+    const x = slice[idx].cumDist * 1000;
+    const y = slice[idx].ele;
+    count++;
+    sumX += x;
+    sumY += y;
+    sumXX += x * x;
+    sumXY += x * y;
+  };
+
+  const removePoint = (idx: number): void => {
+    const x = slice[idx].cumDist * 1000;
+    const y = slice[idx].ele;
+    count--;
+    sumX -= x;
+    sumY -= y;
+    sumXX -= x * x;
+    sumXY -= x * y;
+  };
+
+  for (let centerIdx = 0; centerIdx < slice.length; centerIdx++) {
+    const centerKm = slice[centerIdx].cumDist;
+    const lowerKm = centerKm - GRADE_WINDOW_HALF_KM;
+    const upperKm = centerKm + GRADE_WINDOW_HALF_KM;
+
+    while (left < slice.length && slice[left].cumDist < lowerKm) {
+      if (left <= right) removePoint(left);
+      left++;
     }
-    const windowDist = slice[rIdx].cumDist - slice[li].cumDist;
-    if (windowDist >= GRADE_WINDOW_KM) {
-      const dEle = slice[rIdx].ele - slice[li].ele;
-      const signedGradePct = (dEle / (windowDist * 1000)) * 100;
-      if (signedGradePct < minGradePct) minGradePct = signedGradePct;
-      if (signedGradePct > maxGradePct) maxGradePct = signedGradePct;
+
+    while (right + 1 < slice.length && slice[right + 1].cumDist <= upperKm) {
+      right++;
+      addPoint(right);
     }
+
+    if (count < 3) continue;
+
+    const denom = count * sumXX - sumX * sumX;
+    if (Math.abs(denom) < 1e-9) continue;
+
+    const slopeMPerM = (count * sumXY - sumX * sumY) / denom;
+    const signedGradePct = slopeMPerM * 100;
+    if (signedGradePct < minGradePct) minGradePct = signedGradePct;
+    if (signedGradePct > maxGradePct) maxGradePct = signedGradePct;
   }
   // Normalise bucket km → % of total split distance
   const bucketTotalKm = (

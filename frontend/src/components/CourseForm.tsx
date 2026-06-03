@@ -75,6 +75,7 @@ import { saveGpx, loadGpx, clearGpx } from "../gpxStore";
 import SegmentFormComponent from "./SegmentForm";
 import InsertZone from "./InsertZone";
 import { GradeDistributionBar } from "./GradeTooltip";
+import SplitMetricsChart from "./SplitMetricsChart";
 const CourseMap = lazy(() => import("./CourseMap"));
 
 /** Thin wrapper that defers the two props that change on every keystroke so
@@ -115,6 +116,83 @@ function getInitials(name: string): string {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function splitDifficultyBreakdown(
+  profile: SplitGpxProfile | null | undefined,
+): {
+  climb: number;
+  technicalDescent: number;
+  variability: number;
+  total: number;
+} {
+  if (!profile) {
+    return { climb: 0, technicalDescent: 0, variability: 0, total: 0 };
+  }
+
+  const climbRaw =
+    profile.steepPct * 0.5 +
+    Math.max(0, profile.avgGradePct) * 5 +
+    Math.max(0, profile.maxGradePct - 3) * 2.5;
+  const climb = Math.round(clamp(climbRaw, 0, 60));
+
+  const buckets = profile.gradeBuckets;
+  const minDescentSeverity = clamp((-profile.minGradePct - 4) / 10, 0, 1);
+  const steepDescentPct =
+    buckets.bn8 +
+    buckets.bn10 +
+    buckets.bn12 +
+    buckets.bn14 +
+    buckets.bn16 +
+    buckets.bn18 +
+    buckets.bn18plus;
+  const descentDistribution = clamp(steepDescentPct / 35, 0, 1);
+  const descentRaw =
+    25 * (0.4 * minDescentSeverity + 0.6 * descentDistribution);
+  const technicalDescent = Math.round(clamp(descentRaw, 0, 25));
+
+  const extremePct =
+    buckets.b10 +
+    buckets.b12 +
+    buckets.b14 +
+    buckets.b16 +
+    buckets.b18 +
+    buckets.b18plus +
+    buckets.bn10 +
+    buckets.bn12 +
+    buckets.bn14 +
+    buckets.bn16 +
+    buckets.bn18 +
+    buckets.bn18plus;
+  const mixedPct =
+    buckets.b4 +
+    buckets.b6 +
+    buckets.b8 +
+    buckets.bn4 +
+    buckets.bn6 +
+    buckets.bn8;
+  const spreadComponent = clamp(
+    Math.abs(profile.maxGradePct - profile.minGradePct) / 2,
+    0,
+    8,
+  );
+  const distributionComponent = clamp(
+    extremePct * 0.08 + mixedPct * 0.03,
+    0,
+    7,
+  );
+  const variability = Math.round(
+    clamp(spreadComponent + distributionComponent, 0, 15),
+  );
+
+  const total = Math.round(
+    clamp(climb + technicalDescent + variability, 0, 100),
+  );
+  return { climb, technicalDescent, variability, total };
 }
 
 function UserAvatar({ user, size = 30 }: { user: AuthUser; size?: number }) {
@@ -1761,6 +1839,14 @@ export default function CourseForm() {
 
   const sLabel = speedLabel(form.unitSystem);
   const dLabel = distanceLabel(form.unitSystem);
+  const totalSplitCount = useMemo(
+    () =>
+      form.segments.reduce(
+        (sum, seg) => sum + (seg.nullified ? 0 : seg.splits.length),
+        0,
+      ),
+    [form.segments],
+  );
   const fmtInTz = formatIsoInTzShort;
   const courseEndTz = useMemo(() => {
     if (!result || result.segment_details.length === 0) return null;
@@ -1950,6 +2036,98 @@ export default function CourseForm() {
     // Only hide when the entire course starts beyond the 16-day forecast window.
     return new Date(result.start_time) <= maxForecast;
   }, [gpxProfiles, result]);
+
+  const splitMetricsData = useMemo(() => {
+    if (!result) return [];
+    const hasGpxMetrics =
+      (gpxProfiles?.flat().filter((p): p is SplitGpxProfile => p != null)
+        .length ?? 0) > 0;
+    const elevFactor = form.unitSystem === "imperial" ? 3.28084 : 1;
+    let splitNo = 1;
+    return result.segment_details.flatMap((seg, segIdx) =>
+      seg.split_details.flatMap((split, splitIdx) => {
+        const isTransitSegment =
+          !!form.segments[segIdx]?.nullified || !!seg.nullified;
+        if (isTransitSegment) return [];
+
+        const profile = gpxProfiles?.[segIdx]?.[splitIdx] ?? null;
+        const breakdown = splitDifficultyBreakdown(profile);
+        const point = {
+          splitNo,
+          segIdx,
+          splitIdx,
+          segmentName:
+            form.segments[segIdx]?.name?.trim() || `Segment ${segIdx + 1}`,
+          splitName:
+            split.name?.trim() ||
+            form.segments[segIdx]?.splits[splitIdx]?.name?.trim() ||
+            `Split ${splitIdx + 1}`,
+          distance: split.distance,
+          elevGain: hasGpxMetrics
+            ? Math.max(0, Math.round((profile?.elevGainM ?? 0) * elevFactor))
+            : null,
+          elevLoss: hasGpxMetrics
+            ? Math.max(0, Math.round((profile?.elevLossM ?? 0) * elevFactor))
+            : null,
+          climbScore: hasGpxMetrics ? breakdown.climb : null,
+          technicalDescentScore: hasGpxMetrics
+            ? breakdown.technicalDescent
+            : null,
+          variabilityScore: hasGpxMetrics ? breakdown.variability : null,
+          difficulty: hasGpxMetrics ? breakdown.total : null,
+        };
+        splitNo += 1;
+        return [point];
+      }),
+    );
+  }, [form.segments, form.unitSystem, gpxProfiles, result]);
+
+  const avgSplitElevation = useMemo(() => {
+    if (!gpxProfiles || gpxProfiles.flat().length === 0) return null;
+    if (splitMetricsData.length === 0) return null;
+    const count = splitMetricsData.length;
+    const totalGain = splitMetricsData.reduce(
+      (sum, row) => sum + (row.elevGain ?? 0),
+      0,
+    );
+    const totalLoss = splitMetricsData.reduce(
+      (sum, row) => sum + (row.elevLoss ?? 0),
+      0,
+    );
+    return {
+      gain: Math.round(totalGain / count),
+      loss: Math.round(totalLoss / count),
+      unit: form.unitSystem === "imperial" ? "ft" : "m",
+    };
+  }, [form.unitSystem, gpxProfiles, splitMetricsData]);
+
+  const avgSplitDifficulty = useMemo(() => {
+    if (!gpxProfiles || gpxProfiles.flat().length === 0) return null;
+    if (splitMetricsData.length === 0) return null;
+    const count = splitMetricsData.length;
+    const climb =
+      splitMetricsData.reduce((sum, row) => sum + (row.climbScore ?? 0), 0) /
+      count;
+    const technicalDescent =
+      splitMetricsData.reduce(
+        (sum, row) => sum + (row.technicalDescentScore ?? 0),
+        0,
+      ) / count;
+    const variability =
+      splitMetricsData.reduce(
+        (sum, row) => sum + (row.variabilityScore ?? 0),
+        0,
+      ) / count;
+    const total =
+      splitMetricsData.reduce((sum, row) => sum + (row.difficulty ?? 0), 0) /
+      count;
+    return {
+      climb: Math.round(climb),
+      technicalDescent: Math.round(technicalDescent),
+      variability: Math.round(variability),
+      total: Math.round(total),
+    };
+  }, [gpxProfiles, splitMetricsData]);
 
   const handleFetchWeather = useCallback(() => {
     if (!gpxProfiles || !result || !gpxTrack) return;
@@ -3663,7 +3841,7 @@ export default function CourseForm() {
                   <i className="fas fa-download"></i> Import
                 </button>
               )}
-              {activeTab === "projections" && !hourlyWeather && (
+              {activeTab === "projections" && !hourlyWeather && gpxTrack && (
                 <button
                   type="button"
                   className={`segments-toggle-btn segments-toggle-btn--forecast${weatherLoading ? " segments-toggle-btn--loading" : ""}`}
@@ -4397,14 +4575,14 @@ export default function CourseForm() {
                         onClick={() => setCollapseAllSignal((s) => s + 1)}
                         title="Collapse all segments and their splits"
                       >
-                        ▶ Collapse
+                        <i className="fa-solid fa-caret-right"></i> Collapse
                       </button>
                       <button
                         className="segments-toggle-btn"
                         onClick={() => setExpandAllSignal((s) => s + 1)}
                         title="Expand all segments"
                       >
-                        ▼ Expand
+                        <i className="fa-solid fa-caret-down"></i> Expand
                       </button>
                     </div>
                     <div className="segments-toolbar-right">
@@ -4969,6 +5147,75 @@ export default function CourseForm() {
                               )}
                             </dd>
                           </div>
+                          <div>
+                            <dt title="Average distance per split">
+                              Avg Split Distance
+                            </dt>
+                            <dd>
+                              {(totalSplitCount > 0
+                                ? result.distance / totalSplitCount
+                                : 0
+                              ).toFixed(2)}
+                              {` ${dLabel}`}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt title="Average elevation gain/loss per split">
+                              Avg Split Elevation
+                            </dt>
+                            <dd>
+                              {avgSplitElevation ? (
+                                <>
+                                  <i className="fa-solid fa-arrow-up" />{" "}
+                                  {avgSplitElevation.gain.toLocaleString()} /{" "}
+                                  <i className="fa-solid fa-arrow-down" />{" "}
+                                  {avgSplitElevation.loss.toLocaleString()}{" "}
+                                  {avgSplitElevation.unit}
+                                </>
+                              ) : (
+                                "-"
+                              )}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt title="Average split difficulty score (0-100)">
+                              Avg Difficulty
+                            </dt>
+                            <dd>
+                              {avgSplitDifficulty
+                                ? `${avgSplitDifficulty.total}/100`
+                                : "-"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt title="Average climb, technical descent, and variability subscores per split">
+                              Avg Subs (C/D/V)
+                            </dt>
+                            <dd>
+                              {avgSplitDifficulty
+                                ? `${avgSplitDifficulty.climb}/${avgSplitDifficulty.technicalDescent}/${avgSplitDifficulty.variability}`
+                                : "-"}
+                            </dd>
+                          </div>
+                          {splitMetricsData.length > 0 && (
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <dt title="Per-split chart of distance, elevation gain/loss, estimated difficulty, and component subscores">
+                                Split Metrics
+                              </dt>
+                              <dd>
+                                <SplitMetricsChart
+                                  data={splitMetricsData}
+                                  unitSystem={form.unitSystem}
+                                  distanceLabel={dLabel}
+                                  hasGpxMetrics={
+                                    !!gpxProfiles &&
+                                    gpxProfiles.flat().length > 0
+                                  }
+                                  onZoomToSplit={handleZoomToSplit}
+                                />
+                              </dd>
+                            </div>
+                          )}
                           {courseWindStats?.windDir && (
                             <div style={{ gridColumn: "1 / -1" }}>
                               <dt title="Proportion of hourly forecast samples with wind from each cardinal direction">
@@ -5040,14 +5287,14 @@ export default function CourseForm() {
                       onClick={() => setCollapseAllSignal((s) => s + 1)}
                       title="Collapse all segments and their splits"
                     >
-                      ▶ Collapse
+                      <i className="fa-solid fa-caret-right"></i> Collapse
                     </button>
                     <button
                       className="segments-toggle-btn"
                       onClick={() => setExpandAllSignal((s) => s + 1)}
                       title="Expand all segments"
                     >
-                      ▼ Expand
+                      <i className="fa-solid fa-caret-down"></i> Expand
                     </button>
                   </div>
                 </div>
@@ -5069,7 +5316,7 @@ export default function CourseForm() {
                     onClick={() => setSegPage((p) => Math.max(0, p - 1))}
                     title="Previous page"
                   >
-                    ‹ Prev
+                    <i className="fa-solid fa-chevron-left"></i>
                   </button>
                   <span className="seg-page-label">
                     {totalSegPages > 1
@@ -5088,7 +5335,7 @@ export default function CourseForm() {
                     }
                     title="Next page"
                   >
-                    Next ›
+                    <i className="fa-solid fa-chevron-right"></i>
                   </button>
                   <button
                     type="button"
@@ -5097,7 +5344,7 @@ export default function CourseForm() {
                     onClick={() => setSegPage(Math.max(0, totalSegPages - 1))}
                     title="Last page"
                   >
-                    »
+                    <i className="fa-solid fa-angle-double-right"></i>
                   </button>
                   <select
                     className="seg-page-size"

@@ -81,7 +81,7 @@ function dayEntryKey(e: WeekHours[0]): string {
   return `${e.mode}|${e.opens}|${e.closes}`;
 }
 
-/** Returns a compact human-readable hours summary, e.g. "24/7", "Mon–Fri: 8a–9p · Sat–Sun: 9a–6p" */
+/** Returns a compact human-readable hours summary, e.g. "24/7", "Mon-Fri: 8a-9p · Sat-Sun: 9a-6p" */
 function formatHoursCompact(hours: WeekHours | null): string {
   if (!hours) return "";
   if (hours.every((h) => h.mode === "24h")) return "24/7";
@@ -95,7 +95,7 @@ function formatHoursCompact(hours: WeekHours | null): string {
       const label =
         start === i - 1
           ? DAY_ABBR[start]
-          : `${DAY_ABBR[start]}–${DAY_ABBR[i - 1]}`;
+          : `${DAY_ABBR[start]}-${DAY_ABBR[i - 1]}`;
       groups.push({ label, entry });
       start = i;
     }
@@ -104,7 +104,7 @@ function formatHoursCompact(hours: WeekHours | null): string {
     .map((g) => {
       if (g.entry.mode === "24h") return `${g.label}: 24h`;
       if (g.entry.mode === "closed") return `${g.label}: Closed`;
-      return `${g.label}: ${fmtTimeCompact(g.entry.opens)}–${fmtTimeCompact(g.entry.closes)}`;
+      return `${g.label}: ${fmtTimeCompact(g.entry.opens)}-${fmtTimeCompact(g.entry.closes)}`;
     })
     .join(" · ");
 }
@@ -177,7 +177,7 @@ function PopupHoursGrid({ hours }: { hours: WeekHours }) {
                 ? "24h"
                 : entry.mode === "closed"
                   ? "Closed"
-                  : `${fmtTimeCompact(entry.opens)}–${fmtTimeCompact(entry.closes)}`}
+                  : `${fmtTimeCompact(entry.opens)}-${fmtTimeCompact(entry.closes)}`}
             </td>
           </tr>
         ))}

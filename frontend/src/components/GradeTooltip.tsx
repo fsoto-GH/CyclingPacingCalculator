@@ -57,10 +57,10 @@ const GRANULAR_ASCENT_DEFS: BucketDef[] = [
 
 // ── SteepBadge tooltip bucket defs (compact 4% ascent with verbose labels) ────
 const TOOLTIP_BUCKET_DEFS: (BucketDef & { tooltipLabel: string })[] = [
-  { ...COMPACT_ASCENT_DEFS[0], tooltipLabel: "0–4%" },
-  { ...COMPACT_ASCENT_DEFS[1], tooltipLabel: "4–8%" },
-  { ...COMPACT_ASCENT_DEFS[2], tooltipLabel: "8–12%" },
-  { ...COMPACT_ASCENT_DEFS[3], tooltipLabel: "12–16%" },
+  { ...COMPACT_ASCENT_DEFS[0], tooltipLabel: "0-4%" },
+  { ...COMPACT_ASCENT_DEFS[1], tooltipLabel: "4-8%" },
+  { ...COMPACT_ASCENT_DEFS[2], tooltipLabel: "8-12%" },
+  { ...COMPACT_ASCENT_DEFS[3], tooltipLabel: "12-16%" },
   { ...COMPACT_ASCENT_DEFS[4], tooltipLabel: "≥16%" },
 ];
 
