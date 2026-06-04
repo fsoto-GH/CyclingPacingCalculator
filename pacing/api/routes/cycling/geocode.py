@@ -93,6 +93,7 @@ async def _cache_get(key: str) -> Optional[dict[str, Any]]:
         except json.JSONDecodeError:
             await r.delete(key)
             return None
+    logger.warning("Using local in-memory cache for key %r", key)
 
     local = _local_cache.get(key)
     if local is None:
