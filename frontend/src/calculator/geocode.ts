@@ -25,6 +25,7 @@ const LS_PREFIX = "geo:";
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MAX_ENTRIES = 500;
 const MIN_NETWORK_INTERVAL_MS = 1000;
+let nominatimBlockedForSession = false;
 
 interface StoredEntry {
   label: string;
@@ -38,6 +39,16 @@ let backendGeocodingEnabled = false;
 
 export function setBackendGeocodingEnabled(enabled: boolean): void {
   backendGeocodingEnabled = enabled;
+}
+
+function shouldBlockBrowserNominatim(): boolean {
+  return !backendGeocodingEnabled && nominatimBlockedForSession;
+}
+
+function markBrowserNominatimBlocked(resp: Response): void {
+  if (!backendGeocodingEnabled && resp.status === 429) {
+    nominatimBlockedForSession = true;
+  }
 }
 
 // Seed in-memory cache from localStorage on module load, evicting stale entries.
@@ -132,6 +143,7 @@ export async function reverseGeocode(
 ): Promise<string | null> {
   const key = cacheKey(lat, lon);
   if (cache.has(key)) return cache.get(key)!;
+  if (shouldBlockBrowserNominatim()) return null;
 
   if (backendGeocodingEnabled) {
     try {
@@ -159,6 +171,7 @@ export async function reverseGeocode(
       headers: { "User-Agent": USER_AGENT },
       signal,
     });
+    markBrowserNominatimBlocked(resp);
     if (!resp.ok) return null;
     data = (await resp.json()) as NominatimResponse;
   } catch {
@@ -236,6 +249,7 @@ export async function reverseGeocodeAddress(
 ): Promise<string | null> {
   const key = cacheKey(lat, lon);
   if (addressCache.has(key)) return addressCache.get(key)!;
+  if (shouldBlockBrowserNominatim()) return null;
 
   if (backendGeocodingEnabled) {
     try {
@@ -263,6 +277,7 @@ export async function reverseGeocodeAddress(
       headers: { "User-Agent": USER_AGENT },
       signal,
     });
+    markBrowserNominatimBlocked(resp);
     if (!resp.ok) return null;
     data = (await resp.json()) as NominatimResponse;
   } catch {
@@ -353,6 +368,7 @@ export async function forwardGeocode(
   const addr = address.trim();
   if (!addr) return null;
   if (forwardCache.has(addr)) return forwardCache.get(addr) ?? null;
+  if (shouldBlockBrowserNominatim()) return null;
   const inflight = forwardInflight.get(addr);
   if (inflight) return inflight;
 
@@ -378,6 +394,7 @@ export async function forwardGeocode(
         },
       );
       forwardLastRequestMs = Date.now();
+      markBrowserNominatimBlocked(resp);
       if (!resp.ok) return null;
       const res = (await resp.json()) as Array<{
         lat: string;
