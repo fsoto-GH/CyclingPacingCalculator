@@ -575,7 +575,7 @@ export default function SplitEndpointMap({
     "nearby",
   );
   const [modalOpen, setModalOpen] = useState(false);
-  const [searchAlongRouteOpen, setSearchAlongRouteOpen] = useState(true);
+  const [searchAlongRouteOpen, setSearchAlongRouteOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);

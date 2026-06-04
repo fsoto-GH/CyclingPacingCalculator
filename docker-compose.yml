@@ -19,6 +19,21 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: pacing-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   pacing-api:
     build:
       context: .
@@ -37,6 +52,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     # command here overrides the CMD in the Dockerfile, so it will run the API when the container starts
     command: uvicorn pacing.api.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
@@ -50,7 +67,8 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8000}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - RIDEWITHGPS_API_KEY=${RIDEWITHGPS_API_KEY:-}
       - RIDEWITHGPS_CLIENT_ID=${RIDEWITHGPS_CLIENT_ID:-}
       - RIDEWITHGPS_CLIENT_SECRET=${RIDEWITHGPS_CLIENT_SECRET:-}
@@ -59,3 +77,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

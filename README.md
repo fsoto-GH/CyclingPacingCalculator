@@ -165,7 +165,7 @@ When your account has `enable_google_places` enabled, a **Google Places text sea
 | `VITE_GOOGLE_CLIENT_ID`        | Frontend build | If SF=true             | Google OAuth client ID (also used for Sign-In button)                                     |
 | `GOOGLE_CLIENT_ID`             | Backend        | If SF=true             | Same Google OAuth client ID (backend validation)                                          |
 | `GOOGLE_CLIENT_SECRET`         | Backend        | If SF=true             | Google OAuth client secret                                                                |
-| `GOOGLE_PLACES_API_KEY`        | Backend        | No                     | Enables Google Places nearby-stop search for flagged users                                |
+| `GOOGLE_API_KEY`               | Backend        | No                     | Shared Google API key for Maps tiles, Places search, and geocoding                        |
 | `RIDEWITHGPS_API_KEY`          | Backend        | No                     | Enables RideWithGPS route search and OAuth                                                |
 | `RIDEWITHGPS_CLIENT_ID`        | Backend        | No                     | RideWithGPS OAuth client ID                                                               |
 | `RIDEWITHGPS_CLIENT_SECRET`    | Backend        | No                     | RideWithGPS OAuth client secret                                                           |
@@ -579,7 +579,7 @@ Examples are defined as plain TypeScript objects in [`frontend/src/examples.ts`]
 | **tz-lookup**         | Browser-side timezone detection from GPS coordinates (no network call) | No                            |
 | **Open-Meteo**        | Hourly weather forecast and archive per split                          | No                            |
 | **Google Maps Tiles** | Satellite, terrain, roadmap, dark tile layers (per-user feature flag)  | Backend-managed               |
-| **Google Places**     | Free-text nearby stop search (per-user feature flag)                   | `GOOGLE_PLACES_API_KEY`       |
+| **Google Places**     | Free-text nearby stop search (per-user feature flag)                   | `GOOGLE_API_KEY`              |
 | **RideWithGPS**       | Route search and direct GPX import                                     | `RIDEWITHGPS_API_KEY` + OAuth |
 | **Supabase**          | Google OAuth, user settings DB, race plan storage                      | `VITE_SUPABASE_*` keys        |
 

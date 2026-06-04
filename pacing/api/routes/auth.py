@@ -29,6 +29,7 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 class FlagsResponse(BaseModel):
     enable_google_places: bool
     enable_google_maps: bool
+    enable_google_geocoding: bool
 
 
 class SyncResponse(BaseModel):
@@ -88,5 +89,6 @@ def sync_user(
         flags=FlagsResponse(
             enable_google_places=flags_row.enable_google_places,
             enable_google_maps=flags_row.enable_google_maps,
+            enable_google_geocoding=flags_row.enable_google_geocoding,
         ),
     )

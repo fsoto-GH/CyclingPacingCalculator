@@ -5,7 +5,7 @@
  * When paid APIs are enabled (paidApisEnabled=true) the query is routed through
  * the backend /v1/cycling/nearby_stops proxy instead of hitting Overpass
  * directly.  The proxy may use Google Places for higher-quality results when
- * the server has a GOOGLE_PLACES_API_KEY configured.
+ * the server has a GOOGLE_API_KEY configured.
  */
 
 import type { DayHoursEntry } from "../types";

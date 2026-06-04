@@ -7,6 +7,8 @@
  *   - https://operations.osmfoundation.org/policies/nominatim/
  */
 
+import { geocodeReverse, geocodeSearch } from "../api";
+
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
 const USER_AGENT = "UltraCyclingPlanner/1.0";
 
@@ -22,6 +24,7 @@ const USER_AGENT = "UltraCyclingPlanner/1.0";
 const LS_PREFIX = "geo:";
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MAX_ENTRIES = 500;
+const MIN_NETWORK_INTERVAL_MS = 1000;
 
 interface StoredEntry {
   label: string;
@@ -31,6 +34,11 @@ interface StoredEntry {
 // Module-level cache: "lat4,lon4" → "City, State"
 // Keyed at 4 decimal places (~11 m precision) — more than enough for city lookup.
 const cache = new Map<string, string>();
+let backendGeocodingEnabled = false;
+
+export function setBackendGeocodingEnabled(enabled: boolean): void {
+  backendGeocodingEnabled = enabled;
+}
 
 // Seed in-memory cache from localStorage on module load, evicting stale entries.
 (function seedGeocodeCache() {
@@ -125,6 +133,18 @@ export async function reverseGeocode(
   const key = cacheKey(lat, lon);
   if (cache.has(key)) return cache.get(key)!;
 
+  if (backendGeocodingEnabled) {
+    try {
+      const label = await geocodeReverse(lat, lon, "city", signal);
+      if (!label) return null;
+      cache.set(key, label);
+      lsPersist(key, label);
+      return label;
+    } catch {
+      return null;
+    }
+  }
+
   const url = new URL(NOMINATIM_URL);
   url.searchParams.set("format", "json");
   url.searchParams.set("lat", lat.toFixed(6));
@@ -217,6 +237,17 @@ export async function reverseGeocodeAddress(
   const key = cacheKey(lat, lon);
   if (addressCache.has(key)) return addressCache.get(key)!;
 
+  if (backendGeocodingEnabled) {
+    try {
+      const label = await geocodeReverse(lat, lon, "address", signal);
+      if (!label) return null;
+      addressCache.set(key, label);
+      return label;
+    } catch {
+      return null;
+    }
+  }
+
   const url = new URL(NOMINATIM_URL);
   url.searchParams.set("format", "json");
   url.searchParams.set("lat", lat.toFixed(6));
@@ -305,7 +336,6 @@ export function parseHighPrecisionCoordinateAddress(
 
 const forwardCache = new Map<string, ForwardGeocodeResult | null>();
 const forwardInflight = new Map<string, Promise<ForwardGeocodeResult | null>>();
-const FORWARD_MIN_INTERVAL_MS = 1100;
 let forwardLastRequestMs = 0;
 
 function sleep(ms: number): Promise<void> {
@@ -330,8 +360,15 @@ export async function forwardGeocode(
   const req = (async (): Promise<ForwardGeocodeResult | null> => {
     try {
       const waitMs =
-        FORWARD_MIN_INTERVAL_MS - (Date.now() - forwardLastRequestMs);
+        MIN_NETWORK_INTERVAL_MS - (Date.now() - forwardLastRequestMs);
       if (waitMs > 0) await sleep(waitMs);
+
+      if (backendGeocodingEnabled) {
+        const result = await geocodeSearch(addr, signal);
+        forwardLastRequestMs = Date.now();
+        forwardCache.set(addr, result);
+        return result;
+      }
 
       const resp = await fetch(
         `${SEARCH_URL}?q=${encodeURIComponent(addr)}&format=json&limit=1`,
