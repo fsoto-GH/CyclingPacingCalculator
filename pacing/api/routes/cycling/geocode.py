@@ -343,12 +343,12 @@ async def reverse_geocode(
 ):
     del current_user  # consumed by dependency
 
-    logger.info("Reverse geocode request (%0.4f, %0.4f, %s)", lat, lon, kind)
+    logger.debug("Reverse geocode request (%0.4f, %0.4f, %s)", lat, lon, kind)
 
     key = _reverse_cache_key(lat, lon, kind)
     cached = await _cache_get(key)
     if cached is not None:
-        logger.info(
+        logger.debug(
             "Cache hit for reverse geocode (%0.4f, %0.4f, %s): %s",
             lat,
             lon,
@@ -359,7 +359,7 @@ async def reverse_geocode(
 
     try:
         if await _is_osm_blocked():
-            logger.info(
+            logger.debug(
                 "OSM blocked, using Google for reverse geocode (%0.4f, %0.4f, %s)",
                 lat,
                 lon,
@@ -367,7 +367,7 @@ async def reverse_geocode(
             )
             label = await _google_reverse(lat, lon, kind)
         else:
-            logger.info(
+            logger.debug(
                 "Using OSM for reverse geocode (%0.4f, %0.4f, %s)",
                 lat,
                 lon,
@@ -397,12 +397,12 @@ async def search_geocode(
     if not trimmed:
         return SearchGeocodeResponse(result=None)
 
-    logger.info("Search geocode request (%r)", trimmed)
+    logger.debug("Search geocode request (%r)", trimmed)
 
     key = _search_cache_key(trimmed)
     cached = await _cache_get(key)
     if cached is not None:
-        logger.info(
+        logger.debug(
             "Cache hit for search geocode (%r): %s",
             trimmed,
             cached.get("result"),
@@ -414,10 +414,10 @@ async def search_geocode(
 
     try:
         if await _is_osm_blocked():
-            logger.info("OSM blocked, using Google for search geocode (%r)", trimmed)
+            logger.debug("OSM blocked, using Google for search geocode (%r)", trimmed)
             result = await _google_search(trimmed)
         else:
-            logger.info("Using OSM for search geocode (%r)", trimmed)
+            logger.debug("Using OSM for search geocode (%r)", trimmed)
             result = await _osm_search(trimmed)
     except OSMRateLimitedError:
         logger.warning(
