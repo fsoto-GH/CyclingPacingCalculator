@@ -5,7 +5,7 @@ import {
   AMENITY_FA_ICONS,
   AMENITY_ICONS,
   AMENITY_LABELS,
-} from "../calculator/overpass";
+} from "../calculator/nearbyStops";
 import { useAppSettings } from "../AppSettingsContext";
 import type { UnitSystem } from "../types";
 

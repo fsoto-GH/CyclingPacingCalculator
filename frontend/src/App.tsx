@@ -1,6 +1,6 @@
 import CourseForm from "./components/CourseForm";
-import { AmenityProvider } from "./amenityContext";
-import { AppSettingsProvider } from "./AppSettingsContext";
+import { AmenityProvider } from "./AmenityProvider";
+import { AppSettingsProvider } from "./AppSettingsProvider";
 import "./App.css";
 
 function App() {

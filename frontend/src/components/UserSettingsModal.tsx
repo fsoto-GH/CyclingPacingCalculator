@@ -6,7 +6,7 @@ import {
   AMENITY_FA_ICONS,
   AMENITY_ICONS,
   AMENITY_LABELS,
-} from "../calculator/overpass";
+} from "../calculator/nearbyStops";
 import {
   MAP_TILE_LAYERS,
   GOOGLE_TILE_LAYER_KEYS,
