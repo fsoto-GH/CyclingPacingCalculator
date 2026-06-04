@@ -10,6 +10,7 @@
 
 import type { DayHoursEntry } from "../types";
 import { getNearbyStops } from "../api";
+import { AuthUser } from "../AppSettingsContext";
 
 // Define the fixed-length tuple type
 export type WeekHours = [
@@ -272,7 +273,7 @@ interface OverpassResponse {
 /**
  * Query for nearby amenities.
  *
- * When `usePaidApi` is true, the request goes through the backend proxy
+ * When `enableServerFunctions` is true, the request goes through the backend proxy
  * (/v1/cycling/nearby_stops), which may use Google Places if configured.
  * Otherwise, Overpass is queried directly with mirror fallback.
  *
@@ -281,18 +282,24 @@ interface OverpassResponse {
  * @param radiusM       - Search radius in metres (default 1000)
  * @param signal        - AbortSignal for cancellation
  * @param amenityFilter - Limit to these OSM amenity types
- * @param usePaidApi    - Route through backend proxy (default false)
+ * @param enableServerFunctions    - Route through backend proxy (default false)
+ * @param enableGooglePlaces   - Use Google Places if backend proxy is enabled (default false)
  */
 export async function queryNearbyAmenities(
   lat: number,
   lon: number,
-  radiusM = 1610,
+  radiusM = 1000,
+  enableServerFunctions: boolean,
+  enableGooglePlaces: boolean,
+  user?: AuthUser | null,
   signal?: AbortSignal,
   amenityFilter?: string[],
-  usePaidApi = false,
 ): Promise<NearbyAmenity[]> {
-  if (usePaidApi) {
-    // Route through the backend proxy; normalize the response to NearbyAmenity.
+  console.log(user, enableServerFunctions, enableGooglePlaces);
+  // Ping backend proxy if user is signed in and server functions are enabled
+  // Technical note: `enableGooglePlaces` we could eliminate `enableGooglePlaces`, as the backend will check for permissions, but
+  // keeping it allows us to (1) reduce OSM queries and (2) avoid proxiying when a the backend will ping OSM anyway due to missing flag.
+  if (!!user && enableServerFunctions && enableGooglePlaces) {
     const raw = await getNearbyStops(lat, lon, radiusM, amenityFilter, signal);
     return raw.map((r) => ({
       id: r.id,

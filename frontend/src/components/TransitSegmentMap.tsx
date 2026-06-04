@@ -42,9 +42,9 @@ import {
   AMENITY_LABELS,
   AMENITY_COLORS,
   queryNearbyAmenities,
-} from "../calculator/overpass";
+} from "../calculator/nearbyStops";
 import { reverseGeocode } from "../calculator/geocode";
-import type { NearbyAmenity, WeekHours } from "../calculator/overpass";
+import type { NearbyAmenity, WeekHours } from "../calculator/nearbyStops";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
 import { useAppSettings } from "../AppSettingsContext";
@@ -297,7 +297,7 @@ export default function TransitSegmentMap({
   // ── Nearby search state ────────────────────────────────────────────────────
   const { radiusM, selectedTypes, textQuery } = useContext(AmenityContext);
   const {
-    paidApisEnabled,
+    enableServerFunctions,
     enableGoogleMaps,
     enableGooglePlaces,
     user,
@@ -508,7 +508,7 @@ export default function TransitSegmentMap({
       setSearchError(null);
 
       // Text search takes priority when Google Places is enabled and a query is set.
-      if (tq && paidApisEnabled && enableGooglePlaces) {
+      if (tq && enableServerFunctions && enableGooglePlaces) {
         searchPlacesText(tq, endLat, endLon, searchRadius, ctrl.signal)
           .then((raw) => {
             if (ctrl.signal.aborted) return;
@@ -554,9 +554,11 @@ export default function TransitSegmentMap({
           endLat,
           endLon,
           searchRadius,
+          enableServerFunctions,
+          enableGooglePlaces,
+          user,
           ctrl.signal,
           all,
-          paidApisEnabled && !!user,
         );
         if (ctrl.signal.aborted) return;
         const byDistThenName = (a: NearbyAmenity, b: NearbyAmenity) =>
@@ -592,7 +594,7 @@ export default function TransitSegmentMap({
       radiusM,
       selectedTypes,
       textQuery,
-      paidApisEnabled,
+      enableServerFunctions,
       enableGooglePlaces,
       user,
     ],
@@ -1054,7 +1056,7 @@ export default function TransitSegmentMap({
                 className="split-map-amenity-action-btn split-map-amenity-scout-link"
                 title="Scout stops in Google Maps"
               >
-                🗺️ Scout
+                <i className="fa-solid fa-map" aria-hidden="true" /> Scout
               </a>
               <button
                 type="button"
@@ -1062,7 +1064,7 @@ export default function TransitSegmentMap({
                 onClick={() => setModalOpen(true)}
                 title="Update search criteria"
               >
-                ⚙️ Update
+                <i className="fa-solid fa-gear" aria-hidden="true" /> Update
               </button>
               <button
                 type="button"
@@ -1150,7 +1152,7 @@ export default function TransitSegmentMap({
           unitSystem={unitSystem}
           onClose={() => setModalOpen(false)}
           onSave={(r, types, tq) => {
-            if (tq.trim() && paidApisEnabled && enableGooglePlaces) {
+            if (tq.trim() && enableServerFunctions && enableGooglePlaces) {
               searchAbortRef.current?.abort();
               const ctrl = new AbortController();
               searchAbortRef.current = ctrl;
@@ -1229,7 +1231,8 @@ export default function TransitSegmentMap({
               rel="noopener noreferrer"
               className="no-hours-confirm__maps-link"
             >
-              🗺️ Open Google Maps to look up hours
+              <i className="fa-solid fa-map" aria-hidden="true" /> Open Google
+              Maps to look up hours
             </a>
           </div>
           <div className="legend-footer">

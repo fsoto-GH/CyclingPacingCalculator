@@ -30,13 +30,13 @@ import type {
   RestStopForm,
   IntermediateRestStopForm,
 } from "../types";
-import type { WeekHours } from "../calculator/overpass";
+import type { WeekHours } from "../calculator/nearbyStops";
 import { sliceTrackPoints, interpolateLatLon } from "../calculator/gpxParser";
 import {
   AMENITY_LABELS,
   AMENITY_COLORS,
   queryNearbyAmenities,
-} from "../calculator/overpass";
+} from "../calculator/nearbyStops";
 import { reverseGeocode } from "../calculator/geocode";
 import {
   MapVisibilityInvalidator,
@@ -49,7 +49,7 @@ import {
   GOOGLE_TILE_LAYER_KEYS,
 } from "../calculator/mapTileLayers";
 import { getGoogleTileUrlTemplate } from "../calculator/googleTileSession";
-import type { NearbyAmenity } from "../calculator/overpass";
+import type { NearbyAmenity } from "../calculator/nearbyStops";
 import { AmenityContext } from "../amenityContext";
 import FindNearbyModal from "./FindNearbyModal";
 import { useAppSettings } from "../AppSettingsContext";
@@ -564,10 +564,10 @@ export default function SplitEndpointMap({
   >(null);
   const { radiusM, selectedTypes, textQuery } = useContext(AmenityContext);
   const {
-    paidApisEnabled,
+    user,
+    enableServerFunctions,
     enableGoogleMaps,
     enableGooglePlaces,
-    user,
     userSettings,
   } = useAppSettings();
   const [amenities, setAmenities] = useState<NearbyAmenity[] | null>(null);
@@ -575,7 +575,7 @@ export default function SplitEndpointMap({
     "nearby",
   );
   const [modalOpen, setModalOpen] = useState(false);
-  const [searchAlongRouteOpen, setSearchAlongRouteOpen] = useState(false);
+  const [searchAlongRouteOpen, setSearchAlongRouteOpen] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -760,6 +760,13 @@ export default function SplitEndpointMap({
 
   const handleSearchAlongRoute = useCallback(
     (query: string, originPct: number) => {
+      const shouldPingBackend =
+        !!user && enableServerFunctions && enableGooglePlaces;
+      if (!shouldPingBackend) {
+        setSearchError("You do not have permission to use this feature.");
+        return;
+      }
+
       searchAbortRef.current?.abort();
       const ctrl = new AbortController();
       searchAbortRef.current = ctrl;
@@ -851,9 +858,11 @@ export default function SplitEndpointMap({
           lat,
           lon,
           searchRadius,
+          enableServerFunctions,
+          enableGooglePlaces,
+          user,
           ctrl.signal,
           all,
-          paidApisEnabled && !!user,
         );
         if (ctrl.signal.aborted) return;
         const byDistThenName = (a: NearbyAmenity, b: NearbyAmenity) =>
@@ -892,7 +901,7 @@ export default function SplitEndpointMap({
     ) => {
       mapRef.current?.flyTo([anchorLat, anchorLon], 14, { animate: false });
       searchCenterRef.current = { lat: anchorLat, lon: anchorLon };
-      if (textQuery.trim() && enableGooglePlaces) {
+      if (textQuery.trim() && enableServerFunctions && enableGooglePlaces) {
         searchAbortRef.current?.abort();
         const ctrl = new AbortController();
         searchAbortRef.current = ctrl;
@@ -1751,17 +1760,19 @@ export default function SplitEndpointMap({
             </button>
           )}
           {/* Search along route */}
-          {showPlanningControls && paidApisEnabled && enableGooglePlaces && (
-            <button
-              type="button"
-              className="split-map-reset-btn"
-              onClick={() => setSearchAlongRouteOpen(true)}
-              title="Search along route"
-              aria-label="Search along route"
-            >
-              <i className="fa-solid fa-binoculars" />
-            </button>
-          )}
+          {showPlanningControls &&
+            enableServerFunctions &&
+            enableGooglePlaces && (
+              <button
+                type="button"
+                className="split-map-reset-btn"
+                onClick={() => setSearchAlongRouteOpen(true)}
+                title="Search along route"
+                aria-label="Search along route"
+              >
+                <i className="fa-solid fa-binoculars" />
+              </button>
+            )}
           {/* Wind overlay toggle button */}
           {splitHourlyWeather && splitHourlyWeather.length > 0 && (
             <button
@@ -1853,7 +1864,7 @@ export default function SplitEndpointMap({
                 className="split-map-amenity-action-btn split-map-amenity-scout-link"
                 title="Scout stops in Google Maps"
               >
-                🗺️ Scout
+                <i className="fa-solid fa-map" aria-hidden="true" /> Scout
               </a>
               <button
                 type="button"
@@ -1861,7 +1872,7 @@ export default function SplitEndpointMap({
                 onClick={() => setModalOpen(true)}
                 title="Update search criteria"
               >
-                ⚙️ Update
+                <i className="fa-solid fa-gear" aria-hidden="true" /> Update
               </button>
               <button
                 type="button"
@@ -1984,7 +1995,7 @@ export default function SplitEndpointMap({
           unitSystem={unitSystem}
           onClose={() => setModalOpen(false)}
           onSave={(r, types, tq) => {
-            if (tq.trim() && enableGooglePlaces) {
+            if (tq.trim() && enableServerFunctions && enableGooglePlaces) {
               // Text search via Google Places
               searchAbortRef.current?.abort();
               const ctrl = new AbortController();
@@ -2064,7 +2075,8 @@ export default function SplitEndpointMap({
               rel="noopener noreferrer"
               className="no-hours-confirm__maps-link"
             >
-              🗺️ Open Google Maps to look up hours
+              <i className="fa-solid fa-map" aria-hidden="true" /> Open Google
+              Maps to look up hours
             </a>
           </div>
           <div className="legend-footer">
