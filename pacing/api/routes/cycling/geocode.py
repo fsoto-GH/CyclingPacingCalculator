@@ -343,14 +343,18 @@ async def reverse_geocode(
     key = _reverse_cache_key(lat, lon, kind)
     cached = await _cache_get(key)
     if cached is not None:
+        print(f"Cache hit for reverse geocode ({lat:.4f}, {lon:.4f}, {kind}): {cached.get('label')}")
         return ReverseGeocodeResponse(label=cached.get("label"))
 
     try:
         if await _is_osm_blocked():
+            print(f"OSM blocked, using Google for reverse geocode ({lat:.4f}, {lon:.4f}, {kind})")
             label = await _google_reverse(lat, lon, kind)
         else:
+            print(f"Using OSM for reverse geocode ({lat:.4f}, {lon:.4f}, {kind})")
             label = await _osm_reverse(lat, lon, kind)
     except OSMRateLimitedError:
+        print(f"OSM rate-limited, blocking for {OSM_COOLDOWN_SECONDS} seconds")
         await _set_osm_blocked()
         label = await _google_reverse(lat, lon, kind)
 
@@ -372,6 +376,7 @@ async def search_geocode(
     key = _search_cache_key(trimmed)
     cached = await _cache_get(key)
     if cached is not None:
+        print(f"Cache hit for search geocode ('{trimmed}'): {cached.get('result')}")
         result = cached.get("result")
         return SearchGeocodeResponse(
             result=SearchGeocodeResult(**result) if result else None
@@ -379,10 +384,13 @@ async def search_geocode(
 
     try:
         if await _is_osm_blocked():
+            print(f"OSM blocked, using Google for search geocode ('{trimmed}')")
             result = await _google_search(trimmed)
         else:
+            print(f"Using OSM for search geocode ('{trimmed}')")
             result = await _osm_search(trimmed)
     except OSMRateLimitedError:
+        print(f"OSM rate-limited, blocking for {OSM_COOLDOWN_SECONDS} seconds")
         await _set_osm_blocked()
         result = await _google_search(trimmed)
 
