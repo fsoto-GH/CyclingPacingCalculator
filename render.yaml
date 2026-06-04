@@ -1,4 +1,9 @@
 services:
+  - type: redis
+    name: cycling-pacing-redis
+    ipAllowList: []
+    plan: starter
+
   - type: web
     name: cycling-pacing-calculator
     runtime: docker
@@ -32,8 +37,13 @@ services:
         sync: false
       - key: SUPABASE_JWT_SECRET
         sync: false
-      - key: GOOGLE_PLACES_API_KEY
+      - key: GOOGLE_API_KEY
         sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: cycling-pacing-redis
+          property: connectionString
       - key: RIDEWITHGPS_API_KEY
         sync: false
       - key: RIDEWITHGPS_CLIENT_ID

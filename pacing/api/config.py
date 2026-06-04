@@ -61,8 +61,11 @@ class Settings(BaseSettings):
         return list(dict.fromkeys(origins))
 
     # ── Paid / premium API keys (all optional) ────────────────────────────────
-    # Google Places API for higher-quality nearby-stop data.
-    google_places_api_key: Optional[str] = None
+    # Shared Google API key used for Maps tiles, Places, and Geocoding.
+    google_api_key: Optional[str] = None
+
+    # Optional Redis URL used for geocoding cache/cooldown state.
+    redis_url: Optional[str] = None
 
     # RideWithGPS API key for route search and GPX import.
     ridewithgps_api_key: Optional[str] = None

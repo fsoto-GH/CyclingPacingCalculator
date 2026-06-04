@@ -114,6 +114,7 @@ class CurrentUser(BaseModel):
     avatar_url: Optional[str] = None
     enable_google_places: bool = False
     enable_google_maps: bool = False
+    enable_google_geocoding: bool = False
 
 
 def _build_user(payload: dict, flags: Optional[UserFlags]) -> CurrentUser:
@@ -125,6 +126,7 @@ def _build_user(payload: dict, flags: Optional[UserFlags]) -> CurrentUser:
         avatar_url=meta.get("avatar_url"),
         enable_google_places=flags.enable_google_places if flags else False,
         enable_google_maps=flags.enable_google_maps if flags else False,
+        enable_google_geocoding=flags.enable_google_geocoding if flags else False,
     )
 
 
@@ -189,5 +191,17 @@ def get_google_maps_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Google Maps access is not enabled for your account.",
+        )
+    return current_user
+
+
+def get_google_geocoding_user(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    """Require an authenticated user with enable_google_geocoding = True; raise 403 otherwise."""
+    if not current_user.enable_google_geocoding:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Google geocoding access is not enabled for your account.",
         )
     return current_user

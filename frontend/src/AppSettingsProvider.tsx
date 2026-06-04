@@ -12,12 +12,14 @@ import {
 } from "./userSettings";
 import { supabase } from "./supabaseClient";
 import type { AuthUser } from "./AppSettingsContext";
+import { setBackendGeocodingEnabled } from "./calculator/geocode";
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(SERVER_FUNCTIONS_ENABLED);
   const [enableGoogleMaps, setEnableGoogleMaps] = useState(false);
   const [enableGooglePlaces, setEnableGooglePlaces] = useState(false);
+  const [enableGoogleGeocoding, setEnableGoogleGeocoding] = useState(false);
   const [userSettings, setUserSettingsState] = useState<UserSettings>(
     loadSettingsFromStorage,
   );
@@ -90,6 +92,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
           .then((res) => {
             setEnableGoogleMaps(res.flags.enable_google_maps);
             setEnableGooglePlaces(res.flags.enable_google_places);
+            setEnableGoogleGeocoding(res.flags.enable_google_geocoding);
           })
           .catch(() => {});
       }
@@ -118,6 +121,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         if (!u) {
           setEnableGoogleMaps(false);
           setEnableGooglePlaces(false);
+          setEnableGoogleGeocoding(false);
         }
 
         // Upsert the user in our local DB on every fresh sign-in.
@@ -126,6 +130,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
             .then((res) => {
               setEnableGoogleMaps(res.flags.enable_google_maps);
               setEnableGooglePlaces(res.flags.enable_google_places);
+              setEnableGoogleGeocoding(res.flags.enable_google_geocoding);
             })
             .catch((err) => console.error("[auth] sync failed:", err));
         }
@@ -137,6 +142,12 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    setBackendGeocodingEnabled(
+      SERVER_FUNCTIONS_ENABLED && !!user && enableGoogleGeocoding,
+    );
+  }, [user?.id, enableGoogleGeocoding]);
+
   return (
     <AppSettingsContext.Provider
       value={{
@@ -146,6 +157,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         authLoading,
         enableGoogleMaps,
         enableGooglePlaces,
+        enableGoogleGeocoding,
         userSettings,
         updateUserSettings,
       }}

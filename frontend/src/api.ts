@@ -35,6 +35,7 @@ async function authHeader(): Promise<Record<string, string>> {
 export interface UserFlagsResponse {
   enable_google_places: boolean;
   enable_google_maps: boolean;
+  enable_google_geocoding: boolean;
 }
 
 export interface SyncUserResponse {
@@ -189,6 +190,68 @@ export async function searchAlongRoute(
     { signal, headers: await authHeader() },
   );
   return resp.data;
+}
+
+// ── Geocoding (backend, authenticated) ───────────────────────────────────────
+
+interface ReverseGeocodeApiResponse {
+  label: string | null;
+}
+
+interface SearchGeocodeApiResponse {
+  result: {
+    lat: number;
+    lon: number;
+    type?: string;
+    place_class?: string;
+    name?: string;
+  } | null;
+}
+
+export async function geocodeReverse(
+  lat: number,
+  lon: number,
+  kind: "city" | "address" = "city",
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const resp = await axios.get<ReverseGeocodeApiResponse>(
+    "/v1/cycling/geocode/reverse",
+    {
+      params: { lat, lon, kind },
+      signal,
+      headers: await authHeader(),
+    },
+  );
+  return resp.data.label ?? null;
+}
+
+export async function geocodeSearch(
+  query: string,
+  signal?: AbortSignal,
+): Promise<{
+  lat: number;
+  lon: number;
+  type?: string;
+  placeClass?: string;
+  name?: string;
+} | null> {
+  const resp = await axios.get<SearchGeocodeApiResponse>(
+    "/v1/cycling/geocode/search",
+    {
+      params: { query },
+      signal,
+      headers: await authHeader(),
+    },
+  );
+  const row = resp.data.result;
+  if (!row) return null;
+  return {
+    lat: row.lat,
+    lon: row.lon,
+    type: row.type,
+    placeClass: row.place_class,
+    name: row.name,
+  };
 }
 
 // ── Weather (direct Open-Meteo) ──────────────────────────────────────────────

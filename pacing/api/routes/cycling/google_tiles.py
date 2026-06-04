@@ -70,7 +70,7 @@ async def get_google_tile_session(
 
         https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=TOKEN&key=KEY
     """
-    if not settings.google_places_api_key:
+    if not settings.google_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Google Maps API key is not configured on the server.",
@@ -90,7 +90,7 @@ async def get_google_tile_session(
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.post(
             f"{_TILE_BASE}/createSession",
-            params={"key": settings.google_places_api_key},
+            params={"key": settings.google_api_key},
             json=payload,
         )
 
@@ -111,7 +111,7 @@ async def get_google_tile_session(
             detail="Invalid response from Google Maps tile session API.",
         )
 
-    key = settings.google_places_api_key
+    key = settings.google_api_key
     tile_url_template = (
         f"{_TILE_BASE}/2dtiles/{{z}}/{{x}}/{{y}}"
         f"?session={session}&key={key}"

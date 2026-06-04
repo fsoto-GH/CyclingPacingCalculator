@@ -58,7 +58,7 @@ async def _query_google_places_along_route(
     url = "https://places.googleapis.com/v1/places:searchText"
     headers = {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": settings.google_places_api_key or "",
+        "X-Goog-Api-Key": settings.google_api_key or "",
         "X-Goog-FieldMask": (
             "places.id,places.displayName,places.primaryTypeDisplayName,"
             "places.location,places.formattedAddress,"
@@ -144,7 +144,7 @@ async def places_search_along_route(
 
     Requires ``enable_google_places = True`` on the caller's account.
     """
-    if not settings.google_places_api_key:
+    if not settings.google_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Google Places is not configured on this server.",

@@ -2395,7 +2395,7 @@ export default function CourseForm() {
 
   // City label queue
   // Runs 600 ms after splitBoundariesKm changes. Each uncached Nominatim
-  // request is staggered 1100 ms apart to respect the 1 req/s policy.
+  // request is staggered 1000 ms apart to respect the 1 req/s policy.
   // A distance change > 8.047 km (~5 mi) invalidates that cell cached label.
   useEffect(() => {
     if (!splitBoundariesKm || !gpxTrack) {
@@ -2480,9 +2480,9 @@ export default function CourseForm() {
           // no two processors can both pass the guard simultaneously.
           if (isNetwork) {
             const elapsed = Date.now() - lastNetworkRequestMsRef.current;
-            if (elapsed < 1100) {
+            if (elapsed < 1000) {
               await new Promise<void>((resolve) =>
-                setTimeout(resolve, 1100 - elapsed),
+                setTimeout(resolve, 1000 - elapsed),
               );
               if (cityGenRef.current !== gen) break;
             }

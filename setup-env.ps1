@@ -103,10 +103,10 @@ $frontendUrl  = Ask "  FRONTEND_URL (CORS allowed origin)" "http://localhost:800
 Write-Host ""
 
 # Google
-Write-Host "Google (OAuth + Places)" -ForegroundColor Yellow
+Write-Host "Google (OAuth + Maps/Places/Geocoding)" -ForegroundColor Yellow
 $googleClientId     = Ask "  GOOGLE_CLIENT_ID" ""
 $googleClientSecret = Ask "  GOOGLE_CLIENT_SECRET" "" -Secret
-$googlePlacesKey    = Ask "  GOOGLE_PLACES_API_KEY (optional)" "" -Secret
+$googleApiKey       = Ask "  GOOGLE_API_KEY (optional)" "" -Secret
 
 Write-Host ""
 
@@ -142,7 +142,7 @@ $rootEnv = [ordered]@{
     "# ── Google ──────────────────────────────────────────────────────────────────" = ""
     "GOOGLE_CLIENT_ID"         = $googleClientId
     "GOOGLE_CLIENT_SECRET"     = $googleClientSecret
-    "GOOGLE_PLACES_API_KEY"    = $googlePlacesKey
+    "GOOGLE_API_KEY"           = $googleApiKey
     "# ── RideWithGPS ─────────────────────────────────────────────────────────────" = ""
     "RIDEWITHGPS_API_KEY"      = $rwgpsApiKey
     "RIDEWITHGPS_CLIENT_ID"    = $rwgpsClientId

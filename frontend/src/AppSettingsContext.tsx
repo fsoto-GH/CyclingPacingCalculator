@@ -25,6 +25,8 @@ export interface AppSettingsContextValue {
   enableGoogleMaps: boolean;
   /** True when the current user has Google Places search enabled. */
   enableGooglePlaces: boolean;
+  /** True when the current user may use backend geocoding endpoints. */
+  enableGoogleGeocoding: boolean;
   /** Persisted user preferences (localStorage + DB for auth users). */
   userSettings: UserSettings;
   /** Update one or more settings fields. Writes through to localStorage and DB. */
@@ -38,6 +40,7 @@ export const AppSettingsContext = createContext<AppSettingsContextValue>({
   authLoading: false,
   enableGoogleMaps: false,
   enableGooglePlaces: false,
+  enableGoogleGeocoding: false,
   userSettings: {
     ...USER_SETTINGS_DEFAULTS,
     settingsVersion: SETTINGS_VERSION,

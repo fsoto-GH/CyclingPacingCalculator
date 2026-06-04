@@ -2,7 +2,7 @@
 GET /v1/cycling/nearby_stops
 
 Proxy for nearby-amenity lookups.  Two backends are supported:
-  - Google Places Nearby Search  (when GOOGLE_PLACES_API_KEY is set)
+    - Google Places Nearby Search  (when GOOGLE_API_KEY is set)
   - Overpass API                  (free fallback, same query as the frontend)
 
 Both paths return a normalized NearbyAmenity list so the frontend does not
@@ -237,7 +237,7 @@ async def _query_google_places(
     url = "https://places.googleapis.com/v1/places:searchNearby"
     headers = {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": settings.google_places_api_key or "",
+        "X-Goog-Api-Key": settings.google_api_key or "",
         "X-Goog-FieldMask": (
             "places.id,places.displayName,places.primaryTypeDisplayName,"
             "places.location,places.formattedAddress,"
@@ -332,7 +332,7 @@ async def nearby_stops(
 ):
     """
     Return nearby amenities for the given coordinates.
-    Uses Google Places when GOOGLE_PLACES_API_KEY is configured and the caller
+    Uses Google Places when GOOGLE_API_KEY is configured and the caller
     has enable_google_places = True; falls back to Overpass.
     """
     types: list[str] = (
@@ -342,7 +342,7 @@ async def nearby_stops(
     )
 
     use_google = (
-        bool(settings.google_places_api_key)
+        bool(settings.google_api_key)
         and current_user.enable_google_places
     )
 
@@ -400,7 +400,7 @@ async def _query_google_places_text(
     url = "https://places.googleapis.com/v1/places:searchText"
     headers = {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": settings.google_places_api_key or "",
+        "X-Goog-Api-Key": settings.google_api_key or "",
         "X-Goog-FieldMask": (
             "places.id,places.displayName,places.primaryTypeDisplayName,"
             "places.location,places.formattedAddress,"
@@ -474,7 +474,7 @@ async def places_text_search(
     Full-text place search via Google Places (New) API — places:searchText.
     Requires enable_google_places = True on the caller's account.
     """
-    if not settings.google_places_api_key:
+    if not settings.google_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Google Places is not configured on this server.",
