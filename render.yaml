@@ -21,6 +21,8 @@ services:
         value: "lax"
       - key: VITE_ENABLE_SERVER_FUNCTIONS
         value: "true"
+      - key: LOG_LEVEL
+        value: "INFO"
       - key: DATABASE_URL
         sync: false
       - key: FRONTEND_URL
