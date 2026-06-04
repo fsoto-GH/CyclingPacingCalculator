@@ -1,4 +1,5 @@
 import os
+import logging
 
 import uvicorn
 from fastapi import FastAPI
@@ -17,6 +18,22 @@ from pacing.api.routes import user_settings as user_settings_router
 
 # Ensure all ORM models are registered with the metadata before create_all.
 import pacing.api.models  # noqa: F401
+
+
+def _configure_logging() -> None:
+    level_name = settings.log_level.upper()
+    level = getattr(logging, level_name, logging.INFO)
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+    else:
+        root_logger.setLevel(level)
+
+
+_configure_logging()
 
 # Create tables on startup (no-op if they already exist).
 # For production schema migrations, prefer Alembic instead.

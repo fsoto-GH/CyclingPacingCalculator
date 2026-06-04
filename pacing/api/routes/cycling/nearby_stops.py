@@ -11,6 +11,7 @@ need to know which backend was used.
 from typing import Optional
 
 import httpx
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
@@ -18,6 +19,7 @@ from pacing.api.auth.deps import CurrentUser, get_current_user, get_google_place
 from pacing.api.config import settings
 
 router = APIRouter(prefix="/v1/cycling", tags=["cycling"])
+logger = logging.getLogger(__name__)
 
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
@@ -354,7 +356,7 @@ async def nearby_stops(
             # Fail open to Overpass so nearby-stops still works on Google errors.
             try:
                 # log the Google error for debugging
-                print(f"Google Places lookup failed: {google_exc}")
+                logger.exception("Google Places lookup failed; falling back to Overpass")
                 return await _query_overpass(lat, lon, radius_m, types)
             except Exception as overpass_exc:
                 raise HTTPException(

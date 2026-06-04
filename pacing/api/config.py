@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # Weather API key placeholder — provider TBD (OpenWeatherMap / Google Weather).
     weather_api_key: Optional[str] = None
 
+    # Logging
+    log_level: str = "INFO"
+
     # Cookie security
     cookie_secure: bool = False   # set True in production (HTTPS)
     cookie_samesite: str = "lax"

@@ -7,6 +7,7 @@ the response contains places biased to that route via searchAlongRouteParameters
 
 Requires enable_google_places = True on the caller's account.
 """
+import logging
 from typing import Optional
 
 import httpx
@@ -22,6 +23,7 @@ from pacing.api.routes.cycling.nearby_stops import (
 )
 
 router = APIRouter(prefix="/v1/cycling", tags=["cycling"])
+logger = logging.getLogger(__name__)
 
 
 class SearchAlongRouteRequest(BaseModel):
@@ -74,7 +76,11 @@ async def _query_google_places_along_route(
         },
     }
     if origin_lat is not None and origin_lon is not None:
-        print(f"Using origin for searchAlongRouteParameters: {origin_lat}, {origin_lon}")
+        logger.debug(
+            "Using origin for searchAlongRouteParameters: %s, %s",
+            origin_lat,
+            origin_lon,
+        )
         body["routingParameters"] = {
             "origin": {
                 "latitude": origin_lat,
