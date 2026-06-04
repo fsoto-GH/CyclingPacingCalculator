@@ -12,6 +12,7 @@ The returned ``tile_url_template`` embeds both the session token and the API
 key so the frontend never needs its own copy of the key.  Restrict the GCP key
 to the app's HTTP referrer for security.
 """
+import logging
 from typing import Literal
 
 import httpx
@@ -22,6 +23,7 @@ from pacing.api.auth.deps import CurrentUser, get_google_maps_user
 from pacing.api.config import settings
 
 router = APIRouter(prefix="/v1/maps", tags=["maps"])
+logger = logging.getLogger(__name__)
 
 _TILE_BASE = "https://tile.googleapis.com/v1"
 
@@ -95,7 +97,11 @@ async def get_google_tile_session(
         )
 
     if resp.status_code != 200:
-        print(f"Google Maps tile session API returned {resp.status_code}: {resp.text}")
+        logger.warning(
+            "Google Maps tile session API returned %s: %s",
+            resp.status_code,
+            resp.text,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to create Google Maps tile session.",
