@@ -295,7 +295,6 @@ export async function queryNearbyAmenities(
   signal?: AbortSignal,
   amenityFilter?: string[],
 ): Promise<NearbyAmenity[]> {
-  console.log(user, enableServerFunctions, enableGooglePlaces);
   // Ping backend proxy if user is signed in and server functions are enabled
   // Technical note: `enableGooglePlaces` we could eliminate `enableGooglePlaces`, as the backend will check for permissions, but
   // keeping it allows us to (1) reduce OSM queries and (2) avoid proxiying when a the backend will ping OSM anyway due to missing flag.

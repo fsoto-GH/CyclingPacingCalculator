@@ -52,6 +52,9 @@ export interface CueSheetOptions {
   restStopIncludeHours: boolean;
   restStopIncludeEta: boolean;
 
+  /** Controls (RwGPS course points with type 'control') — compact: C{n} entries; table: included in cue column */
+  includeControls: boolean;
+
   /** Only used in regular (non-compact) table mode */
   includeElevation: boolean;
 
@@ -231,7 +234,11 @@ function esc(s: string): string {
 // Shared HTML head (includes both table and compact CSS)
 // ---------------------------------------------------------------------------
 
-function buildHead(courseName: string, ul: string): string {
+function buildHead(
+  courseName: string,
+  ul: string,
+  markerWidth?: number,
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -297,6 +304,9 @@ tr.tr--transit td { background: #fffbeb !important; }
 .elev-gain { color: #16a34a; display: block; }
 .elev-loss { color: #ef4444; display: block; }
 
+/* ── Control entry (compact mode) ── */
+.cs-entry--control { background: #faf5ff; border-left-color: #7c3aed; }
+
 /* ── Compact mode ── */
 .cs-list { max-width: 680px; }
 
@@ -314,6 +324,7 @@ tr.tr--transit td { background: #fffbeb !important; }
 .cs-entry--end          { background: #fff1f2; border-left-color: #e11d48; }
 
 .cs-header   { font-weight: bold; font-size: 11pt; }
+.cs-marker   { font-family: monospace; display: inline-block; text-align: right; width: ${markerWidth ?? 5}ch; }
 .cs-dist     { font-weight: normal; color: #555; }
 .cs-name     { font-weight: normal; }
 .cs-details  { padding-left: 20px; font-size: 10pt; color: #444; }
@@ -350,6 +361,7 @@ tr.tr--transit td { background: #fffbeb !important; }
   .cs-entry--transit      { background: #fffbeb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cs-entry--start        { background: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cs-entry--end          { background: #fff1f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .cs-entry--control      { background: #faf5ff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .no-print { display: none !important; }
 }
 </style>
@@ -411,6 +423,8 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
     gpxProfiles != null &&
     gpxProfiles.some((seg) => seg.some((p) => p != null));
 
+  const showCueHeader = opts.includeCoursePoints || opts.includeControls;
+
   const headers: string[] = [
     opts.mileMarkerDirection === "from-end"
       ? `Mile Marker from End (${ul})`
@@ -423,7 +437,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
   if (opts.includeNotes) headers.push("Notes");
   if (opts.includeIntermediateStop || opts.includeRestStop)
     headers.push("Stops");
-  if (opts.includeCoursePoints) headers.push("Cues");
+  if (showCueHeader) headers.push("Cues");
   if (opts.includePois) headers.push("Points of Interest");
 
   const theadCells = headers.map((h) => `<th>${esc(h)}</th>`).join("");
@@ -604,23 +618,34 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
 
       // ── Course points ──
       let cueCell = "";
-      if (opts.includeCoursePoints) {
+      if (opts.includeCoursePoints || opts.includeControls) {
+        const isControl = (cp: GpxWaypoint) =>
+          cp.description?.trim().toLowerCase() === "control";
         const splitCues = rwgpsCoursePoints.filter((cp) => {
           const d = coursePointCumDist(cp, gpxTrack);
           if (d == null || d < startKm || d > endKm) return false;
+          if (isControl(cp)) return opts.includeControls;
+          if (!opts.includeCoursePoints) return false;
           if (opts.selectedCueTypes.size === 0) return true;
           return opts.selectedCueTypes.has(cp.description?.trim() || "");
         });
         if (splitCues.length > 0) {
           const items = splitCues
-            .map(
-              (cp) =>
-                `<li>${esc(cp.name)}${cp.description ? ` <span class="unit">(${esc(cp.description)})</span>` : ""}</li>`,
-            )
+            .map((cp) => {
+              const d = coursePointCumDist(cp, gpxTrack);
+              const markerDist =
+                d != null
+                  ? ` @ ${fmtDist(opts.mileMarkerDirection === "from-end" ? totalKm - d : d, opts.unitSystem)} ${ul}`
+                  : "";
+              const typeStr = cp.description
+                ? `${esc(cp.description)}${markerDist}`
+                : markerDist.trim();
+              return `<li>${esc(cp.name)}${typeStr ? ` <span class="unit">(${typeStr})</span>` : ""}</li>`;
+            })
             .join("");
           cueCell = `<td><ul class="cues-list">${items}</ul></td>`;
         } else {
-          cueCell = `<td></td>`;
+          cueCell = opts.includeCoursePoints ? `<td></td>` : "";
         }
       }
 
@@ -653,6 +678,9 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
         }
       }
 
+      // Include cue column when controls-only mode is active (no course points)
+      const showCueColumn = opts.includeCoursePoints || opts.includeControls;
+
       const cells = [
         markerCell,
         nameCell,
@@ -661,7 +689,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
         etaCell,
         notesCell,
         stopCell,
-        cueCell,
+        showCueColumn ? cueCell || `<td></td>` : "",
         poiCell,
       ]
         .filter((c) => c !== "")
@@ -688,11 +716,12 @@ ${rows.join("\n")}
 // ---------------------------------------------------------------------------
 
 interface CompactEntry {
-  entryType: "intermediate" | "split" | "transit";
+  entryType: "intermediate" | "split" | "transit" | "control";
   typeNum: number;
   displayMarkerKm: number;
   splitDistKm: number | null;
   splitName: string | null;
+  /** For stops and controls: the label/name shown in the detail line */
   stopName: string | null;
   hoursLabel: string | null;
   etaIso: string | null;
@@ -705,7 +734,14 @@ function generateCompactHtml(
   opts: CueSheetOptions,
   data: CueSheetData,
 ): string {
-  const { form, result, splitBoundariesKm, gpxTrack, courseTz } = data;
+  const {
+    form,
+    result,
+    splitBoundariesKm,
+    gpxTrack,
+    rwgpsCoursePoints,
+    courseTz,
+  } = data;
   const ul = unitLabel(opts.unitSystem);
 
   let totalKm = 0;
@@ -719,6 +755,10 @@ function generateCompactHtml(
   let iCount = 0;
   let sCount = 0;
   let tCount = 0;
+  let cCount = 0;
+
+  const isControlPoint = (cp: GpxWaypoint) =>
+    cp.description?.trim().toLowerCase() === "control";
 
   for (let si = 0; si < form.segments.length; si++) {
     const seg = form.segments[si];
@@ -736,66 +776,106 @@ function generateCompactHtml(
       const [startKm, endKm] = bounds;
       const splitTz = splitDetail.end_timezone ?? courseTz;
 
-      // ── ① Intermediate stop entry ──
+      // ── Collect intermediate stop km (if applicable) ──
       const is = formSplit.intermediate_stop;
+      let intermKm: number | null = null;
+      let rawIntermEtaIso: string | null = null;
       if (opts.includeIntermediateStop && is?.enabled) {
-        const { cumKm: intermKm, etaIso: rawIntermEtaIso } =
-          computeIntermediateStop(
-            is,
-            splitDetail.start_time,
-            splitDetail.end_time,
-            splitDetail.distance,
-            startKm,
-            endKm,
-            form.mode,
-            opts.unitSystem,
-            gpxTrack,
-          );
+        ({ cumKm: intermKm, etaIso: rawIntermEtaIso } = computeIntermediateStop(
+          is,
+          splitDetail.start_time,
+          splitDetail.end_time,
+          splitDetail.distance,
+          startKm,
+          endKm,
+          form.mode,
+          opts.unitSystem,
+          gpxTrack,
+        ));
+      }
 
-        const displayKm =
-          intermKm != null
-            ? opts.mileMarkerDirection === "from-end"
-              ? totalKm - intermKm
-              : intermKm
-            : opts.mileMarkerDirection === "from-end"
-              ? totalKm - endKm
-              : endKm;
-
-        let hoursLabel: string | null = null;
-        let etaStatus: EtaStatus = null;
-
-        if (opts.intermediateIncludeHours || rawIntermEtaIso) {
-          const etaForDay = rawIntermEtaIso ?? splitDetail.end_time;
-          const entry = hoursEntryForArrival(etaForDay, splitTz, is);
-          if (opts.intermediateIncludeHours) {
-            hoursLabel = hoursLabelForEntry(entry);
-          }
-          if (rawIntermEtaIso) {
-            etaStatus =
-              checkArrivalVsHoursDetailed(
-                rawIntermEtaIso,
-                entry,
-                splitTz,
-                ETA_MARGIN_OPEN,
-                ETA_MARGIN_CLOSE,
-              ) ?? null;
-          }
+      // ── Collect control points within this split ──
+      const splitControls: { km: number; cp: GpxWaypoint }[] = [];
+      if (opts.includeControls) {
+        for (const cp of rwgpsCoursePoints) {
+          if (!isControlPoint(cp)) continue;
+          const d = coursePointCumDist(cp, gpxTrack);
+          // Exclude the exact endpoint (endKm) — it belongs to the split marker
+          if (d == null || d < startKm || d >= endKm) continue;
+          splitControls.push({ km: d, cp });
         }
+        splitControls.sort((a, b) => a.km - b.km);
+      }
 
-        iCount++;
-        entries.push({
-          entryType: "intermediate",
-          typeNum: iCount,
-          displayMarkerKm: displayKm,
-          splitDistKm: null,
-          splitName: null,
-          stopName: is.name || "Intermediate Stop",
-          hoursLabel,
-          etaIso: opts.intermediateIncludeEta ? rawIntermEtaIso : null,
-          etaTz: splitTz,
-          etaStatus,
-          notes: null,
-        });
+      // ── Build sub-events list sorted by km ──
+      type SubEvent =
+        | { kind: "intermediate"; km: number }
+        | { kind: "control"; km: number; cp: GpxWaypoint };
+      const subEvents: SubEvent[] = [];
+
+      if (opts.includeIntermediateStop && is?.enabled) {
+        const evtKm = intermKm ?? endKm; // fallback to end if position unknown
+        subEvents.push({ kind: "intermediate", km: evtKm });
+      }
+      for (const { km, cp } of splitControls) {
+        subEvents.push({ kind: "control", km, cp });
+      }
+      subEvents.sort((a, b) => a.km - b.km);
+
+      // ── Emit sub-events ──
+      for (const evt of subEvents) {
+        const displayKm =
+          opts.mileMarkerDirection === "from-end" ? totalKm - evt.km : evt.km;
+
+        if (evt.kind === "intermediate") {
+          let hoursLabel: string | null = null;
+          let etaStatus: EtaStatus = null;
+          if (opts.intermediateIncludeHours || rawIntermEtaIso) {
+            const etaForDay = rawIntermEtaIso ?? splitDetail.end_time;
+            const entry = hoursEntryForArrival(etaForDay, splitTz, is!);
+            if (opts.intermediateIncludeHours)
+              hoursLabel = hoursLabelForEntry(entry);
+            if (rawIntermEtaIso)
+              etaStatus =
+                checkArrivalVsHoursDetailed(
+                  rawIntermEtaIso,
+                  entry,
+                  splitTz,
+                  ETA_MARGIN_OPEN,
+                  ETA_MARGIN_CLOSE,
+                ) ?? null;
+          }
+          iCount++;
+          entries.push({
+            entryType: "intermediate",
+            typeNum: iCount,
+            displayMarkerKm: displayKm,
+            splitDistKm: null,
+            splitName: null,
+            stopName: is!.name || "Intermediate Stop",
+            hoursLabel,
+            etaIso: opts.intermediateIncludeEta ? rawIntermEtaIso : null,
+            etaTz: splitTz,
+            etaStatus,
+            notes: null,
+          });
+        } else {
+          // control
+          cCount++;
+          entries.push({
+            entryType: "control",
+            typeNum: cCount,
+            displayMarkerKm: displayKm,
+            splitDistKm: null,
+            splitName: null,
+            stopName: evt.cp.name || "Control",
+            hoursLabel: null,
+            etaIso: null,
+            etaTz: splitTz,
+            etaStatus: null,
+            notes: null,
+          });
+        }
       }
 
       // ── ② Split / transit endpoint entry ──
@@ -854,14 +934,18 @@ function generateCompactHtml(
           ? "cs-entry--intermediate"
           : entry.entryType === "transit"
             ? "cs-entry--transit"
-            : "cs-entry--split";
+            : entry.entryType === "control"
+              ? "cs-entry--control"
+              : "cs-entry--split";
 
     const prefix =
       entry.entryType === "intermediate"
         ? "I"
         : entry.entryType === "transit"
           ? "T"
-          : "S";
+          : entry.entryType === "control"
+            ? "C"
+            : "S";
 
     const distStr =
       entry.splitDistKm != null
@@ -872,7 +956,7 @@ function generateCompactHtml(
       ? ` <span class="cs-name">${esc(entry.splitName)}</span>`
       : "";
 
-    const header = `<div class="cs-header"><span class="cs-marker">${fmtDist(entry.displayMarkerKm, opts.unitSystem)}</span>: <span class="cs-label">${prefix}${entry.typeNum}</span>${distStr} ${nameStr}</div>`;
+    const header = `<div class="cs-header"><span class="cs-marker">${fmtDist(entry.displayMarkerKm, opts.unitSystem)}</span>: <span class="cs-label">${prefix}${entry.typeNum}</span>${distStr}${nameStr}</div>`;
 
     const detailLines: string[] = [];
 
@@ -906,7 +990,14 @@ function generateCompactHtml(
   });
 
   const courseName = form.name?.trim() || "Course";
-  return `${buildHead(courseName, ul)}<div class="cs-list">
+
+  // Compute max marker char length for right-aligned monospace column
+  const markerWidth = entries.reduce((max, e) => {
+    const s = fmtDist(e.displayMarkerKm, opts.unitSystem);
+    return Math.max(max, s.length);
+  }, 1);
+
+  return `${buildHead(courseName, ul, markerWidth)}<div class="cs-list">
 ${rows.join("\n")}
 </div>
 </body>

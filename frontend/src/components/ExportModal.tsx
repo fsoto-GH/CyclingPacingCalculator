@@ -115,6 +115,7 @@ export default function ExportModal({
   const [restStopIncludeEta, setRestStopIncludeEta] = useState(true);
 
   // ── Course points accordion ──
+  const [includeControls, setIncludeControls] = useState(true);
   const [includeCoursePoints, setIncludeCoursePoints] = useState(false);
   const [cueTypesExpanded, setCueTypesExpanded] = useState(false);
   const [selectedCueTypes, setSelectedCueTypes] = useState<Set<string>>(
@@ -134,12 +135,22 @@ export default function ExportModal({
     const counts = new Map<string, number>();
     for (const cp of rwgpsCoursePoints) {
       const t = cp.description?.trim() || "(no type)";
+      // 'control' is handled by the separate Controls checkbox
+      if (t.toLowerCase() === "control") continue;
       counts.set(t, (counts.get(t) ?? 0) + 1);
     }
     return Array.from(counts.entries())
       .map(([type, count]) => ({ type, count }))
       .sort((a, b) => a.type.localeCompare(b.type));
   }, [rwgpsCoursePoints]);
+
+  const hasControlPoints = useMemo(
+    () =>
+      rwgpsCoursePoints.some(
+        (cp) => cp.description?.trim().toLowerCase() === "control",
+      ),
+    [rwgpsCoursePoints],
+  );
 
   const poiCounts = useMemo<Map<string, number>>(() => {
     const m = new Map<string, number>();
@@ -150,14 +161,16 @@ export default function ExportModal({
     return m;
   }, [rwgpsPois]);
 
-  // Seed selectedCueTypes when source data changes
+  // Seed selectedCueTypes when source data changes (exclude controls)
   const prevCoursePointsRef = useRef(rwgpsCoursePoints);
   useEffect(() => {
     if (rwgpsCoursePoints !== prevCoursePointsRef.current) {
       prevCoursePointsRef.current = rwgpsCoursePoints;
       setSelectedCueTypes(
         new Set(
-          rwgpsCoursePoints.map((cp) => cp.description?.trim() || "(no type)"),
+          rwgpsCoursePoints
+            .filter((cp) => cp.description?.trim().toLowerCase() !== "control")
+            .map((cp) => cp.description?.trim() || "(no type)"),
         ),
       );
     }
@@ -217,6 +230,7 @@ export default function ExportModal({
       includeNotes,
       includeElevation: !compact && includeElevation,
       compact,
+      includeControls,
       includeIntermediateStop,
       intermediateIncludeHours,
       intermediateIncludeEta,
@@ -236,6 +250,7 @@ export default function ExportModal({
       includeNotes,
       includeElevation,
       compact,
+      includeControls,
       includeIntermediateStop,
       intermediateIncludeHours,
       intermediateIncludeEta,
@@ -471,6 +486,25 @@ export default function ExportModal({
                 <div className="export-option-row">
                   <label
                     className={`export-toggle-label${
+                      !hasControlPoints ? " export-toggle-label--muted" : ""
+                    }`}
+                    title="A control is a designated checkpoint along the route with required check-in"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={includeControls}
+                      disabled={!hasControlPoints}
+                      onChange={(e) => setIncludeControls(e.target.checked)}
+                    />
+                    Controls
+                    {!hasControlPoints && (
+                      <span className="export-no-data">(no controls)</span>
+                    )}
+                  </label>
+                </div>
+                <div className="export-option-row">
+                  <label
+                    className={`export-toggle-label${
                       compact || !hasGpxProfiles
                         ? " export-toggle-label--muted"
                         : ""
@@ -612,7 +646,10 @@ export default function ExportModal({
                   className={`export-accordion${!hasCoursePoints || compact ? " export-accordion--disabled" : ""}`}
                 >
                   <div className="export-accordion-header">
-                    <label className="export-toggle-label">
+                    <label
+                      className="export-toggle-label"
+                      title="Course points are points directly on the route, often used for cueing. They are distinct from POIs, which may be off-route."
+                    >
                       <input
                         type="checkbox"
                         checked={includeCoursePoints}
@@ -709,7 +746,10 @@ export default function ExportModal({
                   className={`export-accordion${!hasPois || compact ? " export-accordion--disabled" : ""}`}
                 >
                   <div className="export-accordion-header">
-                    <label className="export-toggle-label">
+                    <label
+                      className="export-toggle-label"
+                      title="Points of Interest (POIs) are distinct from course points (cues) — they may be off-route and are often used for reference or navigation landmarks rather than specific instructions."
+                    >
                       <input
                         type="checkbox"
                         checked={includePois}

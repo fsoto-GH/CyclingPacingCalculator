@@ -71,7 +71,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "features",
     secTitle: "Cue Sheet Export",
     keywords:
-      "cue sheet export table compact list html pdf print mile marker from start from end split distance elevation gain loss feet meters ft m eta notes rest stop intermediate stop course points cues poi points of interest rwgps ridewithgps download open print pdf color coded green start red end blue intermediate amber transit row color coding table row colors",
+      "cue sheet export table compact list html pdf print mile marker from start from end split distance elevation gain loss feet meters ft m eta notes rest stop intermediate stop course points cues poi points of interest rwgps ridewithgps download open print pdf color coded green start red end blue intermediate amber transit row color coding table row colors control controls checkpoint c1 c2 purple",
   },
   {
     catKey: "features",
@@ -575,6 +575,20 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                   <h4>Options</h4>
                   <ul>
+                    <li>
+                      <strong>Controls</strong> — include RwGPS control points
+                      (checkpoints with designated check-in requirements).
+                      Available in both table and compact modes. In compact mode
+                      controls appear as <strong>C1, C2, &hellip;</strong>{" "}
+                      entries (color-coded{" "}
+                      <span style={{ color: "#7c3aed" }}>
+                        <strong>purple</strong>
+                      </span>
+                      ) interspersed at their km position within each split. In
+                      table mode they appear in the Cues column alongside other
+                      course points. The control name is shown as the detail
+                      line; no ETA is displayed.
+                    </li>
                     <li>
                       <strong>Mile marker</strong> — show distance{" "}
                       <em>from the start</em> or <em>from the end</em> of the
