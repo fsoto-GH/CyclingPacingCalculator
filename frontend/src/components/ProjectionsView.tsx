@@ -2064,25 +2064,84 @@ function ProjectionSplit({
   const KM_PER_MI = 1.60934;
   const intermediateKm = useMemo(() => {
     const is = formSplit?.intermediate_stop;
-    if (!is?.enabled || !is.distance.trim()) return null;
+    if (!is?.enabled) return null;
+
+    if (
+      is.lat != null &&
+      is.lon != null &&
+      Number.isFinite(is.lat) &&
+      Number.isFinite(is.lon) &&
+      gpxTrack &&
+      gpxTrack.length > 0 &&
+      profile &&
+      Number.isFinite(profile.startKm) &&
+      Number.isFinite(profile.endKm)
+    ) {
+      const snapped = findNearestTrackPoint(
+        gpxTrack,
+        is.lat,
+        is.lon,
+        profile.startKm,
+        profile.endKm,
+      );
+      if (snapped) return snapped.cumDist;
+    }
+
+    if (!is.distance.trim()) return null;
     const d = parseFloat(is.distance);
     if (isNaN(d)) return null;
     const dKm = d * (unitSystem === "imperial" ? KM_PER_MI : 1);
     return mode === "target_distance" ? dKm : (profile?.startKm ?? 0) + dKm;
-  }, [formSplit?.intermediate_stop, mode, unitSystem, profile?.startKm]);
+  }, [
+    formSplit?.intermediate_stop,
+    mode,
+    unitSystem,
+    profile?.startKm,
+    profile?.endKm,
+    gpxTrack,
+  ]);
 
   const intermediateDistFromStart = useMemo(() => {
     const is = formSplit?.intermediate_stop;
-    if (!is?.enabled || !is.distance.trim()) return null;
-    const d = parseFloat(is.distance);
-    if (!Number.isFinite(d)) return null;
-    return d.toLocaleString(undefined, {
+    if (!is?.enabled) return null;
+
+    let cumKm: number | null = null;
+    if (
+      is.lat != null &&
+      is.lon != null &&
+      Number.isFinite(is.lat) &&
+      Number.isFinite(is.lon) &&
+      gpxTrack &&
+      gpxTrack.length > 0 &&
+      profile &&
+      Number.isFinite(profile.startKm) &&
+      Number.isFinite(profile.endKm)
+    ) {
+      const snapped = findNearestTrackPoint(
+        gpxTrack,
+        is.lat,
+        is.lon,
+        profile.startKm,
+        profile.endKm,
+      );
+      if (snapped) cumKm = snapped.cumDist - profile.startKm;
+    } else if (intermediateKm != null) {
+      cumKm = intermediateKm - (profile?.startKm ?? 0);
+    }
+
+    if (cumKm == null) return null;
+    return (
+      unitSystem === "imperial" ? cumKm / KM_PER_MI : cumKm
+    ).toLocaleString(undefined, {
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
     });
   }, [
-    formSplit?.intermediate_stop?.enabled,
-    formSplit?.intermediate_stop?.distance,
+    formSplit?.intermediate_stop,
+    intermediateKm,
+    gpxTrack,
+    profile,
+    unitSystem,
   ]);
 
   const intermediateEtaIso = useMemo(() => {
@@ -2099,38 +2158,51 @@ function ProjectionSplit({
       return null;
     }
 
-    let ratio: number | null = null;
+    let stopDistFromStartUser: number | null = null;
 
-    // Prefer profile km interpolation because it works in both relative and
-    // target-distance modes and stays aligned with the GPX split endpoints.
     if (intermediateKm != null && profile) {
-      const denom = profile.endKm - profile.startKm;
-      if (Number.isFinite(denom) && denom > 0) {
-        ratio = (intermediateKm - profile.startKm) / denom;
+      const relKm = intermediateKm - profile.startKm;
+      if (Number.isFinite(relKm)) {
+        stopDistFromStartUser =
+          unitSystem === "imperial" ? relKm / KM_PER_MI : relKm;
       }
     }
 
-    // Fallback: use entered split-relative distance if available.
-    if (ratio == null) {
+    if (!Number.isFinite(stopDistFromStartUser)) {
       const stopDist = parseFloat(is.distance);
-      let relStopDist = stopDist;
-      if (Number.isFinite(stopDist) && mode === "target_distance" && profile) {
-        const splitStartUser =
-          profile.startKm / (unitSystem === "imperial" ? KM_PER_MI : 1);
-        relStopDist = stopDist - splitStartUser;
-      }
-      if (
-        Number.isFinite(relStopDist) &&
-        Number.isFinite(split.distance) &&
-        split.distance > 0
-      ) {
-        ratio = relStopDist / split.distance;
+      if (Number.isFinite(stopDist)) {
+        if (mode === "target_distance" && profile) {
+          const splitStartUser =
+            profile.startKm / (unitSystem === "imperial" ? KM_PER_MI : 1);
+          stopDistFromStartUser = stopDist - splitStartUser;
+        } else {
+          stopDistFromStartUser = stopDist;
+        }
       }
     }
 
-    if (ratio == null || !Number.isFinite(ratio)) return null;
-    const clamped = Math.max(0, Math.min(1, ratio));
-    const etaMs = startMs + (endMs - startMs) * clamped;
+    if (
+      !Number.isFinite(stopDistFromStartUser) ||
+      !Number.isFinite(split.distance) ||
+      split.distance <= 0
+    ) {
+      return null;
+    }
+
+    const stopDistUserNum = Number(stopDistFromStartUser);
+
+    const clampedStopDist = Math.max(
+      0,
+      Math.min(split.distance, stopDistUserNum),
+    );
+
+    // Elapsed-pace method: ETA = split start + (distance to stop * elapsed pace).
+    const elapsedPaceMsPerUnit = (endMs - startMs) / split.distance;
+    if (!Number.isFinite(elapsedPaceMsPerUnit) || elapsedPaceMsPerUnit <= 0) {
+      return null;
+    }
+
+    const etaMs = startMs + clampedStopDist * elapsedPaceMsPerUnit;
     return new Date(etaMs).toISOString();
   }, [
     formSplit?.intermediate_stop,

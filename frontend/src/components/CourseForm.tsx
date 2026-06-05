@@ -318,6 +318,21 @@ function migrateRestStop(rs: any): RestStopFormType {
   };
 }
 
+function stripIntermediateStopDistance(form: CourseFormState): CourseFormState {
+  return {
+    ...form,
+    segments: form.segments.map((seg) => ({
+      ...seg,
+      splits: seg.splits.map((split) => ({
+        ...split,
+        intermediate_stop: split.intermediate_stop
+          ? { ...split.intermediate_stop, distance: "" }
+          : split.intermediate_stop,
+      })),
+    })),
+  };
+}
+
 function loadSavedForm(): CourseFormState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -392,6 +407,8 @@ function loadSavedForm(): CourseFormState {
             allDays: makeDefaultDayHours(),
             perDay: Array.from({ length: 7 }, () => makeDefaultDayHours()),
           };
+        } else {
+          split.intermediate_stop.distance = "";
         }
         // Ensure split-level TZ fields exist
         if (split.differentTimezone === undefined)
@@ -623,6 +640,13 @@ function convertCourseUnitValues(
           factor,
         ),
         moving_speed: convertNumericString(split.moving_speed, factor),
+        intermediate_stop: {
+          ...split.intermediate_stop,
+          distance: convertNumericString(
+            split.intermediate_stop.distance,
+            factor,
+          ),
+        },
       })),
     })),
   };
@@ -1110,7 +1134,10 @@ export default function CourseForm() {
   formPersistRef.current = form;
   useEffect(() => {
     const timer = setTimeout(() => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(formPersistRef.current));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(stripIntermediateStopDistance(formPersistRef.current)),
+      );
     }, 500);
     return () => clearTimeout(timer);
   }, [form]);
@@ -1283,7 +1310,7 @@ export default function CourseForm() {
 
   const handleLoadExample = useCallback(
     (example: CourseFormState, gpxUrl?: string) => {
-      setForm(example);
+      setForm(stripIntermediateStopDistance(example));
       setResult(null);
       setApiError(null);
       setTouched(new Set());
@@ -1499,9 +1526,10 @@ export default function CourseForm() {
   const handleExport = useCallback(async () => {
     // Embed the current GPX filename so an import on the same browser can
     // attempt to restore the file from IndexedDB.
+    const strippedForm = stripIntermediateStopDistance(form);
     const exportData = gpxFileName
-      ? { ...form, gpxFileName }
-      : { ...form, gpxFileName: undefined };
+      ? { ...strippedForm, gpxFileName }
+      : { ...strippedForm, gpxFileName: undefined };
     const json = JSON.stringify(exportData, null, 2);
     const blob = new Blob([json], { type: "application/json" });
 
@@ -2867,6 +2895,37 @@ export default function CourseForm() {
               e[`${ip}-name`] = "Required";
             if (!split.intermediate_stop.address.trim())
               e[`${ip}-address`] = "Required";
+            const hasCoords =
+              Number.isFinite(split.intermediate_stop.lat) &&
+              Number.isFinite(split.intermediate_stop.lon);
+            const iDist = parseFloat(split.intermediate_stop.distance);
+            if (!hasCoords && !split.intermediate_stop.distance.trim()) {
+              e[`${ip}-distance`] = "Required";
+            } else if (
+              split.intermediate_stop.distance.trim() &&
+              (!Number.isFinite(iDist) || iDist <= 0)
+            ) {
+              e[`${ip}-distance`] = "Must be > 0";
+            } else {
+              let splitLen = parseFloat(split.distance);
+              if (f.mode === "target_distance") {
+                const prevSplit = seg.splits[j - 1];
+                const prevTarget = prevSplit
+                  ? parseFloat(prevSplit.distance)
+                  : 0;
+                if (Number.isFinite(prevTarget) && Number.isFinite(splitLen)) {
+                  splitLen -= prevTarget;
+                }
+              }
+              if (
+                Number.isFinite(splitLen) &&
+                splitLen > 0 &&
+                iDist > splitLen
+              ) {
+                e[`${ip}-distance`] =
+                  `Must be within split distance (${splitLen.toFixed(2)} ${distanceLabel(f.unitSystem)})`;
+              }
+            }
             if (
               split.intermediate_stop.alt?.trim() &&
               !isValidHttpUrl(split.intermediate_stop.alt.trim())

@@ -449,6 +449,19 @@ export default function SplitFormComponent({
   const intermediateStop =
     value.intermediate_stop ?? DEFAULT_INTERMEDIATE_REST_STOP;
 
+  const splitStartKm = displayProfile?.startKm ?? 0;
+  const splitEndKm = displayProfile?.endKm ?? splitStartKm;
+
+  const toUserDistance = (km: number): number =>
+    unitSystem === "imperial" ? km / KM_PER_MI : km;
+
+  const formatIntermediateDistance = (kmFromSplitStart: number): string => {
+    const startUser = toUserDistance(splitStartKm);
+    const relUser = toUserDistance(kmFromSplitStart);
+    const dist = mode === "target_distance" ? startUser + relUser : relUser;
+    return dist.toFixed(3);
+  };
+
   // If the split gets shortened below the intermediate-stop threshold,
   // hide/disable any previously-set intermediate stop so map/popup UI stays consistent.
   useEffect(() => {
@@ -536,7 +549,62 @@ export default function SplitFormComponent({
     unitSystem,
   ]);
 
-  const intermediateEtaIso = (() => {
+  // Keep distance synced to the resolved stop position so ETA and timezone
+  // are derived from the same point after map clicks, amenity picks, and geocode updates.
+  useEffect(() => {
+    if (!intermediateStop.enabled) return;
+    if (
+      intermediateStop.lat == null ||
+      intermediateStop.lon == null ||
+      !Number.isFinite(intermediateStop.lat) ||
+      !Number.isFinite(intermediateStop.lon)
+    ) {
+      return;
+    }
+    if (!gpxTrack || gpxTrack.length === 0 || !displayProfile) return;
+
+    const snapped = findNearestTrackPoint(
+      gpxTrack,
+      intermediateStop.lat,
+      intermediateStop.lon,
+      splitStartKm,
+      splitEndKm,
+    );
+    if (!snapped) return;
+
+    const nextDistance = formatIntermediateDistance(
+      Math.max(0, snapped.cumDist - splitStartKm),
+    );
+    const currDistance = parseFloat(intermediateStop.distance);
+    const nextDistanceNum = parseFloat(nextDistance);
+    const sameDistance =
+      Number.isFinite(currDistance) &&
+      Number.isFinite(nextDistanceNum) &&
+      Math.abs(currDistance - nextDistanceNum) < 0.0005;
+
+    if (sameDistance) return;
+
+    update({
+      intermediate_stop: {
+        ...intermediateStop,
+        distance: nextDistance,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    intermediateStop.enabled,
+    intermediateStop.lat,
+    intermediateStop.lon,
+    intermediateStop.distance,
+    gpxTrack,
+    displayProfile,
+    mode,
+    unitSystem,
+    splitStartKm,
+    splitEndKm,
+  ]);
+
+  const intermediateEtaIso = useMemo(() => {
     if (!splitResult || !value.intermediate_stop?.enabled) return null;
 
     const startMs = Date.parse(splitResult.start_time);
@@ -549,52 +617,56 @@ export default function SplitFormComponent({
       return null;
     }
 
-    let ratio: number | null = null;
+    const splitDistUserNum =
+      Number.isFinite(splitDistUser) && (splitDistUser ?? 0) > 0
+        ? (splitDistUser as number)
+        : parseFloat(value.distance);
+    if (!Number.isFinite(splitDistUserNum) || splitDistUserNum <= 0)
+      return null;
 
-    // Prefer GPX-profile interpolation because it is correct in both
-    // relative-distance and target-distance split modes.
-    if (intermediateKm != null && displayProfile) {
-      const denomKm = displayProfile.endKm - displayProfile.startKm;
-      if (Number.isFinite(denomKm) && denomKm > 0) {
-        ratio = (intermediateKm - displayProfile.startKm) / denomKm;
-      }
-    }
-
-    // Fallback to form-entered distance. In target-distance mode this value
-    // is cumulative from route start, so convert it to split-relative first.
-    if (ratio == null) {
+    let stopDistFromStartUser = intermediateDistFromStart;
+    if (!Number.isFinite(stopDistFromStartUser)) {
       const rawStopDist = parseFloat(value.intermediate_stop.distance);
-      let relStopDist = rawStopDist;
-
-      if (Number.isFinite(rawStopDist) && mode === "target_distance") {
-        const splitEndUser =
-          cumulativeDist != null ? cumulativeDist : parseFloat(value.distance);
-        const splitLenUserNum = Number(splitDistUser);
-        if (
-          Number.isFinite(splitEndUser) &&
-          Number.isFinite(splitLenUserNum)
-        ) {
-          const splitStartUser = splitEndUser - splitLenUserNum;
-          relStopDist = rawStopDist - splitStartUser;
+      if (Number.isFinite(rawStopDist)) {
+        if (mode === "target_distance") {
+          const splitEndUser =
+            cumulativeDist != null
+              ? cumulativeDist
+              : parseFloat(value.distance);
+          if (Number.isFinite(splitEndUser)) {
+            stopDistFromStartUser =
+              rawStopDist - (splitEndUser - splitDistUserNum);
+          }
+        } else {
+          stopDistFromStartUser = rawStopDist;
         }
       }
-
-      const denom = splitDistUser ?? parseFloat(value.distance);
-
-      if (
-        Number.isFinite(relStopDist) &&
-        Number.isFinite(denom) &&
-        denom > 0
-      ) {
-        ratio = relStopDist / denom;
-      }
     }
 
-    if (ratio == null || !Number.isFinite(ratio)) return null;
-    const clamped = Math.max(0, Math.min(1, ratio));
-    const etaMs = startMs + (endMs - startMs) * clamped;
+    if (!Number.isFinite(stopDistFromStartUser)) return null;
+    const stopDistUserNum = Number(stopDistFromStartUser);
+    const clampedStopDist = Math.max(
+      0,
+      Math.min(splitDistUserNum, stopDistUserNum),
+    );
+
+    // Elapsed-pace method: ETA = split start + (distance to stop * elapsed pace).
+    const elapsedPaceMsPerUnit = (endMs - startMs) / splitDistUserNum;
+    if (!Number.isFinite(elapsedPaceMsPerUnit) || elapsedPaceMsPerUnit <= 0) {
+      return null;
+    }
+
+    const etaMs = startMs + clampedStopDist * elapsedPaceMsPerUnit;
     return new Date(etaMs).toISOString();
-  })();
+  }, [
+    splitResult,
+    value.intermediate_stop,
+    splitDistUser,
+    value.distance,
+    intermediateDistFromStart,
+    mode,
+    cumulativeDist,
+  ]);
 
   const intermediateStopTz = useMemo(() => {
     const fallbackTz = splitEndTz ?? courseTz;
@@ -659,7 +731,7 @@ export default function SplitFormComponent({
     displayProfile,
   ]);
 
-  const intermHoursInfo = (() => {
+  const intermHoursInfo = useMemo(() => {
     const is = value.intermediate_stop;
     if (!is?.enabled || !splitResult || !intermediateEtaIso) return null;
     const tz = intermediateStopTz;
@@ -693,7 +765,14 @@ export default function SplitFormComponent({
       arrivalTime,
       timezone: tz,
     };
-  })();
+  }, [
+    value.intermediate_stop,
+    splitResult,
+    intermediateEtaIso,
+    intermediateStopTz,
+    etaMarginOpen,
+    etaMarginClose,
+  ]);
 
   return (
     <div
@@ -1411,50 +1490,51 @@ export default function SplitFormComponent({
                 fallback={<div className="map-loading">Loading map…</div>}
               >
                 <SplitEndpointMap
-                gpxTrack={gpxTrack!}
-                startKm={displayProfile!.startKm}
-                endKm={displayProfile!.endKm}
-                endLat={displayProfile!.endLat}
-                endLon={displayProfile!.endLon}
-                endpointDefined={endpointDefined}
-                unitSystem={unitSystem}
-                showPlanningControls={true}
-                restStop={value.rest_stop}
-                onSelectStop={(patch) =>
-                  update({ rest_stop: { ...value.rest_stop, ...patch } })
-                }
-                onAddressLoading={setAddressLoading}
-                intermediateStop={value.intermediate_stop}
-                intermediateKm={intermediateKm}
-                onSelectIntermediateStop={(patch) =>
-                  intermediateAvailable
-                    ? update({
-                        intermediate_stop: { ...intermediateStop, ...patch },
-                      })
-                    : undefined
-                }
-                onPolylineClick={(absoluteKm, lat, lon) => {
-                  let formDist: number;
-                  if (mode === "target_distance") {
-                    formDist =
-                      absoluteKm / (unitSystem === "imperial" ? KM_PER_MI : 1);
-                  } else {
-                    const relKm = absoluteKm - (displayProfile?.startKm ?? 0);
-                    formDist =
-                      relKm / (unitSystem === "imperial" ? KM_PER_MI : 1);
+                  gpxTrack={gpxTrack!}
+                  startKm={displayProfile!.startKm}
+                  endKm={displayProfile!.endKm}
+                  endLat={displayProfile!.endLat}
+                  endLon={displayProfile!.endLon}
+                  endpointDefined={endpointDefined}
+                  unitSystem={unitSystem}
+                  showPlanningControls={true}
+                  restStop={value.rest_stop}
+                  onSelectStop={(patch) =>
+                    update({ rest_stop: { ...value.rest_stop, ...patch } })
                   }
-                  update({
-                    intermediate_stop: {
-                      ...intermediateStop,
-                      enabled: true,
-                      distance: formDist.toFixed(3),
-                      address: `${lat.toFixed(6)}, ${lon.toFixed(6)}`,
-                      lat: undefined,
-                      lon: undefined,
-                    },
-                  });
-                }}
-              />
+                  onAddressLoading={setAddressLoading}
+                  intermediateStop={value.intermediate_stop}
+                  intermediateKm={intermediateKm}
+                  onSelectIntermediateStop={(patch) =>
+                    intermediateAvailable
+                      ? update({
+                          intermediate_stop: { ...intermediateStop, ...patch },
+                        })
+                      : undefined
+                  }
+                  onPolylineClick={(absoluteKm, lat, lon) => {
+                    let formDist: number;
+                    if (mode === "target_distance") {
+                      formDist =
+                        absoluteKm /
+                        (unitSystem === "imperial" ? KM_PER_MI : 1);
+                    } else {
+                      const relKm = absoluteKm - (displayProfile?.startKm ?? 0);
+                      formDist =
+                        relKm / (unitSystem === "imperial" ? KM_PER_MI : 1);
+                    }
+                    update({
+                      intermediate_stop: {
+                        ...intermediateStop,
+                        enabled: true,
+                        distance: formDist.toFixed(3),
+                        address: `${lat.toFixed(6)}, ${lon.toFixed(6)}`,
+                        lat,
+                        lon,
+                      },
+                    });
+                  }}
+                />
               </Suspense>
             </MapErrorBoundary>
           ) : null;
