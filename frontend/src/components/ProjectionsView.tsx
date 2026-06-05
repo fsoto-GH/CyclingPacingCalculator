@@ -2144,6 +2144,17 @@ function ProjectionSplit({
     unitSystem,
   ]);
 
+  const intermediateDistFromCourseStart = useMemo(() => {
+    const is = formSplit?.intermediate_stop;
+    if (!is?.enabled || intermediateKm == null) return null;
+    const courseDist =
+      unitSystem === "imperial" ? intermediateKm / KM_PER_MI : intermediateKm;
+    return courseDist.toLocaleString(undefined, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+  }, [formSplit?.intermediate_stop, intermediateKm, unitSystem]);
+
   const intermediateEtaIso = useMemo(() => {
     const is = formSplit?.intermediate_stop;
     if (!is?.enabled) return null;
@@ -3063,12 +3074,16 @@ function ProjectionSplit({
                       >
                         Intermediate Stop
                       </span>
-                      {intermediateDistFromStart && (
+                      {intermediateDistFromStart != null && (
                         <span
                           className="rs-interm-dist"
-                          title="Distance from split start to this stop"
+                          title="Distance markers for this stop (from split start and course start)"
                         >
-                          {` (~${intermediateDistFromStart} ${dLabel})`}
+                          {` (~${intermediateDistFromStart} ${dLabel} from split start${
+                            intermediateDistFromCourseStart != null
+                              ? `, ~${intermediateDistFromCourseStart} ${dLabel} overall`
+                              : ""
+                          })`}
                         </span>
                       )}
                       {(formSplit.intermediate_stop.name ||
