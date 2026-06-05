@@ -2925,6 +2925,7 @@ export default function CourseForm() {
               e[`${ip}-distance`] = "Must be > 0";
             } else {
               let splitLen = parseFloat(split.distance);
+              let iDistForRangeCheck = iDist;
               if (f.mode === "target_distance") {
                 const prevSplit = seg.splits[j - 1];
                 const prevTarget = prevSplit
@@ -2933,11 +2934,18 @@ export default function CourseForm() {
                 if (Number.isFinite(prevTarget) && Number.isFinite(splitLen)) {
                   splitLen -= prevTarget;
                 }
+                if (
+                  Number.isFinite(prevTarget) &&
+                  Number.isFinite(iDistForRangeCheck)
+                ) {
+                  iDistForRangeCheck -= prevTarget;
+                }
               }
               if (
                 Number.isFinite(splitLen) &&
                 splitLen > 0 &&
-                iDist > splitLen
+                Number.isFinite(iDistForRangeCheck) &&
+                iDistForRangeCheck > splitLen
               ) {
                 e[`${ip}-distance`] =
                   `Must be within split distance (${splitLen.toFixed(2)} ${distanceLabel(f.unitSystem)})`;
