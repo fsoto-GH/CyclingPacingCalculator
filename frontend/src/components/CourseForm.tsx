@@ -255,7 +255,10 @@ function stableStringify(val: unknown): string {
 
 function savePlanCleanState(planId: string, form: CourseFormState) {
   try {
-    localStorage.setItem(PLAN_CLEAN_KEY + planId, stableStringify(form));
+    localStorage.setItem(
+      PLAN_CLEAN_KEY + planId,
+      stableStringify(stripIntermediateStopDistance(form)),
+    );
   } catch {
     /* ignore quota errors */
   }
@@ -331,6 +334,18 @@ function stripIntermediateStopDistance(form: CourseFormState): CourseFormState {
       })),
     })),
   };
+}
+
+function canonicalizePlanForDirtyCheck(form: CourseFormState): string {
+  return stableStringify(stripIntermediateStopDistance(form));
+}
+
+function normalizePlanCleanState(clean: string): string {
+  try {
+    return canonicalizePlanForDirtyCheck(JSON.parse(clean) as CourseFormState);
+  } catch {
+    return clean;
+  }
 }
 
 function loadSavedForm(): CourseFormState {
@@ -1473,7 +1488,9 @@ export default function CourseForm() {
     if (!activePlan) return false;
     const clean = loadPlanCleanState(activePlan.id);
     if (clean === null) return false;
-    return stableStringify(form) !== clean;
+    return (
+      canonicalizePlanForDirtyCheck(form) !== normalizePlanCleanState(clean)
+    );
   }, [activePlan, form]);
 
   // After loading a plan, snapshot the actually-committed form state as clean.
