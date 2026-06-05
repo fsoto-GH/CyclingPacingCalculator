@@ -4,6 +4,7 @@ import type {
   CourseDetail,
   GpxTrackPoint,
   GpxWaypoint,
+  SplitGpxProfile,
 } from "../types";
 import {
   type CueSheetOptions,
@@ -64,6 +65,7 @@ interface ExportModalProps {
   result: CourseDetail | null;
   splitBoundariesKm: ([number, number] | undefined)[][] | null;
   gpxTrack: GpxTrackPoint[];
+  gpxProfiles: SplitGpxProfile[][] | null;
   rwgpsPois: GpxWaypoint[];
   rwgpsCoursePoints: GpxWaypoint[];
 }
@@ -79,6 +81,7 @@ export default function ExportModal({
   result,
   splitBoundariesKm,
   gpxTrack,
+  gpxProfiles,
   rwgpsPois,
   rwgpsCoursePoints,
 }: ExportModalProps) {
@@ -95,6 +98,7 @@ export default function ExportModal({
   const [includeSplitDistance, setIncludeSplitDistance] = useState(true);
   const [includeEta, setIncludeEta] = useState(true);
   const [includeNotes, setIncludeNotes] = useState(false);
+  const [includeElevation, setIncludeElevation] = useState(false);
 
   // ── Intermediate stop accordion ──
   const [includeIntermediateStop, setIncludeIntermediateStop] = useState(true);
@@ -177,6 +181,9 @@ export default function ExportModal({
   // ── Validation ──
   const hasCoursePoints = rwgpsCoursePoints.length > 0;
   const hasPois = rwgpsPois.length > 0;
+  const hasGpxProfiles =
+    gpxProfiles != null &&
+    gpxProfiles.some((seg) => seg.some((p) => p != null));
   const cuesheetReady = result != null && splitBoundariesKm != null;
 
   const cueSectionError =
@@ -207,6 +214,7 @@ export default function ExportModal({
       includeSplitDistance,
       includeEta,
       includeNotes,
+      includeElevation: !compact && includeElevation,
       compact,
       includeIntermediateStop,
       intermediateIncludeHours,
@@ -225,6 +233,7 @@ export default function ExportModal({
       includeSplitDistance,
       includeEta,
       includeNotes,
+      includeElevation,
       compact,
       includeIntermediateStop,
       intermediateIncludeHours,
@@ -247,11 +256,20 @@ export default function ExportModal({
       result,
       splitBoundariesKm,
       gpxTrack,
+      gpxProfiles,
       rwgpsCoursePoints,
       rwgpsPois,
       courseTz: form.timezone,
     };
-  }, [form, result, splitBoundariesKm, gpxTrack, rwgpsCoursePoints, rwgpsPois]);
+  }, [
+    form,
+    result,
+    splitBoundariesKm,
+    gpxTrack,
+    gpxProfiles,
+    rwgpsCoursePoints,
+    rwgpsPois,
+  ]);
 
   const handleDownloadHtml = useCallback(() => {
     const data = buildData();
@@ -447,6 +465,29 @@ export default function ExportModal({
                       onChange={(e) => setIncludeNotes(e.target.checked)}
                     />
                     Split Notes
+                  </label>
+                </div>
+                <div className="export-option-row">
+                  <label
+                    className={`export-toggle-label${
+                      compact || !hasGpxProfiles
+                        ? " export-toggle-label--muted"
+                        : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={includeElevation}
+                      disabled={compact || !hasGpxProfiles}
+                      onChange={(e) => setIncludeElevation(e.target.checked)}
+                    />
+                    Split Elevation
+                    {!hasGpxProfiles && (
+                      <span className="export-no-data">(no GPX loaded)</span>
+                    )}
+                    {compact && hasGpxProfiles && (
+                      <span className="export-no-data">(table mode only)</span>
+                    )}
                   </label>
                 </div>
 

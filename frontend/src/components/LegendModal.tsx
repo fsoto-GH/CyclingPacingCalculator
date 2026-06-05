@@ -71,7 +71,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "features",
     secTitle: "Cue Sheet Export",
     keywords:
-      "cue sheet export table compact list html pdf print mile marker from start from end split distance eta notes rest stop intermediate stop course points cues poi points of interest rwgps ridewithgps download open print pdf color coded green start red end blue intermediate amber transit",
+      "cue sheet export table compact list html pdf print mile marker from start from end split distance elevation gain loss feet meters ft m eta notes rest stop intermediate stop course points cues poi points of interest rwgps ridewithgps download open print pdf color coded green start red end blue intermediate amber transit row color coding table row colors",
   },
   {
     catKey: "features",
@@ -585,8 +585,22 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       each split alongside the marker.
                     </li>
                     <li>
+                      <strong>Split Elevation</strong> — add an Elevation column
+                      (table mode only, requires a loaded GPX) showing elevation
+                      gain (
+                      <span style={{ color: "#16a34a" }}>
+                        <strong>↑ green</strong>
+                      </span>
+                      ) and loss (
+                      <span style={{ color: "#ef4444" }}>
+                        <strong>↓ red</strong>
+                      </span>
+                      ) for each split in your selected units (ft or m).
+                    </li>
+                    <li>
                       <strong>ETA</strong> — show the calculated arrival time
-                      for each split endpoint.
+                      for each split endpoint. When a rest stop with open hours
+                      is configured the ETA is color-coded open / near / closed.
                     </li>
                     <li>
                       <strong>Split Notes</strong> — include any freeform notes
@@ -596,12 +610,13 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       <strong>Intermediate Stop</strong> — add a row (compact)
                       or cell entry (table) for the intermediate rest stop
                       within each split. Optional sub-options include hours for
-                      the arrival day and an ETA.
+                      the arrival day and an ETA (color-coded open / near /
+                      closed when hours are set).
                     </li>
                     <li>
                       <strong>Rest Stop Details</strong> — add name, optional
-                      open hours, and optional ETA for the rest stop at each
-                      split endpoint.
+                      open hours, and optional ETA (color-coded open / near /
+                      closed) for the rest stop at each split endpoint.
                     </li>
                     <li>
                       <strong>Course Points (Cues)</strong> — include RwGPS
@@ -614,6 +629,37 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       filterable by POI type (Food, Water, Camping, etc.). Only
                       available when a RideWithGPS route is loaded. Disabled in
                       compact mode.
+                    </li>
+                  </ul>
+
+                  <h4>Table Mode Color Coding</h4>
+                  <p>
+                    In regular table mode each row is color-coded to make the
+                    start and finish of the course, as well as transit segments,
+                    immediately visible:
+                  </p>
+                  <ul>
+                    <li>
+                      <span style={{ color: "#16a34a" }}>
+                        <strong>Green row</strong>
+                      </span>{" "}
+                      — first split (course start).
+                    </li>
+                    <li>
+                      <span style={{ color: "#e11d48" }}>
+                        <strong>Red row</strong>
+                      </span>{" "}
+                      — last split (course finish).
+                    </li>
+                    <li>
+                      <span style={{ color: "#f59e0b" }}>
+                        <strong>Amber row</strong>
+                      </span>{" "}
+                      — split belonging to a transit segment.
+                    </li>
+                    <li>
+                      All other rows are uncolored (alternating white / light
+                      gray).
                     </li>
                   </ul>
 

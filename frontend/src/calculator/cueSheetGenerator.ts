@@ -16,6 +16,7 @@ import type {
   IntermediateRestStopForm,
   DayHoursEntry,
   UnitSystem,
+  SplitGpxProfile,
 } from "../types";
 import {
   formatArrivalTimeWithTz,
@@ -52,6 +53,9 @@ export interface CueSheetOptions {
   restStopIncludeEta: boolean;
 
   /** Only used in regular (non-compact) table mode */
+  includeElevation: boolean;
+
+  /** Only used in regular (non-compact) table mode */
   includeCoursePoints: boolean;
   selectedCueTypes: Set<string>;
 
@@ -70,6 +74,8 @@ export interface CueSheetData {
   gpxTrack: GpxTrackPoint[];
   rwgpsCoursePoints: GpxWaypoint[];
   rwgpsPois: GpxWaypoint[];
+  /** [segIdx][splitIdx] — may be null if no GPX loaded */
+  gpxProfiles: SplitGpxProfile[][] | null;
   courseTz: string;
 }
 
@@ -82,6 +88,13 @@ type EtaStatus = "open" | "near-open" | "near-close" | "closed" | null;
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
+
+function fmtElev(m: number, unitSystem: UnitSystem): string {
+  if (unitSystem === "imperial") {
+    return Math.round(m * 3.28084).toLocaleString() + " ft";
+  }
+  return Math.round(m).toLocaleString() + " m";
+}
 
 function toDisplayDist(km: number, unitSystem: UnitSystem): number {
   return unitSystem === "imperial" ? km / KM_PER_MI : km;
@@ -274,6 +287,16 @@ tr:nth-child(even) td { background: #f7f7f7; }
 .unit       { font-size: 8pt; color: #666; }
 .notes-cell { font-size: 9pt; color: #555; font-style: italic; }
 
+/* ── Table row color coding ── */
+tr.tr--start   td { background: #f0fdf4 !important; }
+tr.tr--end     td { background: #fff1f2 !important; }
+tr.tr--transit td { background: #fffbeb !important; }
+
+/* ── Elevation cell ── */
+.elev-cell { white-space: nowrap; font-size: 9pt; }
+.elev-gain { color: #16a34a; display: block; }
+.elev-loss { color: #ef4444; display: block; }
+
 /* ── Compact mode ── */
 .cs-list { max-width: 680px; }
 
@@ -316,6 +339,9 @@ tr:nth-child(even) td { background: #f7f7f7; }
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  tr.tr--start   td { background: #d1fae5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  tr.tr--end     td { background: #ffe4e6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  tr.tr--transit td { background: #fef3c7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   table { page-break-inside: auto; }
   tr    { page-break-inside: avoid; }
   .cs-entry { page-break-inside: avoid; }
@@ -348,6 +374,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
     result,
     splitBoundariesKm,
     gpxTrack,
+    gpxProfiles,
     rwgpsCoursePoints,
     rwgpsPois,
     courseTz,
@@ -361,6 +388,29 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
     }
   }
 
+  // Count valid rows so we can mark first/last for color coding
+  let totalRows = 0;
+  for (let si = 0; si < form.segments.length; si++) {
+    const segDetail = result.segment_details[si];
+    if (!segDetail) continue;
+    for (
+      let splitIdx = 0;
+      splitIdx < form.segments[si].splits.length;
+      splitIdx++
+    ) {
+      if (
+        segDetail.split_details[splitIdx] &&
+        splitBoundariesKm[si]?.[splitIdx]
+      )
+        totalRows++;
+    }
+  }
+
+  const hasElevData =
+    opts.includeElevation &&
+    gpxProfiles != null &&
+    gpxProfiles.some((seg) => seg.some((p) => p != null));
+
   const headers: string[] = [
     opts.mileMarkerDirection === "from-end"
       ? `Mile Marker from End (${ul})`
@@ -368,6 +418,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
     "Split Name",
   ];
   if (opts.includeSplitDistance) headers.push(`Distance (${ul})`);
+  if (hasElevData) headers.push("Elevation");
   if (opts.includeEta) headers.push("ETA");
   if (opts.includeNotes) headers.push("Notes");
   if (opts.includeIntermediateStop || opts.includeRestStop)
@@ -377,11 +428,14 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
 
   const theadCells = headers.map((h) => `<th>${esc(h)}</th>`).join("");
   const rows: string[] = [];
+  let rowIndex = 0;
 
   for (let si = 0; si < form.segments.length; si++) {
     const seg = form.segments[si];
     const segDetail = result.segment_details[si];
     if (!segDetail) continue;
+
+    const isTransitSeg = parseFloat((seg.fixed_elapsed_time ?? "").trim()) > 0;
 
     for (let splitIdx = 0; splitIdx < seg.splits.length; splitIdx++) {
       const formSplit = seg.splits[splitIdx];
@@ -394,6 +448,16 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
         opts.mileMarkerDirection === "from-end" ? totalKm - endKm : endKm;
       const splitTz = splitDetail.end_timezone ?? courseTz;
 
+      // ── Row class for color coding ──
+      const rowClass =
+        rowIndex === 0
+          ? "tr--start"
+          : rowIndex === totalRows - 1
+            ? "tr--end"
+            : isTransitSeg
+              ? "tr--transit"
+              : "";
+
       const markerCell = `<td class="marker">${fmtDist(markerKm, opts.unitSystem)}</td>`;
       const nameCell = `<td>${esc(formSplit.name?.trim() || `Split ${splitIdx + 1}`)}</td>`;
 
@@ -402,9 +466,43 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
         distCell = `<td>${fmtDist(endKm - startKm, opts.unitSystem)}</td>`;
       }
 
+      // ── Elevation cell ──
+      let elevCell = "";
+      if (hasElevData) {
+        const profile = gpxProfiles?.[si]?.[splitIdx];
+        if (profile) {
+          elevCell = `<td class="elev-cell"><span class="elev-gain">&#8593; ${esc(fmtElev(profile.elevGainM, opts.unitSystem))}</span><span class="elev-loss">&#8595; ${esc(fmtElev(profile.elevLossM, opts.unitSystem))}</span></td>`;
+        } else {
+          elevCell = `<td></td>`;
+        }
+      }
+
+      // ── ETA cell — color-coded when rest stop has hours ──
       let etaCell = "";
       if (opts.includeEta) {
-        etaCell = `<td class="eta">${esc(formatArrivalTimeWithTz(splitDetail.end_time, splitTz))}</td>`;
+        let etaSpanClass = "";
+        const rs = formSplit.rest_stop;
+        if (opts.includeRestStop && rs.enabled) {
+          const rsEntry = hoursEntryForArrival(
+            splitDetail.end_time,
+            splitTz,
+            rs,
+          );
+          const rsStatus = checkArrivalVsHoursDetailed(
+            splitDetail.end_time,
+            rsEntry,
+            splitTz,
+            ETA_MARGIN_OPEN,
+            ETA_MARGIN_CLOSE,
+          );
+          if (rsStatus) etaSpanClass = ` class="${etaStatusClass(rsStatus)}"`;
+        }
+        const etaText = esc(
+          formatArrivalTimeWithTz(splitDetail.end_time, splitTz),
+        );
+        etaCell = etaSpanClass
+          ? `<td class="eta"><span${etaSpanClass}>${etaText}</span></td>`
+          : `<td class="eta">${etaText}</td>`;
       }
 
       let notesCell = "";
@@ -450,7 +548,20 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
             inner += `<br><span class="sub-item">Hours: ${esc(hoursLabelForEntry(entry))}</span>`;
           }
           if (opts.intermediateIncludeEta && intermEtaIso) {
-            inner += `<br><span class="sub-item">ETA: ${esc(formatArrivalTimeWithTz(intermEtaIso, splitTz))}</span>`;
+            // Color-code intermediate ETA against intermediate stop hours
+            const etaForDay = intermEtaIso;
+            const entry = hoursEntryForArrival(etaForDay, splitTz, is);
+            const intermStatus = checkArrivalVsHoursDetailed(
+              intermEtaIso,
+              entry,
+              splitTz,
+              ETA_MARGIN_OPEN,
+              ETA_MARGIN_CLOSE,
+            );
+            const intermEtaClass = intermStatus
+              ? ` class="${etaStatusClass(intermStatus)}"`
+              : "";
+            inner += `<br><span class="sub-item"><span${intermEtaClass}>ETA: ${esc(formatArrivalTimeWithTz(intermEtaIso, splitTz))}</span></span>`;
           }
           parts.push(`<div class="stop-section">${inner}</div>`);
         }
@@ -468,7 +579,22 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
             inner += `<br><span class="sub-item">Hours: ${esc(hoursLabelForEntry(entry))}</span>`;
           }
           if (opts.restStopIncludeEta) {
-            inner += `<br><span class="sub-item">ETA: ${esc(formatArrivalTimeWithTz(splitDetail.end_time, splitTz))}</span>`;
+            const rsEntry = hoursEntryForArrival(
+              splitDetail.end_time,
+              splitTz,
+              rs,
+            );
+            const rsStatus = checkArrivalVsHoursDetailed(
+              splitDetail.end_time,
+              rsEntry,
+              splitTz,
+              ETA_MARGIN_OPEN,
+              ETA_MARGIN_CLOSE,
+            );
+            const rsEtaClass = rsStatus
+              ? ` class="${etaStatusClass(rsStatus)}"`
+              : "";
+            inner += `<br><span class="sub-item"><span${rsEtaClass}>ETA: ${esc(formatArrivalTimeWithTz(splitDetail.end_time, splitTz))}</span></span>`;
           }
           parts.push(`<div class="stop-section">${inner}</div>`);
         }
@@ -531,6 +657,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
         markerCell,
         nameCell,
         distCell,
+        elevCell,
         etaCell,
         notesCell,
         stopCell,
@@ -539,7 +666,8 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
       ]
         .filter((c) => c !== "")
         .join("");
-      rows.push(`<tr>${cells}</tr>`);
+      rows.push(`<tr${rowClass ? ` class="${rowClass}"` : ""}>${cells}</tr>`);
+      rowIndex++;
     }
   }
 

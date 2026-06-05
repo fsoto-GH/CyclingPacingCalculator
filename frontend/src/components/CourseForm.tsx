@@ -4319,6 +4319,7 @@ export default function CourseForm() {
                   result={result}
                   splitBoundariesKm={splitBoundariesKm}
                   gpxTrack={gpxTrack ?? []}
+                  gpxProfiles={gpxProfiles}
                   rwgpsPois={rwgpsPois}
                   rwgpsCoursePoints={rwgpsCoursePoints}
                 />
