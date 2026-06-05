@@ -112,6 +112,14 @@ export function parseGpx(xml: string): GpxTrackPoint[] {
     prev = points[points.length - 1];
   }
 
+  if (points.length === 0) {
+    throw new Error("No valid track points found in GPX");
+  }
+
+  if (points.length < 2) {
+    throw new Error("At least two track points are required in GPX");
+  }
+
   return points;
 }
 

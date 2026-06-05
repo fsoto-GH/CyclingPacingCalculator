@@ -91,14 +91,6 @@ The frontend uses two browser-local storage mechanisms — no server, no account
 
 Both are restored automatically on page load. If you export a course JSON and later import it on the same browser, the referenced GPX file (if still present in IndexedDB) is restored without re-uploading.
 
-### Query parameters
-
-| Parameter  | Values         | Default  | Description                                                                        |
-| ---------- | -------------- | -------- | ---------------------------------------------------------------------------------- |
-| ⚠️`engine` | `client`/`api` | `client` | `client` runs the calculator in-browser; `api` sends a POST to the FastAPI backend |
-
-> **Note:** The TypeScript client calculator and Python API calculator may not be fully in parity. `client` mode is the actively developed path.
-
 ---
 
 ## 🔐 Server Functions (`VITE_ENABLE_SERVER_FUNCTIONS`)

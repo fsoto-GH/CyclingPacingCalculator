@@ -36,12 +36,7 @@ import {
 } from "../timeMath";
 import { makeDefaultSplit } from "../defaults";
 import { serializeCourse } from "../serialization";
-import {
-  calculateCourse,
-  createRacePlan,
-  updateRacePlan,
-  getRacePlan,
-} from "../api";
+import { createRacePlan, updateRacePlan, getRacePlan } from "../api";
 import type { RacePlanSummary } from "../api";
 import { processCourse, CalcError } from "../calculator/courseProcessor";
 import {
@@ -640,7 +635,6 @@ export default function CourseForm() {
     "planning",
   );
   const [apiError, setApiError] = useState<string | null>(null);
-  const [, setLoading] = useState(false); // used by API engine path
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [legendOpen, setLegendOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
@@ -1093,11 +1087,6 @@ export default function CourseForm() {
     // Run once on mount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const useEngine: "client" | "api" =
-    new URLSearchParams(window.location.search).get("engine") === "api"
-      ? "api"
-      : "client";
-
   const { user, userSettings } = useAppSettings();
   const { login, logout } = useAuth();
   const { setSelectedTypes, setRadiusM } = React.useContext(AmenityContext);
@@ -1675,6 +1664,7 @@ export default function CourseForm() {
       const displayName = file.name.replace(/\.gpx$/i, "");
       setGpxFileName(displayName);
       setGpxLoading(true);
+      setApiError(null);
       setGpxTrack(null);
       setGpxWaypoints([]);
       setRwgpsPois([]);
@@ -1691,6 +1681,7 @@ export default function CourseForm() {
             setGpxTrack(track);
             setGpxWaypoints(parseGpxWaypoints(xml));
             setGpxSurface(extractSurfaceFromXml(xml));
+            setApiError(null);
             setGpxMissingWarning(null);
             setRwgpsRestorePending(null);
             setForm((prev) => ({ ...prev, rwgpsRouteId: null }));
@@ -3050,67 +3041,26 @@ export default function CourseForm() {
     const run = async () => {
       try {
         const payload = serializeCourse(form, gpxProfiles);
-        if (useEngine === "client") {
-          if (!cancelled) {
-            setResult(processCourse(payload));
-            setApiError(null);
-          }
-        } else {
-          setLoading(true);
-          const data = await calculateCourse(payload);
-          if (!cancelled) {
-            setResult(data);
-            setApiError(null);
-            setLoading(false);
-          }
+        if (!cancelled) {
+          setResult(processCourse(payload));
+          setApiError(null);
         }
       } catch (err: unknown) {
         if (cancelled) return;
-        setLoading(false);
         if (err instanceof CalcError) {
           setApiError(
             err.validationErrors.length > 0
               ? err.validationErrors.join("\n")
               : err.message,
           );
-        } else if (
-          typeof err === "object" &&
-          err !== null &&
-          "response" in err
-        ) {
-          const axErr = err as {
-            response?: { data?: { detail?: unknown }; status?: number };
-          };
-          const detail = axErr.response?.data?.detail;
-          if (Array.isArray(detail)) {
-            const msgs = detail.map((d: unknown) => {
-              if (typeof d === "string") return d;
-              if (typeof d === "object" && d !== null) {
-                const obj = d as { loc?: unknown[]; msg?: string };
-                const path = obj.loc ? obj.loc.join(" -> ") : "";
-                const msg = obj.msg ?? JSON.stringify(d);
-                return path ? `${path}: ${msg}` : msg;
-              }
-              return JSON.stringify(d);
-            });
-            setApiError(msgs.join("\n"));
-          } else if (typeof detail === "string") {
-            setApiError(detail);
-          } else {
-            setApiError(
-              `Server error (${axErr.response?.status ?? "unknown"})`,
-            );
-          }
         } else {
           console.log(err);
-          setApiError("Network error - is the API running?");
+          setApiError("Calculation failed.");
         }
       }
     };
 
-    // Debounce: short for client (synchronous), longer for API to reduce calls.
-    const delay = useEngine === "client" ? 250 : 500;
-    const timer = setTimeout(run, delay);
+    const timer = setTimeout(run, 250);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -3118,7 +3068,7 @@ export default function CourseForm() {
     // Keep dependencies narrow intentionally; include gpxProfiles so timezone
     // endpoint data can trigger recalculation once GPX profiling completes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allErrors, form, gpxProfiles, useEngine]);
+  }, [allErrors, form, gpxProfiles]);
 
   return (
     <AllErrorsContext.Provider value={allErrors}>
@@ -3588,7 +3538,13 @@ export default function CourseForm() {
             calculator projects arrival times, checks them against business
             hours, and supports timezone-aware scheduling across regions.
           </p>
-
+          {/* API error */}
+          {apiError && (
+            <div className="error-banner">
+              <strong>Calc Error:</strong>
+              <pre>{apiError}</pre>
+            </div>
+          )}
           {/* GPX banner — independent of tab state */}
           {gpxFileName && gpxLoading && (
             <div className="gpx-file-field gpx-file-field-loading">
@@ -3714,7 +3670,6 @@ export default function CourseForm() {
               )}
             </div>
           )}
-
           <div className="course-settings-header course-persist-header">
             <div className="split-header-left">
               <div className="split-header-titlerow">
@@ -4119,12 +4074,7 @@ export default function CourseForm() {
                         )}
                         {apiError && (
                           <div className="validation-dialog__api-error">
-                            <strong>
-                              {useEngine === "client"
-                                ? "Calc Error"
-                                : "Server Error"}
-                              :
-                            </strong>
+                            <strong>Calc Error:</strong>
                             <pre>{apiError}</pre>
                           </div>
                         )}
@@ -4135,7 +4085,6 @@ export default function CourseForm() {
               );
             })()}
           </dialog>
-
           <div className="app-tab-bar" role="tablist">
             <button
               role="tab"
@@ -4270,7 +4219,6 @@ export default function CourseForm() {
                 />
               )}
             </Suspense>
-
             <div
               className={
                 activeTab !== "planning" ? "tab-panel--hidden" : undefined
@@ -4788,16 +4736,6 @@ export default function CourseForm() {
                   </div>
                 </div>
               </div>
-
-              {/* API error */}
-              {apiError && (
-                <div className="error-banner">
-                  <strong>
-                    {useEngine === "client" ? "Calc Error" : "Server Error"}:
-                  </strong>
-                  <pre>{apiError}</pre>
-                </div>
-              )}
             </div>
             {activeTab === "projections" && (
               <div className="projections-tab">

@@ -1,5 +1,7 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it } from "vitest";
-import { computeSplitProfile } from "./gpxParser";
+import { computeSplitProfile, parseGpx } from "./gpxParser";
 import type { GpxTrackPoint } from "../types";
 
 function makeTrack(points: Array<[number, number]>): GpxTrackPoint[] {
@@ -45,5 +47,49 @@ describe("computeSplitProfile grade extremes", () => {
     expect(profile.maxGradePct).toBeGreaterThan(6);
     expect(profile.maxGradePct).toBeLessThan(10);
     expect(profile.minGradePct).toBeGreaterThan(-1);
+  });
+});
+
+describe("parseGpx", () => {
+  it("rejects GPX files with no track points", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test">
+  <trk>
+    <name>Empty</name>
+    <trkseg />
+  </trk>
+</gpx>`;
+
+    expect(() => parseGpx(xml)).toThrow("No track points found in GPX");
+  });
+
+  it("rejects GPX files whose track points have no valid coordinates", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test">
+  <trk>
+    <name>Invalid</name>
+    <trkseg>
+      <trkpt lat="" lon="" />
+    </trkseg>
+  </trk>
+</gpx>`;
+
+    expect(() => parseGpx(xml)).toThrow("No valid track points found in GPX");
+  });
+
+  it("rejects GPX files with only one usable track point", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test">
+  <trk>
+    <name>Single Point</name>
+    <trkseg>
+      <trkpt lat="41.7590300" lon="-87.6830900"><ele>184.3</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>`;
+
+    expect(() => parseGpx(xml)).toThrow(
+      "At least two track points are required in GPX",
+    );
   });
 });
