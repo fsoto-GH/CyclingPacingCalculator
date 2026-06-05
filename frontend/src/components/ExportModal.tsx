@@ -230,7 +230,7 @@ export default function ExportModal({
       includeNotes,
       includeElevation: !compact && includeElevation,
       compact,
-      includeControls,
+      includeControls: includeControls && hasControlPoints,
       includeIntermediateStop,
       intermediateIncludeHours,
       intermediateIncludeEta,
