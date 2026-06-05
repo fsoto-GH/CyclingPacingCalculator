@@ -91,9 +91,10 @@ const LegendModal = lazy(() => import("./LegendModal"));
 const ExampleModal = lazy(() => import("./ExampleModal"));
 const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
 const ConfirmModal = lazy(() => import("./ConfirmModal"));
-const ProjectionsView = lazy(() => import("./ProjectionsView.tsx"));
+const ProjectionsView = lazy(() => import("./ProjectionsView"));
 const GpxSearchModal = lazy(() => import("./GpxSearchModal"));
 const GpxExportModal = lazy(() => import("./GpxExportModal"));
+const ExportModal = lazy(() => import("./ExportModal"));
 const UserSettingsModal = lazy(() => import("./UserSettingsModal"));
 const RacePlanModal = lazy(() => import("./RacePlanModal"));
 import { EXAMPLES } from "../examples";
@@ -470,6 +471,7 @@ interface RwgpsCoursePointRaw {
   y: number;
   n?: string; // instruction text
   t?: string; // type label ("Left", "Food", etc.)
+  i?: number; // index into track_points[] for this cue's position
 }
 
 interface RwgpsPOIRaw {
@@ -477,6 +479,8 @@ interface RwgpsPOIRaw {
   lng: number;
   name?: string;
   description?: string;
+  type?: string;
+  type_id?: number;
 }
 
 async function fetchRwgpsRouteById(
@@ -521,6 +525,7 @@ async function fetchRwgpsRouteById(
         name: p.name?.trim() || "Point of Interest",
         description: p.description?.trim() || undefined,
         symbol: "food" as const,
+        poiType: p.type?.trim() || undefined,
       })),
     coursePoints: (data.route.course_points ?? [])
       .filter((p) => p.x != null && p.y != null)
@@ -530,6 +535,7 @@ async function fetchRwgpsRouteById(
         name: (p.n?.trim() || p.t?.trim()) ?? "Course Point",
         description: p.t?.trim() || undefined,
         symbol: "food" as const,
+        cueTrackIndex: p.i,
       })),
   };
 }
@@ -679,6 +685,7 @@ export default function CourseForm() {
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [gpxSearchOpen, setGpxSearchOpen] = useState(false);
   const [showGpxExportModal, setShowGpxExportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [racePlanOpen, setRacePlanOpen] = useState(false);
   const [racePlanSavedVersion, setRacePlanSavedVersion] = useState(0);
   const [activePlan, setActivePlan] = useState<RacePlanSummary | null>(() =>
@@ -3914,12 +3921,12 @@ export default function CourseForm() {
               <button
                 type="button"
                 className="segments-toggle-btn segments-toggle-btn--export"
-                onClick={handleExport}
+                onClick={() => setShowExportModal(true)}
                 disabled={Object.keys(allErrors).length > 0}
                 title={
                   Object.keys(allErrors).length > 0
                     ? "Fix validation errors before exporting"
-                    : "Export course configuration as JSON"
+                    : "Export course configuration or cue sheet"
                 }
               >
                 <i className="fa-solid fa-file-export"></i> Export
@@ -4300,6 +4307,21 @@ export default function CourseForm() {
                   rwgpsPois={rwgpsPois}
                   rwgpsCoursePoints={rwgpsCoursePoints}
                   defaultFileName={form.name?.trim() || "Course"}
+                />
+              )}
+              {showExportModal && (
+                <ExportModal
+                  open={showExportModal}
+                  onClose={() => setShowExportModal(false)}
+                  onExportJson={handleExport}
+                  jsonExportDisabled={Object.keys(allErrors).length > 0}
+                  form={form}
+                  result={result}
+                  splitBoundariesKm={splitBoundariesKm}
+                  gpxTrack={gpxTrack ?? []}
+                  gpxProfiles={gpxProfiles}
+                  rwgpsPois={rwgpsPois}
+                  rwgpsCoursePoints={rwgpsCoursePoints}
                 />
               )}
             </Suspense>

@@ -58,6 +58,14 @@ export interface GpxWaypoint {
   lon: number;
   description?: string;
   symbol: "food";
+  /** RwGPS POI type string (e.g. "water", "camping"). Present on rwgpsPois only. */
+  poiType?: string;
+  /**
+   * Index into the route's track_points array (RwGPS course_point `i` field).
+   * Use gpxTrack[cueTrackIndex].cumDist to get the cumulative km from route start.
+   * Present on rwgpsCoursePoints only.
+   */
+  cueTrackIndex?: number;
 }
 
 /**
