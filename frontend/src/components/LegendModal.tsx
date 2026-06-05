@@ -663,8 +663,9 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     a single schedule for every day). The calculator uses the
                     endpoint ETA when checking the stop, since the rest stop is
                     assumed to be the end of the split. Intermediate rest stops
-                    are checked using their own location timezone. The result is
-                    badged as{" "}
+                    use elapsed pace along the split to estimate arrival time,
+                    and are checked using their own location timezone. The
+                    result is badged as{" "}
                     <span style={{ color: "#4ade80" }}>
                       <i className="fas fa-circle" /> Open
                     </span>

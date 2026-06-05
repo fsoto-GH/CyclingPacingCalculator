@@ -469,7 +469,7 @@ The Near Open / Near Close thresholds are configurable in the Settings modal (or
 
 ### Timezone shifts in results
 
-The Projections tab detects when a segment crosses a timezone boundary (e.g. CDT → ET) and displays a timezone badge on the segment and split headers. This uses `Intl.DateTimeFormat` to resolve the short abbreviation of each split's end time in the appropriate IANA zone.
+The Projections tab detects when a segment crosses a timezone boundary (e.g. CDT → ET) and displays a timezone badge on the segment and split headers. This uses `Intl.DateTimeFormat` to resolve the short abbreviation of each split's end time in the appropriate IANA zone. Intermediate stop ETA is derived from the split's elapsed pace, then evaluated in the stop's effective timezone.
 
 ---
 
@@ -490,7 +490,7 @@ The ETA badge in results reflects which day of the week the calculator predicts 
 The form is divided into two tabs:
 
 - **Planning** — edit segments, splits, speeds, rest stops, and course settings. The course name header, toolbar buttons (Export, Import, Quick Setup, Examples), and all form controls are here.
-- **Projections** — view calculated results. Each segment shows elapsed time, pace, start/end times, and a breakdown of moving, down, and sleep time. Each split shows its pacing detail, ETA badge, and GPX split export. The Projections tab updates automatically as you edit in Planning.
+- **Projections** — view calculated results. Each segment shows elapsed time, pace, start/end times, and a breakdown of moving, down, and sleep time. Each split shows its pacing detail, ETA badge, GPX split export, and intermediate-stop ETA based on elapsed pace. The Projections tab updates automatically as you edit in Planning.
 
 ---
 
