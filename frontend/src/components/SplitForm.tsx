@@ -549,6 +549,41 @@ export default function SplitFormComponent({
     unitSystem,
   ]);
 
+  // Distance from course start to the intermediate stop, in user units.
+  // Uses the same snapped track point as the split-relative marker when available.
+  const intermediateDistFromCourseStart = useMemo(() => {
+    if (!intermediateStop.enabled) return null;
+    let cumKm: number | null = null;
+    if (
+      intermediateStop.lat != null &&
+      intermediateStop.lon != null &&
+      gpxTrack &&
+      gpxTrack.length > 0 &&
+      displayProfile
+    ) {
+      const snapped = findNearestTrackPoint(
+        gpxTrack,
+        intermediateStop.lat,
+        intermediateStop.lon,
+        displayProfile.startKm,
+        displayProfile.endKm,
+      );
+      if (snapped) cumKm = snapped.cumDist;
+    } else if (intermediateKm != null) {
+      cumKm = intermediateKm;
+    }
+    if (cumKm == null) return null;
+    return unitSystem === "imperial" ? cumKm / KM_PER_MI : cumKm;
+  }, [
+    intermediateStop.enabled,
+    intermediateStop.lat,
+    intermediateStop.lon,
+    intermediateKm,
+    gpxTrack,
+    displayProfile,
+    unitSystem,
+  ]);
+
   // Keep distance synced to the resolved stop position so ETA and timezone
   // are derived from the same point after map clicks, amenity picks, and geocode updates.
   useEffect(() => {
@@ -1354,7 +1389,7 @@ export default function SplitFormComponent({
                       {intermediateDistFromStart != null && (
                         <span
                           className="rs-interm-dist"
-                          title="Distance from split start to this stop (snapped to nearest track point)"
+                          title="Distance markers for this stop (from split start and course start)"
                         >
                           {` (~${intermediateDistFromStart.toLocaleString(
                             undefined,
@@ -1362,7 +1397,17 @@ export default function SplitFormComponent({
                               minimumFractionDigits: 1,
                               maximumFractionDigits: 1,
                             },
-                          )} ${dLabel})`}
+                          )} ${dLabel} from split start${
+                            intermediateDistFromCourseStart != null
+                              ? `, ~${intermediateDistFromCourseStart.toLocaleString(
+                                  undefined,
+                                  {
+                                    minimumFractionDigits: 1,
+                                    maximumFractionDigits: 1,
+                                  },
+                                )} ${dLabel} overall`
+                              : ""
+                          })`}
                         </span>
                       )}
                     </div>
