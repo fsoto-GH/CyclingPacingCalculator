@@ -41,7 +41,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "tips",
     secTitle: "Export Your Course For Later",
     keywords:
-      "export json configuration import restore reference backup save scenario",
+      "export json configuration import restore reference backup save scenario cue sheet pdf print html",
   },
   {
     catKey: "tips",
@@ -66,6 +66,12 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "features",
     secTitle: "Import",
     keywords: "import json restore configuration indexeddb filename autoload",
+  },
+  {
+    catKey: "features",
+    secTitle: "Cue Sheet Export",
+    keywords:
+      "cue sheet export table compact list html pdf print mile marker from start from end split distance eta notes rest stop intermediate stop course points cues poi points of interest rwgps ridewithgps download open print pdf color coded green start red end blue intermediate amber transit",
   },
   {
     catKey: "features",
@@ -428,13 +434,25 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                 <Section title="Export Your Course For Later">
                   <p>
-                    Use the <strong>Export</strong> button to save your full
-                    course configuration as a JSON file. Run multiple different
-                    scenarios and store each one for future reference. Loading
-                    an export with <strong>Import</strong> restores the form
-                    instantly — and if the matching GPX is still stored in this
-                    browser, it is restored automatically too.
+                    The <strong>Export</strong> button opens a modal with two
+                    tabs:
                   </p>
+                  <ul>
+                    <li>
+                      <strong>Course JSON</strong> — saves your full course
+                      configuration as a JSON file. Run multiple scenarios and
+                      store each one for reference. Loading with{" "}
+                      <strong>Import</strong> restores the form instantly,
+                      including the GPX if it is still cached in this browser.
+                    </li>
+                    <li>
+                      <strong>Cue Sheet</strong> — generates a self-contained
+                      HTML file (regular table or compact list) that you can
+                      download or open in a browser tab for print-to-PDF. See
+                      the <em>Cue Sheet Export</em> section in Features for full
+                      details.
+                    </li>
+                  </ul>
                 </Section>
 
                 <Section title="Auto-Save & Refresh Safety">
@@ -491,6 +509,157 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     still stored in this browser's IndexedDB (keyed by
                     filename), that file is also restored automatically — no
                     re-upload needed.
+                  </p>
+                </Section>
+
+                <Section title="Cue Sheet Export">
+                  <p>
+                    The <strong>Cue Sheet</strong> tab of the Export modal
+                    generates a self-contained HTML file from your calculated
+                    course results. It requires the course to be calculated
+                    first.
+                  </p>
+
+                  <h4>Output Modes</h4>
+                  <ul>
+                    <li>
+                      <strong>Regular table</strong> (default) — a wide,
+                      multi-column table with one row per split. Columns are
+                      configurable and can include mile markers, split distance,
+                      ETA, split notes, stop details, course-point cues, and
+                      points of interest.
+                    </li>
+                    <li>
+                      <strong>Compact mode</strong> — a color-coded list
+                      optimised for printing on a single page. One entry per
+                      intermediate stop or split endpoint, labeled{" "}
+                      <strong>I</strong> (intermediate), <strong>S</strong>{" "}
+                      (split), or <strong>T</strong> (transit). Course-point
+                      cues and POIs are excluded in compact mode.
+                    </li>
+                  </ul>
+
+                  <h4>Compact Mode Color Key</h4>
+                  <ul>
+                    <li>
+                      <span style={{ color: "#16a34a" }}>
+                        <strong>Green</strong>
+                      </span>{" "}
+                      — first entry (course start).
+                    </li>
+                    <li>
+                      <span style={{ color: "#e11d48" }}>
+                        <strong>Red</strong>
+                      </span>{" "}
+                      — last entry (course finish).
+                    </li>
+                    <li>
+                      <span style={{ color: "#3b82f6" }}>
+                        <strong>Blue</strong>
+                      </span>{" "}
+                      — intermediate stop within a split.
+                    </li>
+                    <li>
+                      <span style={{ color: "#9ca3af" }}>
+                        <strong>Gray</strong>
+                      </span>{" "}
+                      — regular split endpoint (S).
+                    </li>
+                    <li>
+                      <span style={{ color: "#f59e0b" }}>
+                        <strong>Amber</strong>
+                      </span>{" "}
+                      — transit segment endpoint (T).
+                    </li>
+                  </ul>
+
+                  <h4>Options</h4>
+                  <ul>
+                    <li>
+                      <strong>Mile marker</strong> — show distance{" "}
+                      <em>from the start</em> or <em>from the end</em> of the
+                      course.
+                    </li>
+                    <li>
+                      <strong>Split Distance</strong> — include the length of
+                      each split alongside the marker.
+                    </li>
+                    <li>
+                      <strong>ETA</strong> — show the calculated arrival time
+                      for each split endpoint.
+                    </li>
+                    <li>
+                      <strong>Split Notes</strong> — include any freeform notes
+                      entered on each split form.
+                    </li>
+                    <li>
+                      <strong>Intermediate Stop</strong> — add a row (compact)
+                      or cell entry (table) for the intermediate rest stop
+                      within each split. Optional sub-options include hours for
+                      the arrival day and an ETA.
+                    </li>
+                    <li>
+                      <strong>Rest Stop Details</strong> — add name, optional
+                      open hours, and optional ETA for the rest stop at each
+                      split endpoint.
+                    </li>
+                    <li>
+                      <strong>Course Points (Cues)</strong> — include RwGPS
+                      course-point cues, filterable by type (Turn, Straight,
+                      etc.). Only available when a RideWithGPS route is loaded.
+                      Disabled in compact mode.
+                    </li>
+                    <li>
+                      <strong>Points of Interest</strong> — include RwGPS POIs,
+                      filterable by POI type (Food, Water, Camping, etc.). Only
+                      available when a RideWithGPS route is loaded. Disabled in
+                      compact mode.
+                    </li>
+                  </ul>
+
+                  <h4>ETA Color Coding (Compact Mode)</h4>
+                  <p>
+                    When rest stop or intermediate stop hours are configured,
+                    the ETA line is color-coded:
+                  </p>
+                  <ul>
+                    <li>
+                      <span style={{ color: "#16a34a" }}>
+                        <strong>Green</strong>
+                      </span>{" "}
+                      — stop is open at the estimated arrival.
+                    </li>
+                    <li>
+                      <span style={{ color: "#b45309" }}>
+                        <strong>Amber</strong>
+                      </span>{" "}
+                      — within 15 min of opening or 7 min of closing.
+                    </li>
+                    <li>
+                      <span style={{ color: "#dc2626" }}>
+                        <strong>Red</strong>
+                      </span>{" "}
+                      — stop is closed at the estimated arrival.
+                    </li>
+                  </ul>
+
+                  <h4>Export Actions</h4>
+                  <ul>
+                    <li>
+                      <strong>Download HTML</strong> — saves a{" "}
+                      <code>.html</code> file to your device. Open it in any
+                      browser.
+                    </li>
+                    <li>
+                      <strong>Open for Print / PDF</strong> — opens the cue
+                      sheet in a new browser tab. Use <kbd>Ctrl+P</kbd> /{" "}
+                      <kbd>⌘+P</kbd> to print or save as PDF.
+                    </li>
+                  </ul>
+                  <p>
+                    Both actions are disabled if a validation error is present
+                    (e.g. Course Points or POIs are enabled but no types are
+                    selected).
                   </p>
                 </Section>
 
