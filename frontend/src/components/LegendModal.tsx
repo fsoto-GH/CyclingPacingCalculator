@@ -300,7 +300,8 @@ const SEARCH_INDEX: SearchEntry[] = [
   {
     catKey: "time",
     secTitle: "Split Times",
-    keywords: "split moving time active down adjustment eta depart by arrival departure",
+    keywords:
+      "split moving time active down adjustment eta depart by arrival departure",
   },
   {
     catKey: "time",
@@ -1738,9 +1739,8 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     </li>
                   </ul>
                   <p>
-                    Adjustment time contributes to{" "}
-                    <strong>Active Time</strong> at the split level and to the
-                    overall course elapsed time.
+                    Adjustment time contributes to <strong>Active Time</strong>{" "}
+                    at the split level and to the overall course elapsed time.
                   </p>
                 </Section>
 
@@ -1790,8 +1790,8 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                     </li>
                     <li>
                       <strong>Depart By</strong> — wall-clock departure time
-                      (ETA + adjustment time). Shown as a separate row only
-                      when adjustment time is non-zero; otherwise the single{" "}
+                      (ETA + adjustment time). Shown as a separate row only when
+                      adjustment time is non-zero; otherwise the single{" "}
                       <em>End</em> row covers both.
                     </li>
                     <li>

@@ -490,10 +490,10 @@ Adjustment time is a constant amount of padding added to a split _after_ you arr
 
 When adjustment time is set on a split:
 
-| Field | What it shows |
-|---|---|
-| **ETA** | The moment you arrive at the split endpoint (`start + moving + down time`) |
-| **Depart By** | The earliest you leave (`ETA + adjustment time`) |
+| Field         | What it shows                                                              |
+| ------------- | -------------------------------------------------------------------------- |
+| **ETA**       | The moment you arrive at the split endpoint (`start + moving + down time`) |
+| **Depart By** | The earliest you leave (`ETA + adjustment time`)                           |
 
 The open-hours badge and intermediate-stop ETA interpolation both use the **ETA** (arrival) time, not the Depart By time. If you want the badge to check a specific departure window instead, leave adjustment time at 0 and factor the extra time into your down-time or speed settings.
 
