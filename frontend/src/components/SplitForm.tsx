@@ -391,15 +391,16 @@ export default function SplitFormComponent({
     });
   }
 
-  // ETA info for the rest-stop badge — computed from split result end time
+  // ETA info for the rest-stop badge — checked against arrival time (adjustment_start),
+  // which is before any adjustment padding.
   const etaInfo: EtaInfo | null = (() => {
     if (!splitResult || !value.rest_stop.enabled) return null;
     const rs = value.rest_stop;
     const tz = splitEndTz ?? courseTz;
-    const dayIdx = dayIndexInTimezone(splitResult.end_time, tz);
+    const dayIdx = dayIndexInTimezone(splitResult.adjustment_start, tz);
     const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
     const status = checkArrivalVsHoursDetailed(
-      splitResult.end_time,
+      splitResult.adjustment_start,
       entry,
       tz,
       etaMarginOpen,
@@ -410,7 +411,7 @@ export default function SplitFormComponent({
     const hoursLabel = hoursLabelForEntry(entry);
     const nearDetail =
       status === "near-open" || status === "near-close"
-        ? buildDetailedNearDetail(status, splitResult.end_time, entry, tz)
+        ? buildDetailedNearDetail(status, splitResult.adjustment_start, entry, tz)
         : null;
 
     const statusWords: Record<string, string> = {
@@ -420,7 +421,7 @@ export default function SplitFormComponent({
       closed: "Closed",
     };
 
-    const arrivalTime = formatArrivalTimeWithTz(splitResult.end_time, tz);
+    const arrivalTime = formatArrivalTimeWithTz(splitResult.adjustment_start, tz);
 
     return {
       status,
@@ -657,7 +658,7 @@ export default function SplitFormComponent({
     if (!splitResult || !value.intermediate_stop?.enabled) return null;
 
     const startMs = Date.parse(splitResult.start_time);
-    const endMs = Date.parse(splitResult.end_time);
+    const endMs = Date.parse(splitResult.adjustment_start);
     if (
       !Number.isFinite(startMs) ||
       !Number.isFinite(endMs) ||
@@ -1631,20 +1632,57 @@ export default function SplitFormComponent({
                     )}
                   </dd>
                 </div>
-                <div>
-                  <dt title="Split end time (arrival at rest stop or next split)">
-                    End
-                  </dt>
-                  <dd>
-                    {fmtInTz(splitResult.end_time, splitEndTz ?? courseTz)}
-                    {splitEndTz && splitEndTz !== courseTz && (
-                      <span className="split-end-tz">
-                        {" "}
-                        {fmtInTz(splitResult.end_time, courseTz)}
-                      </span>
-                    )}
-                  </dd>
-                </div>
+                {splitResult.adjustment_time_hours != null &&
+                splitResult.adjustment_time_hours !== 0 ? (
+                  <>
+                    <div>
+                      <dt title="Arrival at this split (before adjustment time padding)">
+                        ETA
+                      </dt>
+                      <dd>
+                        {fmtInTz(
+                          splitResult.adjustment_start,
+                          splitEndTz ?? courseTz,
+                        )}
+                        {splitEndTz && splitEndTz !== courseTz && (
+                          <span className="split-end-tz">
+                            {" "}
+                            {fmtInTz(splitResult.adjustment_start, courseTz)}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt title="Earliest departure time (ETA + adjustment time)">
+                        Depart By
+                      </dt>
+                      <dd>
+                        {fmtInTz(splitResult.end_time, splitEndTz ?? courseTz)}
+                        {splitEndTz && splitEndTz !== courseTz && (
+                          <span className="split-end-tz">
+                            {" "}
+                            {fmtInTz(splitResult.end_time, courseTz)}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <dt title="Split end time (arrival at rest stop or next split)">
+                      End
+                    </dt>
+                    <dd>
+                      {fmtInTz(splitResult.end_time, splitEndTz ?? courseTz)}
+                      {splitEndTz && splitEndTz !== courseTz && (
+                        <span className="split-end-tz">
+                          {" "}
+                          {fmtInTz(splitResult.end_time, courseTz)}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt title="Time spent actively riding or moving">Active</dt>
                   <dd
