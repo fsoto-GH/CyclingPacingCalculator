@@ -1103,10 +1103,19 @@ function ProjectionSegment({
             <span className="proj-city-sep"> · </span>
             <span
               className="proj-city-duration"
-              title={`${formatHours(segment.down_time_hours, "full")} down time`}
+              title={
+                `${formatHours(segment.down_time_hours, "full")} down` +
+                (segment.adjustment_time_hours &&
+                segment.adjustment_time_hours !== 0
+                  ? ` + ${formatHours(segment.adjustment_time_hours, "full")} adjustment`
+                  : "")
+              }
             >
               <i className="fa-solid fa-circle-stop"></i>{" "}
-              {segment.down_time_hours.toLocaleString(undefined, {
+              {(
+                (segment.down_time_hours ?? 0) +
+                (segment.adjustment_time_hours ?? 0)
+              ).toLocaleString(undefined, {
                 minimumFractionDigits: 1,
                 maximumFractionDigits: 1,
               })}{" "}
@@ -2515,14 +2524,22 @@ function ProjectionSplit({
               <span>
                 <span
                   className="proj-city-duration"
-                  title={`${formatHours(split.down_time_hours, "full")} down time`}
+                  title={
+                    `${formatHours(split.down_time_hours ?? 0, "full")} down` +
+                    (split.adjustment_time_hours &&
+                    split.adjustment_time_hours !== 0
+                      ? ` + ${formatHours(split.adjustment_time_hours, "full")} adjustment`
+                      : "")
+                  }
                 >
                   <i className="fa-solid fa-circle-stop"></i>{" "}
-                  {split.down_time_hours.toLocaleString(undefined, {
+                  {(
+                    (split.down_time_hours ?? 0) +
+                    (split.adjustment_time_hours ?? 0)
+                  ).toLocaleString(undefined, {
                     minimumFractionDigits: 1,
                     maximumFractionDigits: 1,
-                  })}
-                  {" hrs"}
+                  }) + " hrs"}
                 </span>
               </span>
               <span className="proj-city-sep"> · </span>
