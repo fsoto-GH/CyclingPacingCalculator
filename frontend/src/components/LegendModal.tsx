@@ -118,7 +118,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "features",
     secTitle: "Rest Stop Open Hours",
     keywords:
-      "rest stop open closed near arrival hours schedule day timezone badge green yellow red 30 minutes endpoint eta intermediate timezone aware location",
+      "rest stop open closed near arrival hours schedule day timezone badge green yellow red 30 minutes endpoint eta intermediate timezone aware location depart by adjustment time padding",
   },
   {
     catKey: "features",
@@ -284,7 +284,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     catKey: "terms",
     secTitle: "Adjustment Time",
     keywords:
-      "adjustment time minutes negative split restaurant planned buffer",
+      "adjustment time minutes negative split restaurant planned buffer eta depart by departure padding arrival",
   },
   {
     catKey: "terms",
@@ -300,7 +300,7 @@ const SEARCH_INDEX: SearchEntry[] = [
   {
     catKey: "time",
     secTitle: "Split Times",
-    keywords: "split moving time active down adjustment",
+    keywords: "split moving time active down adjustment eta depart by arrival departure",
   },
   {
     catKey: "time",
@@ -795,7 +795,11 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       Each segment shows elapsed time, pace, start/end times,
                       and a breakdown of moving, down, and sleep time. Each
                       split shows its pacing detail, ETA badge, and GPX split
-                      export.
+                      export. When a split has non-zero adjustment time, the
+                      &ldquo;More details&rdquo; grid shows separate{" "}
+                      <strong>ETA</strong> (arrival before padding) and{" "}
+                      <strong>Depart By</strong> (ETA + adjustment time) rows
+                      instead of a single End time.
                     </li>
                   </ul>
                   <p>
@@ -889,11 +893,12 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                 <Section title="Rest Stop Open Hours">
                   <p>
                     Each split can have a rest stop with per-day open hours (or
-                    a single schedule for every day). The calculator uses the
-                    endpoint ETA when checking the stop, since the rest stop is
-                    assumed to be the end of the split. Intermediate rest stops
-                    use elapsed pace along the split to estimate arrival time,
-                    and are checked using their own location timezone. The
+                    a single schedule for every day). The open-hours badge is
+                    checked against your <strong>arrival time (ETA)</strong> —
+                    the moment you reach the split endpoint, before any
+                    adjustment-time padding is applied. Intermediate rest stops
+                    use elapsed pace along the split to estimate their arrival
+                    time, and are checked using their own location timezone. The
                     result is badged as{" "}
                     <span style={{ color: "#4ade80" }}>
                       <i className="fas fa-circle" /> Open
@@ -1710,14 +1715,32 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
 
                 <Section title="Adjustment Time">
                   <p>
-                    A concrete number of minutes added to a split — e.g. a
-                    planned restaurant stop. <strong>Can be negative</strong> to
-                    represent time saved. Unlike down time, adjustment time does
-                    not add to the active time of a split; it is a separate
-                    quantity that only contributes to elapsed time. This can be
-                    useful if you want to explicitly account for a stop that is
-                    not purely a function of time (i.e. down time ratio does not
-                    capture it well).
+                    A constant amount of time added to a split{" "}
+                    <em>after arrival</em> — e.g. a resupply stop, mandatory
+                    check-in, or any predictable overhead at the endpoint.
+                    Adjustment time is added after moving and down time, so it
+                    acts as padding rather than part of riding.
+                  </p>
+                  <p>
+                    When adjustment time is set, the split results grid shows
+                    two time fields instead of one:
+                  </p>
+                  <ul>
+                    <li>
+                      <strong>ETA</strong> — the moment you arrive at the
+                      endpoint (moving + down time only). Open-hours badges and
+                      intermediate-stop ETA checks use this value.
+                    </li>
+                    <li>
+                      <strong>Depart By</strong> — the earliest you can leave
+                      (ETA + adjustment time). This is the time the next split
+                      begins.
+                    </li>
+                  </ul>
+                  <p>
+                    Adjustment time contributes to{" "}
+                    <strong>Active Time</strong> at the split level and to the
+                    overall course elapsed time.
                   </p>
                 </Section>
 
@@ -1753,11 +1776,27 @@ export default function LegendModal({ open, onClose }: LegendModalProps) {
                       <strong>Moving Time</strong> — time spent in motion.
                     </li>
                     <li>
+                      <strong>Down Time</strong> — idle time (traffic, brief
+                      stops) derived from the down-time ratio or an explicit
+                      override.
+                    </li>
+                    <li>
                       <strong>Split Time</strong> — moving time + down time.
                     </li>
                     <li>
+                      <strong>ETA</strong> — wall-clock arrival at the split
+                      endpoint (start + split time). Shown as a separate row
+                      only when adjustment time is non-zero.
+                    </li>
+                    <li>
+                      <strong>Depart By</strong> — wall-clock departure time
+                      (ETA + adjustment time). Shown as a separate row only
+                      when adjustment time is non-zero; otherwise the single{" "}
+                      <em>End</em> row covers both.
+                    </li>
+                    <li>
                       <strong>Active Time</strong> — split time + adjustment
-                      time.
+                      time (full time charged to this split).
                     </li>
                   </ul>
                 </Section>

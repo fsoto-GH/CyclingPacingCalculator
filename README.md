@@ -30,6 +30,7 @@ The frontend is a single-page React app located in [`frontend/`](./frontend). It
 - Sleep time per segment — contributes to elapsed time but not moving time
 - Transit segments — fixed elapsed-time + distance for non-cycling travel (ferry, shuttle, train), shown with a ⏩ icon
 - Rest stop open hours with per-day schedule (Hours / 24h / Closed), timezone-aware ETA badges (🟢 Open / 🟡 Near Close / 🔴 Closed)
+- **Adjustment time** — per-split constant padding added _after_ arrival. The split results grid shows **ETA** (arrival before padding) and **Depart By** (ETA + adjustment time) as separate fields when adjustment time is non-zero. Open-hours badges and intermediate-stop ETA always reflect the arrival time, not the departure time.
 - ETA margin settings — configurable time windows (minutes) for Near Open / Near Close badge thresholds
 - **Planning** tab for editing; **Projections** tab for calculated results
 - Real-time auto-calculation (no Calculate button needed)
@@ -456,7 +457,7 @@ When a GPX file is loaded, each split's endpoint timezone is **automatically det
 
 ### Timezone-aware ETA badges
 
-The results table checks each rest stop's open hours against the predicted arrival time in the _correct_ timezone for that split. Badges show:
+The results table checks each rest stop's open hours against the predicted **arrival time** (ETA) in the _correct_ timezone for that split. When a split has non-zero adjustment time, the arrival time is earlier than the final departure time — the badge reflects when you _arrive_, not when you _leave_. Badges show:
 
 | Badge         | Meaning                                                          |
 | ------------- | ---------------------------------------------------------------- |
@@ -483,6 +484,19 @@ Each split can have a rest stop with per-day open hours. Hours can be set identi
 
 The ETA badge in results reflects which day of the week the calculator predicts you'll arrive, resolved in the split's effective timezone. This means a stop that is open Monday-Friday 08:00-20:00 will correctly show as closed if your pacing puts you there on a Saturday night.
 
+### Adjustment time and ETA / Depart By
+
+Adjustment time is a constant amount of padding added to a split _after_ you arrive. It is intended for predictable overhead at a stop — resupply time, a mandatory check-in, etc. — that you know in advance and want to include in the elapsed total without affecting your arrival prediction.
+
+When adjustment time is set on a split:
+
+| Field | What it shows |
+|---|---|
+| **ETA** | The moment you arrive at the split endpoint (`start + moving + down time`) |
+| **Depart By** | The earliest you leave (`ETA + adjustment time`) |
+
+The open-hours badge and intermediate-stop ETA interpolation both use the **ETA** (arrival) time, not the Depart By time. If you want the badge to check a specific departure window instead, leave adjustment time at 0 and factor the extra time into your down-time or speed settings.
+
 ---
 
 ## �️ Planning & Projections Tabs
@@ -490,7 +504,7 @@ The ETA badge in results reflects which day of the week the calculator predicts 
 The form is divided into two tabs:
 
 - **Planning** — edit segments, splits, speeds, rest stops, and course settings. The course name header, toolbar buttons (Export, Import, Quick Setup, Examples), and all form controls are here.
-- **Projections** — view calculated results. Each segment shows elapsed time, pace, start/end times, and a breakdown of moving, down, and sleep time. Each split shows its pacing detail, ETA badge, GPX split export, and intermediate-stop ETA based on elapsed pace. The Projections tab updates automatically as you edit in Planning.
+- **Projections** — view calculated results. Each segment shows elapsed time, pace, start/end times, and a breakdown of moving, down, and sleep time. Each split shows its pacing detail, ETA badge, GPX split export, and intermediate-stop ETA based on elapsed pace. When a split has non-zero adjustment time the "More details" grid shows separate **ETA** (arrival) and **Depart By** (departure after padding) rows instead of a single End time. The Projections tab updates automatically as you edit in Planning.
 
 ---
 

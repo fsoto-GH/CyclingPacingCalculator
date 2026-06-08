@@ -411,7 +411,12 @@ export default function SplitFormComponent({
     const hoursLabel = hoursLabelForEntry(entry);
     const nearDetail =
       status === "near-open" || status === "near-close"
-        ? buildDetailedNearDetail(status, splitResult.adjustment_start, entry, tz)
+        ? buildDetailedNearDetail(
+            status,
+            splitResult.adjustment_start,
+            entry,
+            tz,
+          )
         : null;
 
     const statusWords: Record<string, string> = {
@@ -421,7 +426,10 @@ export default function SplitFormComponent({
       closed: "Closed",
     };
 
-    const arrivalTime = formatArrivalTimeWithTz(splitResult.adjustment_start, tz);
+    const arrivalTime = formatArrivalTimeWithTz(
+      splitResult.adjustment_start,
+      tz,
+    );
 
     return {
       status,

@@ -2721,10 +2721,7 @@ function ProjectionSplit({
                       ETA
                     </dt>
                     <dd>
-                      {fmtInTz(
-                        split.adjustment_start,
-                        splitEndTz ?? courseTz,
-                      )}
+                      {fmtInTz(split.adjustment_start, splitEndTz ?? courseTz)}
                       {splitEndTz && splitEndTz !== courseTz && (
                         <span className="proj-split-end-tz">
                           {" "}
