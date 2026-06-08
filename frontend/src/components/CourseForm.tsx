@@ -1207,6 +1207,27 @@ export default function CourseForm() {
     setApiError(null);
     setTouched(new Set());
     setActivePlan(null);
+    setMapNavTarget(null);
+    setMapZoomTarget(null);
+    setGpxTrack(null);
+    setGpxWaypoints([]);
+    setRwgpsPois([]);
+    setRwgpsCoursePoints([]);
+    setGpxSurface(null);
+    setGpxFileName(null);
+    setGpxLoading(false);
+    setRwgpsRestorePending(null);
+    setGpxMissingWarning(null);
+    setGpxProfiles(null);
+    setHourlyWeather(null);
+    setSunriseSunset([]);
+    setCityLabels([]);
+    setCityFetching([]);
+    setGpxStartCity(null);
+    if (gpxFileRef.current) gpxFileRef.current.value = "";
+    clearGpx().catch(() => {
+      /* IDB unavailable */
+    });
   }, []);
 
   const handleConfirmReset = useCallback(() => {
