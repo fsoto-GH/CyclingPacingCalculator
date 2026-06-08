@@ -3,6 +3,7 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
   lazy,
   Suspense,
 } from "react";
@@ -33,6 +34,7 @@ import {
   formatArrivalTimeWithTz,
   hoursLabelForEntry,
 } from "../timeMath";
+import { getTrackPointHighlightIndices } from "../calculator/gpxParser";
 import { makeDefaultSplit } from "../defaults";
 import TimeInput from "./TimeInput";
 import { SteepBadge } from "./GradeTooltip";
@@ -99,6 +101,7 @@ interface SegmentFormProps {
   etaMarginClose?: number;
   onZoomToSegment?: () => void;
   onZoomToSplit?: (splitIdx: number) => void;
+  rwgpsRouteId?: number | null;
 }
 
 interface EtaInfo {
@@ -145,6 +148,7 @@ export default function SegmentFormComponent({
   etaMarginClose = 7,
   onZoomToSegment,
   onZoomToSplit,
+  rwgpsRouteId,
 }: SegmentFormProps) {
   const [collapsed, setCollapsed] = useState(true);
   // Increments whenever this segment becomes collapsed — used to collapse all child splits.
@@ -382,6 +386,18 @@ export default function SegmentFormComponent({
   const validProfiles = (gpxProfiles ?? []).filter(
     (p): p is SplitGpxProfile => p != null,
   );
+  const rwgpsHighlightUrl = useMemo(() => {
+    if (!rwgpsRouteId || !gpxTrack || validProfiles.length === 0) return null;
+    const firstProfile = validProfiles[0];
+    const lastProfile = validProfiles[validProfiles.length - 1];
+    const indices = getTrackPointHighlightIndices(
+      gpxTrack,
+      firstProfile.startKm,
+      lastProfile.endKm,
+    );
+    if (!indices) return null;
+    return `https://ridewithgps.com/routes/${rwgpsRouteId}?highlight=${indices[0]}-${indices[1]}`;
+  }, [gpxTrack, rwgpsRouteId, validProfiles]);
   const aggGpx =
     validProfiles.length > 0
       ? (() => {
@@ -765,6 +781,22 @@ export default function SegmentFormComponent({
                 <i className="fa-solid fa-route"></i>
               </button>
             )}
+            {rwgpsHighlightUrl && (
+              <button
+                type="button"
+                className="split-action-btn zoom-to-map-btn"
+                title="Open RideWithGPS map at this segment"
+                onClick={() =>
+                  window.open(
+                    rwgpsHighlightUrl,
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+              >
+                <i className="fa-solid fa-arrows-left-right-to-line"></i>
+              </button>
+            )}
             {canDeleteSegment && (
               <>
                 <span className="view-bar-separator" />
@@ -1088,6 +1120,7 @@ export default function SegmentFormComponent({
                       onZoomToSplit={
                         onZoomToSplit ? () => onZoomToSplit(j) : undefined
                       }
+                      rwgpsRouteId={rwgpsRouteId}
                     />
                   );
                   if (isLastSplit) return [splitEl];

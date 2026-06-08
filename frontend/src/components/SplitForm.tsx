@@ -14,6 +14,7 @@ import { speedLabel, distanceLabel, formatHours } from "../utils";
 import {
   interpolateLatLon,
   findNearestTrackPoint,
+  getTrackPointHighlightIndices,
 } from "../calculator/gpxParser";
 import { DEFAULT_INTERMEDIATE_REST_STOP } from "../defaults";
 import {
@@ -98,6 +99,7 @@ interface SplitFormProps {
   etaMarginOpen?: number;
   etaMarginClose?: number;
   onZoomToSplit?: () => void;
+  rwgpsRouteId?: number | null;
 }
 
 export default function SplitFormComponent({
@@ -139,6 +141,7 @@ export default function SplitFormComponent({
   etaMarginOpen = 15,
   etaMarginClose = 7,
   onZoomToSplit,
+  rwgpsRouteId,
 }: SplitFormProps) {
   const update = (patch: Partial<SplitForm>) =>
     onChange({ ...value, ...patch });
@@ -306,6 +309,17 @@ export default function SplitFormComponent({
           endKm: 0,
         }
       : null);
+
+  const rwgpsHighlightUrl = useMemo(() => {
+    if (!rwgpsRouteId || !gpxTrack || !displayProfile) return null;
+    const indices = getTrackPointHighlightIndices(
+      gpxTrack,
+      displayProfile.startKm,
+      displayProfile.endKm,
+    );
+    if (!indices) return null;
+    return `https://ridewithgps.com/routes/${rwgpsRouteId}?highlight=${indices[0]}-${indices[1]}`;
+  }, [displayProfile, gpxTrack, rwgpsRouteId]);
 
   const mapAvailable = !!gpxTrack && displayProfile != null;
   // Whether the endpoint coords reflect a real defined distance
@@ -1080,6 +1094,22 @@ export default function SplitFormComponent({
                 onClick={() => onZoomToSplit()}
               >
                 <i className="fa-solid fa-route"></i>
+              </button>
+            )}
+            {rwgpsHighlightUrl && (
+              <button
+                type="button"
+                className="split-action-btn zoom-to-map-btn"
+                title="Open RideWithGPS map at this split"
+                onClick={() =>
+                  window.open(
+                    rwgpsHighlightUrl,
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+              >
+                <i className="fa-solid fa-arrows-left-right-to-line"></i>
               </button>
             )}
             {(canMoveToNextSeg ||

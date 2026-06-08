@@ -4827,6 +4827,7 @@ export default function CourseForm() {
                                     handleZoomToSplit(i, splitIdx)
                                 : undefined
                             }
+                            rwgpsRouteId={form.rwgpsRouteId ?? null}
                           />
                         );
                         if (isLastOnPage) return [segEl];

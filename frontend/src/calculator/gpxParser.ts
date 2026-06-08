@@ -556,6 +556,40 @@ export function sliceTrackPoints(
   return track.slice(startIdx, endIdx);
 }
 
+/**
+ * Return the inclusive track-point index range that best matches a km range.
+ * The start index is the first point at or after startKm, and the end index is
+ * the last point at or before endKm.
+ */
+export function getTrackPointHighlightIndices(
+  track: GpxTrackPoint[],
+  startKm: number,
+  endKm: number,
+): [number, number] | null {
+  if (track.length === 0) return null;
+
+  let lo = 0;
+  let hi = track.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (track[mid].cumDist < startKm) lo = mid + 1;
+    else hi = mid;
+  }
+  const startIdx = Math.min(lo, track.length - 1);
+
+  lo = 0;
+  hi = track.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (track[mid].cumDist <= endKm) lo = mid + 1;
+    else hi = mid;
+  }
+  const endIdx = Math.max(0, lo - 1);
+
+  if (endIdx < startIdx) return null;
+  return [startIdx, endIdx];
+}
+
 function escapeXml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
