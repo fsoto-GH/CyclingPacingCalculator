@@ -117,10 +117,12 @@ async def get_google_tile_session(
             detail="Invalid response from Google Maps tile session API.",
         )
 
-    key = settings.google_api_key
+    # Use the browser-restricted key for the tile URL when available so that
+    # the server-side (IP-restricted) key is never exposed to the client.
+    tile_key = settings.google_browser_api_key or settings.google_api_key
     tile_url_template = (
         f"{_TILE_BASE}/2dtiles/{{z}}/{{x}}/{{y}}"
-        f"?session={session}&key={key}"
+        f"?session={session}&key={tile_key}"
     )
 
     return TileSessionResponse(tile_url_template=tile_url_template, expiry=expiry)

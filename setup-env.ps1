@@ -106,7 +106,8 @@ Write-Host ""
 Write-Host "Google (OAuth + Maps/Places/Geocoding)" -ForegroundColor Yellow
 $googleClientId     = Ask "  GOOGLE_CLIENT_ID" ""
 $googleClientSecret = Ask "  GOOGLE_CLIENT_SECRET" "" -Secret
-$googleApiKey       = Ask "  GOOGLE_API_KEY (optional)" "" -Secret
+$googleApiKey       = Ask "  GOOGLE_API_KEY (optional, IP-restricted, server-side)" "" -Secret
+$googleBrowserApiKey = Ask "  GOOGLE_BROWSER_API_KEY (optional, referrer-restricted, tiles only)" "" -Secret
 
 Write-Host ""
 
@@ -143,6 +144,7 @@ $rootEnv = [ordered]@{
     "GOOGLE_CLIENT_ID"         = $googleClientId
     "GOOGLE_CLIENT_SECRET"     = $googleClientSecret
     "GOOGLE_API_KEY"           = $googleApiKey
+    "GOOGLE_BROWSER_API_KEY"   = $googleBrowserApiKey
     "# ── RideWithGPS ─────────────────────────────────────────────────────────────" = ""
     "RIDEWITHGPS_API_KEY"      = $rwgpsApiKey
     "RIDEWITHGPS_CLIENT_ID"    = $rwgpsClientId

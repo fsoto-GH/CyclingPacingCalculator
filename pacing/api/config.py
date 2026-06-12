@@ -61,8 +61,14 @@ class Settings(BaseSettings):
         return list(dict.fromkeys(origins))
 
     # ── Paid / premium API keys (all optional) ────────────────────────────────
-    # Shared Google API key used for Maps tiles, Places, and Geocoding.
+    # Server-side Google API key — IP-restricted. Used for Places, Geocoding,
+    # and the Maps Tile session creation endpoint.
     google_api_key: Optional[str] = None
+
+    # Browser-side Google API key — HTTP-referrer-restricted, scoped to the
+    # Maps Tile API only.  Embedded in the tile URL template returned to the
+    # client.  Falls back to google_api_key when not set (e.g. local dev).
+    google_browser_api_key: Optional[str] = None
 
     # Optional Redis URL used for geocoding cache/cooldown state.
     redis_url: Optional[str] = None

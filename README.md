@@ -158,7 +158,8 @@ When your account has `enable_google_places` enabled, a **Google Places text sea
 | `VITE_GOOGLE_CLIENT_ID`        | Frontend build | If SF=true             | Google OAuth client ID (also used for Sign-In button)                                     |
 | `GOOGLE_CLIENT_ID`             | Backend        | If SF=true             | Same Google OAuth client ID (backend validation)                                          |
 | `GOOGLE_CLIENT_SECRET`         | Backend        | If SF=true             | Google OAuth client secret                                                                |
-| `GOOGLE_API_KEY`               | Backend        | No                     | Shared Google API key for Maps tiles, Places search, and geocoding                        |
+| `GOOGLE_API_KEY`               | Backend        | No                     | IP-restricted Google API key for server-side calls (Places search, geocoding, tile session creation) |
+| `GOOGLE_BROWSER_API_KEY`       | Backend        | No                     | Referrer-restricted Google API key (Maps Tile API only) — embedded in tile URLs returned to the client. Falls back to `GOOGLE_API_KEY` if unset. |
 | `RIDEWITHGPS_API_KEY`          | Backend        | No                     | Enables RideWithGPS route search and OAuth                                                |
 | `RIDEWITHGPS_CLIENT_ID`        | Backend        | No                     | RideWithGPS OAuth client ID                                                               |
 | `RIDEWITHGPS_CLIENT_SECRET`    | Backend        | No                     | RideWithGPS OAuth client secret                                                           |
