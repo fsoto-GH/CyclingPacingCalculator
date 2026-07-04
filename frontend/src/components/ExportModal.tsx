@@ -9,7 +9,10 @@ import type {
 import {
   type CueSheetOptions,
   type CueSheetData,
+  type RacePlanOptions,
   generateCueSheetHtml,
+  generateRacePlanHtml,
+  generateRacePlanText,
 } from "../calculator/cueSheetGenerator";
 
 // ── All 39 RwGPS POI types ──────────────────────────────────────────────────
@@ -71,7 +74,7 @@ interface ExportModalProps {
   rwgpsCoursePoints: GpxWaypoint[];
 }
 
-type Tab = "json" | "cuesheet";
+type Tab = "json" | "cuesheet" | "raceplan";
 
 export default function ExportModal({
   open,
@@ -100,6 +103,21 @@ export default function ExportModal({
   const [includeEta, setIncludeEta] = useState(true);
   const [includeNotes, setIncludeNotes] = useState(false);
   const [includeElevation, setIncludeElevation] = useState(false);
+
+  // ── Race plan export options ──
+  const [racePlanMarkerDirection, setRacePlanMarkerDirection] = useState<
+    "from-start" | "from-end"
+  >("from-start");
+  const [racePlanIncludeTransitSplits, setRacePlanIncludeTransitSplits] =
+    useState(true);
+  const [
+    racePlanIncludeIntermediateStops,
+    setRacePlanIncludeIntermediateStops,
+  ] = useState(true);
+  const [racePlanIncludeRestStopDetails, setRacePlanIncludeRestStopDetails] =
+    useState(true);
+  const [racePlanIncludeSplitNotes, setRacePlanIncludeSplitNotes] =
+    useState(false);
 
   // ── Intermediate stop accordion ──
   const [includeIntermediateStop, setIncludeIntermediateStop] = useState(true);
@@ -311,6 +329,72 @@ export default function ExportModal({
     win.document.close();
   }, [buildData, buildOptions, hasExportErrors]);
 
+  const buildRacePlanOptions = useCallback(
+    (): RacePlanOptions => ({
+      mileMarkerDirection: racePlanMarkerDirection,
+      includeTransitSplits: racePlanIncludeTransitSplits,
+      includeIntermediateStops: racePlanIncludeIntermediateStops,
+      includeRestStopDetails: racePlanIncludeRestStopDetails,
+      includeSplitNotes: racePlanIncludeSplitNotes,
+      unitSystem: form.unitSystem,
+    }),
+    [
+      racePlanMarkerDirection,
+      racePlanIncludeTransitSplits,
+      racePlanIncludeIntermediateStops,
+      racePlanIncludeRestStopDetails,
+      racePlanIncludeSplitNotes,
+      form.unitSystem,
+    ],
+  );
+
+  const handleDownloadRacePlanHtml = useCallback(() => {
+    const data = buildData();
+    if (!data) return;
+    const html = generateRacePlanHtml(buildRacePlanOptions(), data);
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `race-plan-${new Date().toISOString().slice(0, 10)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [buildData, buildRacePlanOptions]);
+
+  const handleOpenRacePlanForPrint = useCallback(() => {
+    const data = buildData();
+    if (!data) return;
+    const html = generateRacePlanHtml(buildRacePlanOptions(), data);
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  }, [buildData, buildRacePlanOptions]);
+
+  const handleDownloadRacePlanTxt = useCallback(() => {
+    const data = buildData();
+    if (!data) return;
+    const text = generateRacePlanText(buildRacePlanOptions(), data);
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `race-plan-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [buildData, buildRacePlanOptions]);
+
+  const racePlanPreview = useMemo(() => {
+    const data = buildData();
+    if (!data) return "";
+    const full = generateRacePlanText(buildRacePlanOptions(), data).trimEnd();
+    const lines = full.split("\n");
+    const maxLines = 14;
+    if (lines.length <= maxLines) return full;
+    return `${lines.slice(0, maxLines).join("\n")}\n...`;
+  }, [buildData, buildRacePlanOptions]);
+
   // ── Helpers ──
   const toggleCueType = (type: string) =>
     setSelectedCueTypes((prev) => {
@@ -350,6 +434,13 @@ export default function ExportModal({
             onClick={() => setTab("cuesheet")}
           >
             <i className="fa-solid fa-list-ol" /> Cue Sheet
+          </button>
+          <button
+            type="button"
+            className={`export-modal-tab${tab === "raceplan" ? " export-modal-tab--active" : ""}`}
+            onClick={() => setTab("raceplan")}
+          >
+            <i className="fa-solid fa-route" /> Race Plan Export
           </button>
         </div>
         <button
@@ -470,7 +561,7 @@ export default function ExportModal({
                       checked={includeEta}
                       onChange={(e) => setIncludeEta(e.target.checked)}
                     />
-                    ETA
+                    Depart By
                   </label>
                 </div>
                 <div className="export-option-row">
@@ -846,6 +937,104 @@ export default function ExportModal({
             )}
           </div>
         )}
+
+        {/* ── Race Plan Export Tab ── */}
+        {tab === "raceplan" && (
+          <div className="export-modal-section">
+            {!cuesheetReady ? (
+              <p className="export-modal-hint export-modal-hint--disabled">
+                <i className="fa-solid fa-circle-info" /> Calculate the course
+                first to generate race plan export.
+              </p>
+            ) : (
+              <>
+                <div className="export-option-row">
+                  <span className="export-option-label">Mile marker</span>
+                  <div className="export-radio-group">
+                    <label className="export-radio-label">
+                      <input
+                        type="radio"
+                        name="racePlanMileMarkerDir"
+                        value="from-start"
+                        checked={racePlanMarkerDirection === "from-start"}
+                        onChange={() =>
+                          setRacePlanMarkerDirection("from-start")
+                        }
+                      />
+                      From start
+                    </label>
+                    <label className="export-radio-label">
+                      <input
+                        type="radio"
+                        name="racePlanMileMarkerDir"
+                        value="from-end"
+                        checked={racePlanMarkerDirection === "from-end"}
+                        onChange={() => setRacePlanMarkerDirection("from-end")}
+                      />
+                      From end
+                    </label>
+                  </div>
+                </div>
+
+                <div className="export-option-row">
+                  <label className="export-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={racePlanIncludeTransitSplits}
+                      onChange={(e) =>
+                        setRacePlanIncludeTransitSplits(e.target.checked)
+                      }
+                    />
+                    Transit Splits
+                  </label>
+                </div>
+                <div className="export-option-row">
+                  <label className="export-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={racePlanIncludeIntermediateStops}
+                      onChange={(e) =>
+                        setRacePlanIncludeIntermediateStops(e.target.checked)
+                      }
+                    />
+                    Intermediate Stops
+                  </label>
+                </div>
+                <div className="export-option-row">
+                  <label className="export-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={racePlanIncludeRestStopDetails}
+                      onChange={(e) =>
+                        setRacePlanIncludeRestStopDetails(e.target.checked)
+                      }
+                    />
+                    Rest Stop Details
+                  </label>
+                </div>
+                <div className="export-option-row">
+                  <label className="export-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={racePlanIncludeSplitNotes}
+                      onChange={(e) =>
+                        setRacePlanIncludeSplitNotes(e.target.checked)
+                      }
+                    />
+                    Split Notes
+                  </label>
+                </div>
+
+                <div className="export-raceplan-preview">
+                  <div className="export-raceplan-preview-title">Preview</div>
+                  <pre className="export-raceplan-preview-body">
+                    {racePlanPreview || "Preview unavailable."}
+                  </pre>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Footer ── */}
@@ -893,6 +1082,41 @@ export default function ExportModal({
           </>
         )}
         {tab === "cuesheet" && !cuesheetReady && <span />}
+        {tab === "raceplan" && cuesheetReady && (
+          <>
+            <span className="export-modal-footer-note">
+              Intermediate stop markers include an asterisk. ETA uses MM/DD
+              hh:mm AM/PM TZ format.
+            </span>
+            <div className="export-modal-footer-actions">
+              <button
+                type="button"
+                className="action-btn"
+                onClick={handleDownloadRacePlanHtml}
+                title="Download race plan as .html file"
+              >
+                <i className="fa-solid fa-file-arrow-down" /> Download HTML
+              </button>
+              <button
+                type="button"
+                className="action-btn action-btn-export"
+                onClick={handleOpenRacePlanForPrint}
+                title="Open race plan in a new tab for print/PDF"
+              >
+                <i className="fa-solid fa-print" /> Open for Print / PDF
+              </button>
+              <button
+                type="button"
+                className="action-btn"
+                onClick={handleDownloadRacePlanTxt}
+                title="Download race plan as .txt file"
+              >
+                <i className="fa-solid fa-file-lines" /> Download TXT
+              </button>
+            </div>
+          </>
+        )}
+        {tab === "raceplan" && !cuesheetReady && <span />}
       </div>
     </dialog>
   );

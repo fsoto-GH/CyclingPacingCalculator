@@ -149,26 +149,26 @@ When your account has `enable_google_places` enabled, a **Google Places text sea
 
 ## 🔑 Environment Variables
 
-| Variable                       | Where used     | Required               | Description                                                                               |
-| ------------------------------ | -------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
-| `VITE_ENABLE_SERVER_FUNCTIONS` | Frontend build | No                     | Set `true` to enable auth, race plans, RWGPS search, Google maps/places                   |
-| `VITE_API_BASE_URL`            | Frontend build | If split-origin deploy | Backend origin for `/v1/...` calls when frontend is hosted separately (e.g. GitHub Pages) |
-| `VITE_SUPABASE_URL`            | Frontend build | If SF=true             | Supabase project URL for Google OAuth                                                     |
-| `VITE_SUPABASE_ANON_KEY`       | Frontend build | If SF=true             | Supabase anon/public key                                                                  |
-| `VITE_GOOGLE_CLIENT_ID`        | Frontend build | If SF=true             | Google OAuth client ID (also used for Sign-In button)                                     |
-| `GOOGLE_CLIENT_ID`             | Backend        | If SF=true             | Same Google OAuth client ID (backend validation)                                          |
-| `GOOGLE_CLIENT_SECRET`         | Backend        | If SF=true             | Google OAuth client secret                                                                |
-| `GOOGLE_API_KEY`               | Backend        | No                     | IP-restricted Google API key for server-side calls (Places search, geocoding, tile session creation) |
+| Variable                       | Where used     | Required               | Description                                                                                                                                      |
+| ------------------------------ | -------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VITE_ENABLE_SERVER_FUNCTIONS` | Frontend build | No                     | Set `true` to enable auth, race plans, RWGPS search, Google maps/places                                                                          |
+| `VITE_API_BASE_URL`            | Frontend build | If split-origin deploy | Backend origin for `/v1/...` calls when frontend is hosted separately (e.g. GitHub Pages)                                                        |
+| `VITE_SUPABASE_URL`            | Frontend build | If SF=true             | Supabase project URL for Google OAuth                                                                                                            |
+| `VITE_SUPABASE_ANON_KEY`       | Frontend build | If SF=true             | Supabase anon/public key                                                                                                                         |
+| `VITE_GOOGLE_CLIENT_ID`        | Frontend build | If SF=true             | Google OAuth client ID (also used for Sign-In button)                                                                                            |
+| `GOOGLE_CLIENT_ID`             | Backend        | If SF=true             | Same Google OAuth client ID (backend validation)                                                                                                 |
+| `GOOGLE_CLIENT_SECRET`         | Backend        | If SF=true             | Google OAuth client secret                                                                                                                       |
+| `GOOGLE_API_KEY`               | Backend        | No                     | IP-restricted Google API key for server-side calls (Places search, geocoding, tile session creation)                                             |
 | `GOOGLE_BROWSER_API_KEY`       | Backend        | No                     | Referrer-restricted Google API key (Maps Tile API only) — embedded in tile URLs returned to the client. Falls back to `GOOGLE_API_KEY` if unset. |
-| `RIDEWITHGPS_API_KEY`          | Backend        | No                     | Enables RideWithGPS route search and OAuth                                                |
-| `RIDEWITHGPS_CLIENT_ID`        | Backend        | No                     | RideWithGPS OAuth client ID                                                               |
-| `RIDEWITHGPS_CLIENT_SECRET`    | Backend        | No                     | RideWithGPS OAuth client secret                                                           |
-| `SUPABASE_URL`                 | Backend        | If SF=true             | Supabase project URL (for token verification)                                             |
-| `FRONTEND_URL`                 | Backend        | Yes (prod)             | Primary frontend origin used by CORS and auth flows                                       |
-| `FRONTEND_URLS`                | Backend        | No                     | Comma-separated extra frontend origins (use when hosting on both Render and GitHub Pages) |
-| `DATABASE_URL_LOCAL`           | Backend        | If IS_LOCAL            | PostgreSQL connection string for local DB                                                 |
-| `DATABASE_URL_SUPABASE`        | Backend        | If !IS_LOCAL           | PostgreSQL connection string for Supabase DB                                              |
-| `IS_LOCAL`                     | Backend        | No                     | `true` = use local Docker DB; `false` = use Supabase DB                                   |
+| `RIDEWITHGPS_API_KEY`          | Backend        | No                     | Enables RideWithGPS route search and OAuth                                                                                                       |
+| `RIDEWITHGPS_CLIENT_ID`        | Backend        | No                     | RideWithGPS OAuth client ID                                                                                                                      |
+| `RIDEWITHGPS_CLIENT_SECRET`    | Backend        | No                     | RideWithGPS OAuth client secret                                                                                                                  |
+| `SUPABASE_URL`                 | Backend        | If SF=true             | Supabase project URL (for token verification)                                                                                                    |
+| `FRONTEND_URL`                 | Backend        | Yes (prod)             | Primary frontend origin used by CORS and auth flows                                                                                              |
+| `FRONTEND_URLS`                | Backend        | No                     | Comma-separated extra frontend origins (use when hosting on both Render and GitHub Pages)                                                        |
+| `DATABASE_URL_LOCAL`           | Backend        | If IS_LOCAL            | PostgreSQL connection string for local DB                                                                                                        |
+| `DATABASE_URL_SUPABASE`        | Backend        | If !IS_LOCAL           | PostgreSQL connection string for Supabase DB                                                                                                     |
+| `IS_LOCAL`                     | Backend        | No                     | `true` = use local Docker DB; `false` = use Supabase DB                                                                                          |
 
 ---
 

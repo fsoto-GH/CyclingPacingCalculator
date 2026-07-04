@@ -23,6 +23,7 @@ import {
   dayIndexInTimezone,
   hoursLabelForEntry,
   checkArrivalVsHoursDetailed,
+  timezoneAbbreviationAt,
 } from "../timeMath";
 import { findNearestTrackPoint } from "./gpxParser";
 
@@ -80,6 +81,15 @@ export interface CueSheetData {
   /** [segIdx][splitIdx] — may be null if no GPX loaded */
   gpxProfiles: SplitGpxProfile[][] | null;
   courseTz: string;
+}
+
+export interface RacePlanOptions {
+  mileMarkerDirection: "from-start" | "from-end";
+  includeTransitSplits: boolean;
+  includeIntermediateStops: boolean;
+  includeRestStopDetails: boolean;
+  includeSplitNotes: boolean;
+  unitSystem: UnitSystem;
 }
 
 // ---------------------------------------------------------------------------
@@ -433,7 +443,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
   ];
   if (opts.includeSplitDistance) headers.push(`Distance (${ul})`);
   if (hasElevData) headers.push("Elevation");
-  if (opts.includeEta) headers.push("ETA");
+  if (opts.includeEta) headers.push("Depart By");
   if (opts.includeNotes) headers.push("Notes");
   if (opts.includeIntermediateStop || opts.includeRestStop)
     headers.push("Stops");
@@ -491,32 +501,13 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
         }
       }
 
-      // ── ETA cell — color-coded when rest stop has hours ──
-      let etaCell = "";
+      // ── Depart-by cell ──
+      let departByCell = "";
       if (opts.includeEta) {
-        let etaSpanClass = "";
-        const rs = formSplit.rest_stop;
-        if (opts.includeRestStop && rs.enabled) {
-          const rsEntry = hoursEntryForArrival(
-            splitDetail.end_time,
-            splitTz,
-            rs,
-          );
-          const rsStatus = checkArrivalVsHoursDetailed(
-            splitDetail.end_time,
-            rsEntry,
-            splitTz,
-            ETA_MARGIN_OPEN,
-            ETA_MARGIN_CLOSE,
-          );
-          if (rsStatus) etaSpanClass = ` class="${etaStatusClass(rsStatus)}"`;
-        }
-        const etaText = esc(
+        const departByText = esc(
           formatArrivalTimeWithTz(splitDetail.end_time, splitTz),
         );
-        etaCell = etaSpanClass
-          ? `<td class="eta"><span${etaSpanClass}>${etaText}</span></td>`
-          : `<td class="eta">${etaText}</td>`;
+        departByCell = `<td class="eta">${departByText}</td>`;
       }
 
       let notesCell = "";
@@ -586,7 +577,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
           let inner = `<span class="stop-label">${esc(rs.name || "Rest Stop")}</span>`;
           if (opts.restStopIncludeHours) {
             const entry = hoursEntryForArrival(
-              splitDetail.end_time,
+              splitDetail.adjustment_start,
               splitTz,
               rs,
             );
@@ -594,12 +585,12 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
           }
           if (opts.restStopIncludeEta) {
             const rsEntry = hoursEntryForArrival(
-              splitDetail.end_time,
+              splitDetail.adjustment_start,
               splitTz,
               rs,
             );
             const rsStatus = checkArrivalVsHoursDetailed(
-              splitDetail.end_time,
+              splitDetail.adjustment_start,
               rsEntry,
               splitTz,
               ETA_MARGIN_OPEN,
@@ -608,7 +599,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
             const rsEtaClass = rsStatus
               ? ` class="${etaStatusClass(rsStatus)}"`
               : "";
-            inner += `<br><span class="sub-item"><span${rsEtaClass}>ETA: ${esc(formatArrivalTimeWithTz(splitDetail.end_time, splitTz))}</span></span>`;
+            inner += `<br><span class="sub-item"><span${rsEtaClass}>ETA: ${esc(formatArrivalTimeWithTz(splitDetail.adjustment_start, splitTz))}</span></span>`;
           }
           parts.push(`<div class="stop-section">${inner}</div>`);
         }
@@ -686,7 +677,7 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
         nameCell,
         distCell,
         elevCell,
-        etaCell,
+        departByCell,
         notesCell,
         stopCell,
         showCueColumn ? cueCell || `<td></td>` : "",
@@ -725,6 +716,7 @@ interface CompactEntry {
   stopName: string | null;
   hoursLabel: string | null;
   etaIso: string | null;
+  departByIso: string | null;
   etaTz: string;
   etaStatus: EtaStatus;
   notes: string | null;
@@ -855,6 +847,7 @@ function generateCompactHtml(
             stopName: is!.name || "Intermediate Stop",
             hoursLabel,
             etaIso: opts.intermediateIncludeEta ? rawIntermEtaIso : null,
+            departByIso: null,
             etaTz: splitTz,
             etaStatus,
             notes: null,
@@ -871,6 +864,7 @@ function generateCompactHtml(
             stopName: evt.cp.name || "Control",
             hoursLabel: null,
             etaIso: null,
+            departByIso: null,
             etaTz: splitTz,
             etaStatus: null,
             notes: null,
@@ -891,13 +885,17 @@ function generateCompactHtml(
       const rs = formSplit.rest_stop;
       if (opts.includeRestStop && rs.enabled) {
         stopName = rs.name || "Rest Stop";
-        const rsEntry = hoursEntryForArrival(splitDetail.end_time, splitTz, rs);
+        const rsEntry = hoursEntryForArrival(
+          splitDetail.adjustment_start,
+          splitTz,
+          rs,
+        );
         if (opts.restStopIncludeHours) {
           hoursLabel = hoursLabelForEntry(rsEntry);
         }
         etaStatus =
           checkArrivalVsHoursDetailed(
-            splitDetail.end_time,
+            splitDetail.adjustment_start,
             rsEntry,
             splitTz,
             ETA_MARGIN_OPEN,
@@ -913,7 +911,11 @@ function generateCompactHtml(
         splitName: formSplit.name?.trim() || `Split ${splitIdx + 1}`,
         stopName,
         hoursLabel,
-        etaIso: opts.includeEta ? splitDetail.end_time : null,
+        etaIso:
+          opts.includeRestStop && rs.enabled && opts.restStopIncludeEta
+            ? splitDetail.adjustment_start
+            : null,
+        departByIso: opts.includeEta ? splitDetail.end_time : null,
         etaTz: splitTz,
         etaStatus,
         notes: opts.includeNotes ? formSplit.notes?.trim() || null : null,
@@ -967,17 +969,27 @@ function generateCompactHtml(
       );
     }
 
-    if (entry.notes) {
-      detailLines.push(
-        `<div class="cs-detail-line cs-notes">${esc(entry.notes)}</div>`,
-      );
-    }
-
     if (entry.etaIso) {
       const etaTime = formatArrivalTimeWithTz(entry.etaIso, entry.etaTz);
       const etaCls = etaStatusClass(entry.etaStatus);
       detailLines.push(
         `<div class="cs-detail-line"><span class="${etaCls}">ETA: ${esc(etaTime)}</span></div>`,
+      );
+    }
+
+    if (entry.departByIso) {
+      const departByTime = formatArrivalTimeWithTz(
+        entry.departByIso,
+        entry.etaTz,
+      );
+      detailLines.push(
+        `<div class="cs-detail-line">Depart By: ${esc(departByTime)}</div>`,
+      );
+    }
+
+    if (entry.notes) {
+      detailLines.push(
+        `<div class="cs-detail-line cs-notes">${esc(entry.notes)}</div>`,
       );
     }
 
@@ -1004,6 +1016,296 @@ ${rows.join("\n")}
 </html>`;
 }
 
+interface RacePlanIntermediateLine {
+  markerKm: number;
+  markerLabel: string;
+  stopLabel: string;
+  etaLine: string | null;
+  distanceLine: string;
+}
+
+interface RacePlanSplitLine {
+  markerKm: number;
+  markerLabel: string;
+  splitLabel: string;
+  restStopLine: string | null;
+  distanceLine: string;
+  etaLine: string;
+  etaAdjustSuffix: string | null;
+  departLine: string;
+  notesLine: string | null;
+  isTransit: boolean;
+}
+
+type RacePlanItem =
+  | { kind: "split"; split: RacePlanSplitLine }
+  | { kind: "intermediate"; intermediate: RacePlanIntermediateLine };
+
+interface RacePlanModel {
+  courseName: string;
+  items: RacePlanItem[];
+}
+
+function formatRacePlanDateTime(arrivalIso: string, tz: string): string {
+  const d = new Date(arrivalIso);
+  const datePart = d.toLocaleDateString("en-US", {
+    timeZone: tz,
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const timePart = d.toLocaleTimeString("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${datePart} ${timePart} ${timezoneAbbreviationAt(arrivalIso, tz)}`;
+}
+
+function formatSignedMinutes(hours: number | null | undefined): string | null {
+  if (hours == null || !Number.isFinite(hours)) return null;
+  const mins = Math.round(hours * 60);
+  if (mins === 0) return null;
+  const sign = mins > 0 ? "+" : "-";
+  return `${sign} ${Math.abs(mins)} min`;
+}
+
+function buildRacePlanModel(
+  opts: RacePlanOptions,
+  data: CueSheetData,
+): RacePlanModel {
+  const { form, result, splitBoundariesKm, gpxTrack, courseTz } = data;
+
+  let totalMarkerKm = 0;
+  for (const segBounds of splitBoundariesKm) {
+    for (const b of segBounds) {
+      if (b && b[1] > totalMarkerKm) totalMarkerKm = b[1];
+    }
+  }
+
+  const items: RacePlanItem[] = [];
+
+  for (let si = 0; si < form.segments.length; si++) {
+    const seg = form.segments[si];
+    const segDetail = result.segment_details[si];
+    if (!segDetail) continue;
+
+    const isTransitSeg = parseFloat((seg.fixed_elapsed_time ?? "").trim()) > 0;
+
+    for (let splitIdx = 0; splitIdx < seg.splits.length; splitIdx++) {
+      const formSplit = seg.splits[splitIdx];
+      const splitDetail = segDetail.split_details[splitIdx];
+      const bounds = splitBoundariesKm[si]?.[splitIdx];
+      if (!splitDetail || !bounds) continue;
+      if (isTransitSeg && !opts.includeTransitSplits) continue;
+
+      const [startKm, endKm] = bounds;
+      const splitTz = splitDetail.end_timezone ?? courseTz;
+
+      const splitMarkerKm =
+        opts.mileMarkerDirection === "from-end" ? totalMarkerKm - endKm : endKm;
+      const splitDistanceKm = Math.max(0, endKm - startKm);
+      const splitRemainingKm = Math.max(0, totalMarkerKm - endKm);
+
+      const splitLabel = formSplit.name?.trim() || `Split ${splitIdx + 1}`;
+
+      let restStopLine: string | null = null;
+      if (opts.includeRestStopDetails && formSplit.rest_stop?.enabled) {
+        const rs = formSplit.rest_stop;
+        const entry = hoursEntryForArrival(
+          splitDetail.adjustment_start,
+          splitTz,
+          rs,
+        );
+        restStopLine = `${rs.name?.trim() || "Rest Stop"} (${hoursLabelForEntry(entry)})`;
+      }
+
+      const adjustSuffix = formatSignedMinutes(
+        splitDetail.adjustment_time_hours,
+      );
+      const splitLine: RacePlanSplitLine = {
+        markerKm: splitMarkerKm,
+        markerLabel: `${fmtDist(splitMarkerKm, opts.unitSystem)}:`,
+        splitLabel,
+        restStopLine,
+        distanceLine:
+          `Distance: ${fmtDist(splitDistanceKm, opts.unitSystem)} ` +
+          `(R ${fmtDist(splitRemainingKm, opts.unitSystem)})`,
+        etaLine: `ETA: ${formatRacePlanDateTime(splitDetail.adjustment_start, splitTz)}`,
+        etaAdjustSuffix: adjustSuffix,
+        departLine: `Depart: ${formatRacePlanDateTime(splitDetail.end_time, splitTz)}`,
+        notesLine:
+          opts.includeSplitNotes && formSplit.notes?.trim()
+            ? `Notes: ${formSplit.notes.trim()}`
+            : null,
+        isTransit: isTransitSeg,
+      };
+      items.push({ kind: "split", split: splitLine });
+
+      if (
+        opts.includeIntermediateStops &&
+        formSplit.intermediate_stop?.enabled
+      ) {
+        const is = formSplit.intermediate_stop;
+        const { cumKm: rawIntermKm, etaIso } = computeIntermediateStop(
+          is,
+          splitDetail.start_time,
+          splitDetail.end_time,
+          splitDetail.distance,
+          startKm,
+          endKm,
+          form.mode,
+          opts.unitSystem,
+          gpxTrack,
+        );
+
+        const intermKm = rawIntermKm ?? endKm;
+        const markerKm =
+          opts.mileMarkerDirection === "from-end"
+            ? totalMarkerKm - intermKm
+            : intermKm;
+        const plusKm = Math.max(0, intermKm - startKm);
+        const minusKm = Math.max(0, endKm - intermKm);
+        const remainingKm = Math.max(0, totalMarkerKm - intermKm);
+        const stopEntry = hoursEntryForArrival(
+          etaIso ?? splitDetail.end_time,
+          splitTz,
+          is,
+        );
+        const stopLabel = `${is.name?.trim() || "Intermediate Stop"} (${hoursLabelForEntry(stopEntry)})`;
+
+        const intermediateLine: RacePlanIntermediateLine = {
+          markerKm,
+          markerLabel: `${fmtDist(markerKm, opts.unitSystem)}*:`,
+          stopLabel,
+          etaLine: etaIso
+            ? `ETA: ${formatRacePlanDateTime(etaIso, splitTz)}`
+            : null,
+          distanceLine:
+            `Distance: +${fmtDist(plusKm, opts.unitSystem)} ` +
+            `(-${fmtDist(minusKm, opts.unitSystem)}, R ${fmtDist(remainingKm, opts.unitSystem)})`,
+        };
+        items.push({ kind: "intermediate", intermediate: intermediateLine });
+      }
+    }
+  }
+
+  const markerForItem = (item: RacePlanItem): number =>
+    item.kind === "split" ? item.split.markerKm : item.intermediate.markerKm;
+
+  items.sort((a, b) => {
+    const markerDelta = markerForItem(a) - markerForItem(b);
+    if (markerDelta !== 0) {
+      return opts.mileMarkerDirection === "from-end"
+        ? -markerDelta
+        : markerDelta;
+    }
+    if (a.kind === b.kind) return 0;
+    return a.kind === "intermediate" ? -1 : 1;
+  });
+
+  return {
+    courseName: form.name?.trim() || "Course",
+    items,
+  };
+}
+
+function renderRacePlanHtml(opts: RacePlanOptions, data: CueSheetData): string {
+  const model = buildRacePlanModel(opts, data);
+  const ul = unitLabel(opts.unitSystem);
+
+  const blocks: string[] = [];
+  for (const item of model.items) {
+    if (item.kind === "split") {
+      const split = item.split;
+      blocks.push(
+        `<div class="rp-row rp-row--split"><span class="rp-marker">${esc(split.markerLabel)}</span> <span class="rp-split-name">${esc(split.splitLabel)}${split.isTransit ? " (Transit)" : ""}</span></div>`,
+      );
+      if (split.restStopLine) {
+        blocks.push(
+          `<div class="rp-detail rp-detail--split">${esc(split.restStopLine)}</div>`,
+        );
+      }
+      blocks.push(`<div class="rp-detail">${esc(split.distanceLine)}</div>`);
+      if (split.etaAdjustSuffix) {
+        blocks.push(
+          `<div class="rp-detail">${esc(split.etaLine)} <strong>${esc(split.etaAdjustSuffix)}</strong></div>`,
+        );
+      } else {
+        blocks.push(`<div class="rp-detail">${esc(split.etaLine)}</div>`);
+      }
+      blocks.push(`<div class="rp-detail">${esc(split.departLine)}</div>`);
+      if (split.notesLine) {
+        blocks.push(
+          `<div class="rp-detail rp-notes">${esc(split.notesLine)}</div>`,
+        );
+      }
+      continue;
+    }
+
+    const interm = item.intermediate;
+    blocks.push(
+      `<div class="rp-row"><span class="rp-marker">${esc(interm.markerLabel)}</span> ${esc(interm.stopLabel)}</div>`,
+    );
+    if (interm.etaLine)
+      blocks.push(`<div class="rp-detail">${esc(interm.etaLine)}</div>`);
+    blocks.push(`<div class="rp-detail">${esc(interm.distanceLine)}</div>`);
+  }
+
+  const intro = `${buildHead(model.courseName, ul)}
+<style>
+  .rp-list { margin-top: 14px; font-size: 20px; line-height: 1.35; color: #111827; }
+  .rp-row { margin-top: 12px; font-weight: 400; }
+  .rp-row--split { margin-top: 18px; font-weight: 700; }
+  .rp-split-name { font-weight: 700; }
+  .rp-marker { display: inline; }
+  .rp-detail { margin-left: 40px; font-size: 0.95em; }
+  .rp-detail--split { font-weight: 700; }
+  .rp-notes { font-style: italic; color: #374151; }
+  @media print {
+    .rp-list { font-size: 15px; }
+    .rp-row { break-inside: avoid; page-break-inside: avoid; }
+  }
+</style>`;
+
+  return `${intro}<div class="rp-list">${blocks.join("\n")}</div></body></html>`;
+}
+
+function renderRacePlanText(opts: RacePlanOptions, data: CueSheetData): string {
+  const model = buildRacePlanModel(opts, data);
+  const lines: string[] = [];
+  lines.push(model.courseName);
+  lines.push("");
+
+  for (const item of model.items) {
+    if (item.kind === "split") {
+      const split = item.split;
+      lines.push(
+        `${split.markerLabel} ${split.splitLabel}${split.isTransit ? " (Transit)" : ""}`,
+      );
+      if (split.restStopLine) lines.push(`    ${split.restStopLine}`);
+      lines.push(`    ${split.distanceLine}`);
+      lines.push(
+        split.etaAdjustSuffix
+          ? `    ${split.etaLine} ${split.etaAdjustSuffix}`
+          : `    ${split.etaLine}`,
+      );
+      lines.push(`    ${split.departLine}`);
+      if (split.notesLine) lines.push(`    ${split.notesLine}`);
+      lines.push("");
+      continue;
+    }
+
+    const interm = item.intermediate;
+    lines.push(`${interm.markerLabel} ${interm.stopLabel}`);
+    if (interm.etaLine) lines.push(`    ${interm.etaLine}`);
+    lines.push(`    ${interm.distanceLine}`);
+    lines.push("");
+  }
+
+  return lines.join("\n").trimEnd() + "\n";
+}
+
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
@@ -1015,4 +1317,18 @@ export function generateCueSheetHtml(
   return opts.compact
     ? generateCompactHtml(opts, data)
     : generateTableHtml(opts, data);
+}
+
+export function generateRacePlanHtml(
+  opts: RacePlanOptions,
+  data: CueSheetData,
+): string {
+  return renderRacePlanHtml(opts, data);
+}
+
+export function generateRacePlanText(
+  opts: RacePlanOptions,
+  data: CueSheetData,
+): string {
+  return renderRacePlanText(opts, data);
 }

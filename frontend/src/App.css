@@ -3541,6 +3541,37 @@ h4 {
   font-style: italic;
 }
 
+.export-raceplan-preview {
+  margin-top: 0.5rem;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  background: #171717;
+  overflow: hidden;
+}
+
+.export-raceplan-preview-title {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid #2e2e2e;
+  font-size: 0.74rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.export-raceplan-preview-body {
+  margin: 0;
+  padding: 0.6rem 0.65rem;
+  max-height: 170px;
+  overflow: auto;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #d1d5db;
+  background: #121212;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+}
+
 .export-modal-footer {
   display: flex;
   align-items: center;
