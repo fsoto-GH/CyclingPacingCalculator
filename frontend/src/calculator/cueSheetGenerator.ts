@@ -89,6 +89,9 @@ export interface RacePlanOptions {
   includeIntermediateStops: boolean;
   includeRestStopDetails: boolean;
   includeSplitNotes: boolean;
+  restrictPrintWidth: boolean;
+  printWidthValue: number;
+  printWidthUnit: "in" | "cm";
   unitSystem: UnitSystem;
 }
 
@@ -1213,6 +1216,17 @@ function buildRacePlanModel(
 function renderRacePlanHtml(opts: RacePlanOptions, data: CueSheetData): string {
   const model = buildRacePlanModel(opts, data);
   const ul = unitLabel(opts.unitSystem);
+  const widthUnit = opts.printWidthUnit === "cm" ? "cm" : "in";
+  const minWidth = widthUnit === "cm" ? 5 : 2;
+  const maxWidth = widthUnit === "cm" ? 35 : 14;
+  const rawWidth = Number(opts.printWidthValue);
+  const clampedWidth = Number.isFinite(rawWidth)
+    ? Math.min(maxWidth, Math.max(minWidth, rawWidth))
+    : 0;
+  const widthRule =
+    opts.restrictPrintWidth && clampedWidth > 0
+      ? `max-width: ${clampedWidth}${widthUnit};`
+      : "";
 
   const blocks: string[] = [];
   for (const item of model.items) {
@@ -1254,7 +1268,7 @@ function renderRacePlanHtml(opts: RacePlanOptions, data: CueSheetData): string {
 
   const intro = `${buildHead(model.courseName, ul)}
 <style>
-  .rp-list { margin-top: 14px; font-size: 20px; line-height: 1.35; color: #111827; }
+  .rp-list { margin-top: 14px; font-size: 20px; line-height: 1.35; color: #111827; margin-left: auto; margin-right: auto; ${widthRule} }
   .rp-row { margin-top: 12px; font-weight: 400; }
   .rp-row--split { margin-top: 18px; font-weight: 700; }
   .rp-split-name { font-weight: 700; }

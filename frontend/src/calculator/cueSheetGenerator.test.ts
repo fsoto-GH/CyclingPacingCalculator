@@ -186,6 +186,9 @@ function makeRacePlanOptions(): RacePlanOptions {
     includeIntermediateStops: true,
     includeRestStopDetails: true,
     includeSplitNotes: false,
+    restrictPrintWidth: false,
+    printWidthValue: 8.5,
+    printWidthUnit: "in",
     unitSystem: "metric",
   };
 }
@@ -278,5 +281,20 @@ describe("race plan export", () => {
 
     expect(txt).toContain("75.8*: Amoco");
     expect(txt).toContain("Distance: +75.8 (-1,041.1, R 1,041.1)");
+  });
+
+  it("applies configured print width to race-plan HTML", () => {
+    const data = makeData();
+    const html = generateRacePlanHtml(
+      {
+        ...makeRacePlanOptions(),
+        restrictPrintWidth: true,
+        printWidthValue: 18,
+        printWidthUnit: "cm",
+      },
+      data,
+    );
+
+    expect(html).toContain("max-width: 18cm;");
   });
 });

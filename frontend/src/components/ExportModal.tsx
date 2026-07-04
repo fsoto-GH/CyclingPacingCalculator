@@ -59,6 +59,15 @@ const RWGPS_POI_TYPES: { type: string; label: string }[] = [
   { type: "winery", label: "Winery" },
 ];
 
+const RACE_PLAN_PRINT_WIDTH_PRESETS = [
+  { label: "6.0 in", value: 6.0, unit: "in" as const },
+  { label: "7.0 in", value: 7.0, unit: "in" as const },
+  { label: "8.5 in", value: 8.5, unit: "in" as const },
+  { label: "15 cm", value: 15, unit: "cm" as const },
+  { label: "18 cm", value: 18, unit: "cm" as const },
+  { label: "21 cm", value: 21, unit: "cm" as const },
+];
+
 interface ExportModalProps {
   open: boolean;
   onClose: () => void;
@@ -118,6 +127,12 @@ export default function ExportModal({
     useState(true);
   const [racePlanIncludeSplitNotes, setRacePlanIncludeSplitNotes] =
     useState(false);
+  const [racePlanRestrictPrintWidth, setRacePlanRestrictPrintWidth] =
+    useState(false);
+  const [racePlanPrintWidthValue, setRacePlanPrintWidthValue] = useState(8.5);
+  const [racePlanPrintWidthUnit, setRacePlanPrintWidthUnit] = useState<
+    "in" | "cm"
+  >("in");
 
   // ── Intermediate stop accordion ──
   const [includeIntermediateStop, setIncludeIntermediateStop] = useState(true);
@@ -336,6 +351,9 @@ export default function ExportModal({
       includeIntermediateStops: racePlanIncludeIntermediateStops,
       includeRestStopDetails: racePlanIncludeRestStopDetails,
       includeSplitNotes: racePlanIncludeSplitNotes,
+      restrictPrintWidth: racePlanRestrictPrintWidth,
+      printWidthValue: racePlanPrintWidthValue,
+      printWidthUnit: racePlanPrintWidthUnit,
       unitSystem: form.unitSystem,
     }),
     [
@@ -344,6 +362,9 @@ export default function ExportModal({
       racePlanIncludeIntermediateStops,
       racePlanIncludeRestStopDetails,
       racePlanIncludeSplitNotes,
+      racePlanRestrictPrintWidth,
+      racePlanPrintWidthValue,
+      racePlanPrintWidthUnit,
       form.unitSystem,
     ],
   );
@@ -1024,6 +1045,70 @@ export default function ExportModal({
                     Split Notes
                   </label>
                 </div>
+
+                <div className="export-option-row">
+                  <label className="export-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={racePlanRestrictPrintWidth}
+                      onChange={(e) =>
+                        setRacePlanRestrictPrintWidth(e.target.checked)
+                      }
+                    />
+                    Restrict Print Width
+                  </label>
+                </div>
+
+                {racePlanRestrictPrintWidth && (
+                  <div className="export-option-row">
+                    <span className="export-option-label">Print Width</span>
+                    <input
+                      type="number"
+                      min={racePlanPrintWidthUnit === "in" ? 2 : 5}
+                      max={racePlanPrintWidthUnit === "in" ? 14 : 35}
+                      step="0.1"
+                      value={racePlanPrintWidthValue}
+                      onChange={(e) => {
+                        const next = Number.parseFloat(e.target.value);
+                        if (!Number.isFinite(next)) return;
+                        setRacePlanPrintWidthValue(next);
+                      }}
+                      aria-label="Race plan print width"
+                      style={{ width: "90px" }}
+                    />
+                    <select
+                      value={racePlanPrintWidthUnit}
+                      onChange={(e) =>
+                        setRacePlanPrintWidthUnit(
+                          e.target.value === "cm" ? "cm" : "in",
+                        )
+                      }
+                      aria-label="Race plan print width unit"
+                    >
+                      <option value="in">in</option>
+                      <option value="cm">cm</option>
+                    </select>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const presetIdx = Number.parseInt(e.target.value, 10);
+                        const preset = RACE_PLAN_PRINT_WIDTH_PRESETS[presetIdx];
+                        if (!preset) return;
+                        setRacePlanPrintWidthUnit(preset.unit);
+                        setRacePlanPrintWidthValue(preset.value);
+                      }}
+                      aria-label="Race plan print width presets"
+                    >
+                      <option value="">Preset</option>
+                      {RACE_PLAN_PRINT_WIDTH_PRESETS.map((preset, idx) => (
+                        <option key={preset.label} value={idx.toString()}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="export-raceplan-preview">
                   <div className="export-raceplan-preview-title">Preview</div>
