@@ -372,3 +372,14 @@ export async function deleteRacePlan(id: string): Promise<void> {
     headers: await authHeader(),
   });
 }
+
+export async function saveRealtimeOverrides(
+  planId: string | null,
+  planName: string,
+  payload: unknown,
+): Promise<RacePlanFull> {
+  if (planId) {
+    return updateRacePlan(planId, { payload });
+  }
+  return createRacePlan(planName, false, null, payload);
+}

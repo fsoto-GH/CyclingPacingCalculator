@@ -309,6 +309,17 @@ export interface SegmentDetail {
   nullified?: boolean;
 }
 
+export interface RealtimeSplitOverride {
+  actualStart?: string;
+  actualEnd?: string;
+  manualSpeed?: string;
+}
+
+export interface RealtimePayload {
+  schemaVersion: 1;
+  overrides: Record<string, RealtimeSplitOverride>;
+}
+
 export interface CourseDetail {
   segment_details: SegmentDetail[];
   start_time: string;

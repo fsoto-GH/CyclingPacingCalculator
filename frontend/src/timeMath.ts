@@ -215,6 +215,63 @@ export function formatRatioPercent(
     : "-";
 }
 
+export interface EtaInfo {
+  status: "open" | "near-open" | "near-close" | "closed";
+  statusWord: string;
+  hoursLabel: string;
+  nearDetail: string | null;
+  arrivalTime: string;
+  timezone?: string;
+}
+
+/**
+ * Compute rest-stop open/closed status for a realtime arrival.
+ * Takes a direct ISO arrival string instead of reading from SplitDetail.
+ */
+export function buildRealtimeEtaInfo(
+  arrivalIso: string,
+  formSplit: SegmentForm["splits"][number],
+  courseTz: string,
+  etaMarginOpen = 15,
+  etaMarginClose = 7,
+): EtaInfo | null {
+  if (!formSplit.rest_stop.enabled) return null;
+  const rs = formSplit.rest_stop;
+  const tz =
+    formSplit.differentTimezone && formSplit.timezone
+      ? formSplit.timezone
+      : courseTz;
+  const dayIdx = dayIndexInTimezone(arrivalIso, tz);
+  const entry = rs.sameHoursEveryDay ? rs.allDays : rs.perDay[dayIdx];
+  const status = checkArrivalVsHoursDetailed(
+    arrivalIso,
+    entry,
+    tz,
+    etaMarginOpen,
+    etaMarginClose,
+  );
+  if (!status) return null;
+  const hoursLabel = hoursLabelForEntry(entry);
+  const nearDetail =
+    status === "near-open" || status === "near-close"
+      ? buildDetailedNearDetail(status, arrivalIso, entry, tz)
+      : null;
+  const statusWords: Record<string, string> = {
+    open: "Open",
+    "near-open": "Near open",
+    "near-close": "Near close",
+    closed: "Closed",
+  };
+  return {
+    status,
+    statusWord: statusWords[status],
+    hoursLabel,
+    nearDetail,
+    arrivalTime: formatArrivalTimeWithTz(arrivalIso, tz),
+    timezone: tz,
+  };
+}
+
 export interface TimezoneSequenceItem {
   tz: string;
   abbr: string;

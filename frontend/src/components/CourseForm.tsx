@@ -4,6 +4,7 @@
   useCallback,
   useMemo,
   useRef,
+  useTransition,
   useDeferredValue,
   lazy,
   Suspense,
@@ -92,6 +93,7 @@ const ExampleModal = lazy(() => import("./ExampleModal"));
 const FindNearbyModal = lazy(() => import("./FindNearbyModal"));
 const ConfirmModal = lazy(() => import("./ConfirmModal"));
 const ProjectionsView = lazy(() => import("./ProjectionsView"));
+const RealtimeView = lazy(() => import("./RealtimeView"));
 const GpxSearchModal = lazy(() => import("./GpxSearchModal"));
 const GpxExportModal = lazy(() => import("./GpxExportModal"));
 const ExportModal = lazy(() => import("./ExportModal"));
@@ -676,9 +678,13 @@ function convertCourseUnitValues(
 export default function CourseForm() {
   const [form, setForm] = useState<CourseFormState>(loadSavedForm);
   const [result, setResult] = useState<CourseDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<"planning" | "projections">(
-    "planning",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "planning" | "projections" | "realtime"
+  >(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    return tab === "projections" || tab === "realtime" ? tab : "planning";
+  });
+  const [, startTabTransition] = useTransition();
   const [apiError, setApiError] = useState<string | null>(null);
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [legendOpen, setLegendOpen] = useState(false);
@@ -702,6 +708,12 @@ export default function CourseForm() {
   const [shareCopied, setShareCopied] = useState(false);
   const shareDialogRef = useRef<HTMLDialogElement>(null);
   const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activeTab === "planning") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", activeTab);
+    window.history.replaceState({}, "", url.toString());
+  }, [activeTab]);
   useEffect(() => {
     function handleResize() {
       if (window.innerWidth > 1080) setNavOpen(false);
@@ -750,6 +762,7 @@ export default function CourseForm() {
     null,
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [realtimePlanId, setRealtimePlanId] = useState<string | null>(null);
   const [autoNameDialog, setAutoNameDialog] = useState<{
     open: boolean;
     namedItems: string[];
@@ -4202,7 +4215,7 @@ export default function CourseForm() {
               role="tab"
               type="button"
               className={`app-tab-btn${activeTab === "planning" ? " active" : ""}`}
-              onClick={() => setActiveTab("planning")}
+              onClick={() => startTabTransition(() => setActiveTab("planning"))}
             >
               <i className="fas fa-pencil-alt" /> Planning
             </button>
@@ -4210,9 +4223,18 @@ export default function CourseForm() {
               role="tab"
               type="button"
               className={`app-tab-btn${activeTab === "projections" ? " active" : ""}`}
-              onClick={() => setActiveTab("projections")}
+              onClick={() => startTabTransition(() => setActiveTab("projections"))}
             >
               <i className="fas fa-chart-line" /> Projections
+            </button>
+            <button
+              role="tab"
+              type="button"
+              className={`app-tab-btn${activeTab === "realtime" ? " active" : ""}`}
+              onClick={() => startTabTransition(() => setActiveTab("realtime"))}
+            >
+              <i className="fas fa-stopwatch" /> Realtime
+              <span className="app-tab-beta">beta</span>
             </button>
           </div>
           <div className="course-form" onBlur={handleBlur}>
@@ -5457,6 +5479,20 @@ export default function CourseForm() {
                   />
                 </Suspense>
               </div>
+            )}
+            {activeTab === "realtime" && (
+              <RealtimeView
+                result={result}
+                form={form}
+                unitSystem={form.unitSystem}
+                gpxProfiles={gpxProfiles}
+                gpxTrack={gpxTrack}
+                etaMarginOpen={userSettings.etaMarginOpen}
+                etaMarginClose={userSettings.etaMarginClose}
+                user={user}
+                realtimePlanId={realtimePlanId}
+                onRealtimePlanSaved={setRealtimePlanId}
+              />
             )}
           </div>
 
