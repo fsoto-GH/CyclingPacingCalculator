@@ -4223,7 +4223,9 @@ export default function CourseForm() {
               role="tab"
               type="button"
               className={`app-tab-btn${activeTab === "projections" ? " active" : ""}`}
-              onClick={() => startTabTransition(() => setActiveTab("projections"))}
+              onClick={() =>
+                startTabTransition(() => setActiveTab("projections"))
+              }
             >
               <i className="fas fa-chart-line" /> Projections
             </button>

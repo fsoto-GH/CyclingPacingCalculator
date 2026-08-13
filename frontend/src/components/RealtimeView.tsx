@@ -43,9 +43,7 @@ interface LocalData {
 
 function courseHash(form: CourseForm): string {
   const key =
-    form.start_time +
-    "|" +
-    form.segments.map((s) => s.splits.length).join(",");
+    form.start_time + "|" + form.segments.map((s) => s.splits.length).join(",");
   let h = 2_166_136_261;
   for (let i = 0; i < key.length; i++) {
     h ^= key.charCodeAt(i);
@@ -85,7 +83,9 @@ function saveLocalOverrides(
       ),
     };
     localStorage.setItem(LS_PREFIX + hash, JSON.stringify(data));
-  } catch { /* quota — ignore */ }
+  } catch {
+    /* quota — ignore */
+  }
 }
 
 function cleanStaleRealtimeKeys(): void {
@@ -94,7 +94,10 @@ function cleanStaleRealtimeKeys(): void {
       const k = localStorage.key(i);
       if (!k?.startsWith(LS_PREFIX)) continue;
       const raw = localStorage.getItem(k);
-      if (!raw) { localStorage.removeItem(k); continue; }
+      if (!raw) {
+        localStorage.removeItem(k);
+        continue;
+      }
       try {
         const { savedAt } = JSON.parse(raw) as Partial<LocalData>;
         if (!savedAt || Date.now() - new Date(savedAt).getTime() > STALE_MS)
@@ -103,7 +106,9 @@ function cleanStaleRealtimeKeys(): void {
         localStorage.removeItem(k);
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -231,9 +236,9 @@ export default function RealtimeView({
   }, [form, result]);
 
   // ── Override state ──
-  const [overrides, setOverrides] = useState<Map<number, RealtimeSplitOverride>>(
-    () => loadLocalOverrides(courseHash(form)) ?? new Map(),
-  );
+  const [overrides, setOverrides] = useState<
+    Map<number, RealtimeSplitOverride>
+  >(() => loadLocalOverrides(courseHash(form)) ?? new Map());
   const [localWarning, setLocalWarning] = useState<string | null>(null);
 
   // Detect course hash change after initial mount and invalidate stale overrides
@@ -266,7 +271,9 @@ export default function RealtimeView({
     setSelectedIndex(Math.min(idx, rows.length - 1));
   }, [rows]);
 
-  useEffect(() => { cleanStaleRealtimeKeys(); }, []);
+  useEffect(() => {
+    cleanStaleRealtimeKeys();
+  }, []);
 
   // ── Controlled field state ──
   const [actualStart, setActualStart] = useState("");
@@ -420,8 +427,7 @@ export default function RealtimeView({
         new Date(row.projectedStart).getTime();
       const origMovingMs = (row.distance / row.projectedSpeed) * 3_600_000;
       const stopMs = Math.max(0, origDurMs - origMovingMs);
-      const newEndMs =
-        startMs + (row.distance / speed) * 3_600_000 + stopMs;
+      const newEndMs = startMs + (row.distance / speed) * 3_600_000 + stopMs;
       next[i] = {
         ...row,
         projectedStart: new Date(startMs).toISOString(),
@@ -540,7 +546,9 @@ export default function RealtimeView({
         setRealtimePlanId(saved.id);
         try {
           localStorage.setItem(LS_PLAN_ID_KEY, saved.id);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         onRealtimePlanSaved?.(saved.id);
       }
       setSaveStatus("saved");
@@ -609,8 +617,7 @@ export default function RealtimeView({
           <span className="realtime-kicker">Ride mode</span>
           <h2>Update the plan as you ride</h2>
           <p>
-            Changes are saved locally and do not alter the course
-            configuration.
+            Changes are saved locally and do not alter the course configuration.
           </p>
         </div>
         <div className="realtime-intro-actions">
@@ -638,10 +645,7 @@ export default function RealtimeView({
                   <i className="fa-regular fa-floppy-disk" />
                   {" Save"}
                   {overrides.size > 0 && realtimePlanId && (
-                    <span
-                      className="realtime-dirty-dot"
-                      aria-hidden="true"
-                    />
+                    <span className="realtime-dirty-dot" aria-hidden="true" />
                   )}
                 </>
               )}
@@ -665,10 +669,15 @@ export default function RealtimeView({
               {rows.map((row, i) => {
                 const st = rowStatus(row, i);
                 const prefix =
-                  st === "done" ? "\u2713 " : i === selectedIndex ? "\u25b6 " : "";
+                  st === "done"
+                    ? "\u2713 "
+                    : i === selectedIndex
+                      ? "\u25b6 "
+                      : "";
                 return (
                   <option key={`${row.segIdx}-${row.splitIdx}`} value={i}>
-                    {prefix}{row.name}
+                    {prefix}
+                    {row.name}
                   </option>
                 );
               })}
@@ -713,8 +722,7 @@ export default function RealtimeView({
                 onChange={(e) => handleManualSpeedChange(e.target.value)}
               />
               <small>
-                {calculation?.speedFromTimes.toFixed(2)} {speedUnit} from
-                times
+                {calculation?.speedFromTimes.toFixed(2)} {speedUnit} from times
               </small>
             </label>
           </div>
@@ -804,7 +812,8 @@ export default function RealtimeView({
                 >
                   {weatherLoading ? (
                     <>
-                      <span className="btn-spinner btn-spinner-sm" /> Loading\u2026
+                      <span className="btn-spinner btn-spinner-sm" />{" "}
+                      Loading\u2026
                     </>
                   ) : (
                     <>
@@ -988,4 +997,3 @@ function RestStopRow({
     </div>
   );
 }
-
