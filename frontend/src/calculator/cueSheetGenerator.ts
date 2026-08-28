@@ -243,6 +243,44 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Best-effort Google Maps link for a rest/intermediate stop, preferring place id, then coords, then address. */
+function stopMapsUrl(
+  stop: Pick<
+    RestStopForm | IntermediateRestStopForm,
+    "googlePlaceId" | "lat" | "lon" | "address"
+  >,
+): string | null {
+  if (stop.googlePlaceId) {
+    return `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(stop.googlePlaceId)}`;
+  }
+  if (
+    stop.lat != null &&
+    stop.lon != null &&
+    Number.isFinite(stop.lat) &&
+    Number.isFinite(stop.lon)
+  ) {
+    return `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lon}`;
+  }
+  const addr = stop.address?.trim();
+  if (addr) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+  }
+  return null;
+}
+
+function stopNameHtml(name: string, url: string | null): string {
+  const safeName = esc(name);
+  return url
+    ? `<a class="stop-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${safeName}</a>`
+    : safeName;
+}
+
+/** Address text hidden on screen (redundant with the hyperlink) but shown when printed/exported to PDF. */
+function stopAddressPrintHtml(address: string | null | undefined): string {
+  const addr = address?.trim();
+  return addr ? `<span class="print-address">${esc(addr)}</span>` : "";
+}
+
 // ---------------------------------------------------------------------------
 // Shared HTML head (includes both table and compact CSS)
 // ---------------------------------------------------------------------------
@@ -349,6 +387,9 @@ tr.tr--transit td { background: #fffbeb !important; }
 .cs-eta--closed  { color: #dc2626; font-weight: 500; }
 .cs-eta--unknown { color: #374151; }
 
+.stop-link { color: #1d4ed8; text-decoration: underline; }
+.print-address { display: none; }
+
 /* ── Print ── */
 @media print {
   body { padding: 0; font-size: 10pt; }
@@ -369,6 +410,7 @@ tr.tr--transit td { background: #fffbeb !important; }
   table { page-break-inside: auto; }
   tr    { page-break-inside: avoid; }
   .cs-entry { page-break-inside: avoid; }
+  .print-address { display: block; font-size: 0.85em; color: #555; margin-top: 1px; }
   .cs-entry--intermediate { background: #eff6ff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cs-entry--split        { background: #f9fafb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cs-entry--transit      { background: #fffbeb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -546,7 +588,8 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
                 : intermKm
               : null;
 
-          let inner = `<span class="stop-label">${esc(is.name || "Intermediate Stop")}</span>`;
+          const isUrl = stopMapsUrl(is);
+          let inner = `<span class="stop-label">${stopNameHtml(is.name || "Intermediate Stop", isUrl)}</span>${stopAddressPrintHtml(is.address)}`;
           if (intermMarkerKm != null) {
             inner += ` <span class="unit">@ ${fmtDist(intermMarkerKm, opts.unitSystem)} ${ul}</span>`;
           }
@@ -577,7 +620,8 @@ function generateTableHtml(opts: CueSheetOptions, data: CueSheetData): string {
         // ② Rest stop (at split endpoint — mile marker not repeated)
         const rs = formSplit.rest_stop;
         if (opts.includeRestStop && rs.enabled) {
-          let inner = `<span class="stop-label">${esc(rs.name || "Rest Stop")}</span>`;
+          const rsUrl = stopMapsUrl(rs);
+          let inner = `<span class="stop-label">${stopNameHtml(rs.name || "Rest Stop", rsUrl)}</span>${stopAddressPrintHtml(rs.address)}`;
           if (opts.restStopIncludeHours) {
             const entry = hoursEntryForArrival(
               splitDetail.adjustment_start,
@@ -717,6 +761,8 @@ interface CompactEntry {
   splitName: string | null;
   /** For stops and controls: the label/name shown in the detail line */
   stopName: string | null;
+  stopUrl: string | null;
+  stopAddress: string | null;
   hoursLabel: string | null;
   etaIso: string | null;
   departByIso: string | null;
@@ -848,6 +894,8 @@ function generateCompactHtml(
             splitDistKm: null,
             splitName: null,
             stopName: is!.name || "Intermediate Stop",
+            stopUrl: stopMapsUrl(is!),
+            stopAddress: is!.address ?? null,
             hoursLabel,
             etaIso: opts.intermediateIncludeEta ? rawIntermEtaIso : null,
             departByIso: null,
@@ -865,6 +913,8 @@ function generateCompactHtml(
             splitDistKm: null,
             splitName: null,
             stopName: evt.cp.name || "Control",
+            stopUrl: null,
+            stopAddress: null,
             hoursLabel: null,
             etaIso: null,
             departByIso: null,
@@ -882,12 +932,16 @@ function generateCompactHtml(
         opts.mileMarkerDirection === "from-end" ? totalKm - endKm : endKm;
 
       let stopName: string | null = null;
+      let stopUrl: string | null = null;
+      let stopAddress: string | null = null;
       let hoursLabel: string | null = null;
       let etaStatus: EtaStatus = null;
 
       const rs = formSplit.rest_stop;
       if (opts.includeRestStop && rs.enabled) {
         stopName = rs.name || "Rest Stop";
+        stopUrl = stopMapsUrl(rs);
+        stopAddress = rs.address ?? null;
         const rsEntry = hoursEntryForArrival(
           splitDetail.adjustment_start,
           splitTz,
@@ -913,6 +967,8 @@ function generateCompactHtml(
         splitDistKm: opts.includeSplitDistance ? endKm - startKm : null,
         splitName: formSplit.name?.trim() || `Split ${splitIdx + 1}`,
         stopName,
+        stopUrl,
+        stopAddress,
         hoursLabel,
         etaIso:
           opts.includeRestStop && rs.enabled && opts.restStopIncludeEta
@@ -968,7 +1024,7 @@ function generateCompactHtml(
     if (entry.stopName) {
       const hoursStr = entry.hoursLabel ? `: ${esc(entry.hoursLabel)}` : "";
       detailLines.push(
-        `<div class="cs-detail-line">${esc(entry.stopName)}${hoursStr}</div>`,
+        `<div class="cs-detail-line">${stopNameHtml(entry.stopName, entry.stopUrl)}${hoursStr}${stopAddressPrintHtml(entry.stopAddress)}</div>`,
       );
     }
 
@@ -1022,7 +1078,10 @@ ${rows.join("\n")}
 interface RacePlanIntermediateLine {
   markerKm: number;
   markerLabel: string;
-  stopLabel: string;
+  stopName: string;
+  stopHoursLabel: string;
+  stopUrl: string | null;
+  stopAddress: string | null;
   etaLine: string | null;
   distanceLine: string;
 }
@@ -1031,7 +1090,10 @@ interface RacePlanSplitLine {
   markerKm: number;
   markerLabel: string;
   splitLabel: string;
-  restStopLine: string | null;
+  restStopName: string | null;
+  restStopHoursLabel: string | null;
+  restStopUrl: string | null;
+  restStopAddress: string | null;
   distanceLine: string;
   etaLine: string;
   etaAdjustSuffix: string | null;
@@ -1112,7 +1174,10 @@ function buildRacePlanModel(
 
       const splitLabel = formSplit.name?.trim() || `Split ${splitIdx + 1}`;
 
-      let restStopLine: string | null = null;
+      let restStopName: string | null = null;
+      let restStopHoursLabel: string | null = null;
+      let restStopUrl: string | null = null;
+      let restStopAddress: string | null = null;
       if (opts.includeRestStopDetails && formSplit.rest_stop?.enabled) {
         const rs = formSplit.rest_stop;
         const entry = hoursEntryForArrival(
@@ -1120,7 +1185,10 @@ function buildRacePlanModel(
           splitTz,
           rs,
         );
-        restStopLine = `${rs.name?.trim() || "Rest Stop"} (${hoursLabelForEntry(entry)})`;
+        restStopName = rs.name?.trim() || "Rest Stop";
+        restStopHoursLabel = hoursLabelForEntry(entry);
+        restStopUrl = stopMapsUrl(rs);
+        restStopAddress = rs.address ?? null;
       }
 
       const adjustSuffix = formatSignedMinutes(
@@ -1130,7 +1198,10 @@ function buildRacePlanModel(
         markerKm: splitMarkerKm,
         markerLabel: `${fmtDist(splitMarkerKm, opts.unitSystem)}:`,
         splitLabel,
-        restStopLine,
+        restStopName,
+        restStopHoursLabel,
+        restStopUrl,
+        restStopAddress,
         distanceLine:
           `Distance: ${fmtDist(splitDistanceKm, opts.unitSystem)} ` +
           `(R ${fmtDist(splitRemainingKm, opts.unitSystem)})`,
@@ -1175,12 +1246,16 @@ function buildRacePlanModel(
           splitTz,
           is,
         );
-        const stopLabel = `${is.name?.trim() || "Intermediate Stop"} (${hoursLabelForEntry(stopEntry)})`;
+        const stopName = is.name?.trim() || "Intermediate Stop";
+        const stopHoursLabel = hoursLabelForEntry(stopEntry);
 
         const intermediateLine: RacePlanIntermediateLine = {
           markerKm,
           markerLabel: `${fmtDist(markerKm, opts.unitSystem)}*:`,
-          stopLabel,
+          stopName,
+          stopHoursLabel,
+          stopUrl: stopMapsUrl(is),
+          stopAddress: is.address ?? null,
           etaLine: etaIso
             ? `ETA: ${formatRacePlanDateTime(etaIso, splitTz)}`
             : null,
@@ -1235,9 +1310,9 @@ function renderRacePlanHtml(opts: RacePlanOptions, data: CueSheetData): string {
       blocks.push(
         `<div class="rp-row rp-row--split"><span class="rp-marker">${esc(split.markerLabel)}</span> <span class="rp-split-name">${esc(split.splitLabel)}${split.isTransit ? " (Transit)" : ""}</span></div>`,
       );
-      if (split.restStopLine) {
+      if (split.restStopName) {
         blocks.push(
-          `<div class="rp-detail rp-detail--split">${esc(split.restStopLine)}</div>`,
+          `<div class="rp-detail rp-detail--split">${stopNameHtml(split.restStopName, split.restStopUrl)} (${esc(split.restStopHoursLabel ?? "")})${stopAddressPrintHtml(split.restStopAddress)}</div>`,
         );
       }
       blocks.push(`<div class="rp-detail">${esc(split.distanceLine)}</div>`);
@@ -1259,7 +1334,7 @@ function renderRacePlanHtml(opts: RacePlanOptions, data: CueSheetData): string {
 
     const interm = item.intermediate;
     blocks.push(
-      `<div class="rp-row"><span class="rp-marker">${esc(interm.markerLabel)}</span> ${esc(interm.stopLabel)}</div>`,
+      `<div class="rp-row"><span class="rp-marker">${esc(interm.markerLabel)}</span> ${stopNameHtml(interm.stopName, interm.stopUrl)} (${esc(interm.stopHoursLabel)})${stopAddressPrintHtml(interm.stopAddress)}</div>`,
     );
     if (interm.etaLine)
       blocks.push(`<div class="rp-detail">${esc(interm.etaLine)}</div>`);
@@ -1297,7 +1372,10 @@ function renderRacePlanText(opts: RacePlanOptions, data: CueSheetData): string {
       lines.push(
         `${split.markerLabel} ${split.splitLabel}${split.isTransit ? " (Transit)" : ""}`,
       );
-      if (split.restStopLine) lines.push(`    ${split.restStopLine}`);
+      if (split.restStopName)
+        lines.push(
+          `    ${split.restStopName} (${split.restStopHoursLabel ?? ""})`,
+        );
       lines.push(`    ${split.distanceLine}`);
       lines.push(
         split.etaAdjustSuffix
@@ -1311,7 +1389,9 @@ function renderRacePlanText(opts: RacePlanOptions, data: CueSheetData): string {
     }
 
     const interm = item.intermediate;
-    lines.push(`${interm.markerLabel} ${interm.stopLabel}`);
+    lines.push(
+      `${interm.markerLabel} ${interm.stopName} (${interm.stopHoursLabel})`,
+    );
     if (interm.etaLine) lines.push(`    ${interm.etaLine}`);
     lines.push(`    ${interm.distanceLine}`);
     lines.push("");
