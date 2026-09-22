@@ -16,16 +16,16 @@ class UserFlags(Base):
     stored as a plain string with no FK since the users table lives in
     Supabase's auth schema, not in our application schema.
 
-    Rows are created on demand by an operator (e.g. via the Supabase table
-    editor).  Absence of a row is treated as all flags = False.
+    Rows are created on demand by the auth sync endpoint.  New rows default to
+    all flags enabled; absence of a row is treated the same way.
     """
 
     __tablename__ = "user_flags"
 
     user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    enable_google_places: Mapped[bool] = mapped_column(Boolean, default=False)
-    enable_google_maps: Mapped[bool] = mapped_column(Boolean, default=False)
-    enable_google_geocoding: Mapped[bool] = mapped_column(Boolean, default=False)
+    enable_google_places: Mapped[bool] = mapped_column(Boolean, default=True)
+    enable_google_maps: Mapped[bool] = mapped_column(Boolean, default=True)
+    enable_google_geocoding: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )

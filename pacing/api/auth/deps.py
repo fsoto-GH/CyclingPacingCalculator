@@ -112,9 +112,9 @@ class CurrentUser(BaseModel):
     email: str
     name: str
     avatar_url: Optional[str] = None
-    enable_google_places: bool = False
-    enable_google_maps: bool = False
-    enable_google_geocoding: bool = False
+    enable_google_places: bool = True
+    enable_google_maps: bool = True
+    enable_google_geocoding: bool = True
 
 
 def _build_user(payload: dict, flags: Optional[UserFlags]) -> CurrentUser:
@@ -124,9 +124,9 @@ def _build_user(payload: dict, flags: Optional[UserFlags]) -> CurrentUser:
         email=payload.get("email", ""),
         name=meta.get("full_name") or meta.get("name") or payload.get("email", ""),
         avatar_url=meta.get("avatar_url"),
-        enable_google_places=flags.enable_google_places if flags else False,
-        enable_google_maps=flags.enable_google_maps if flags else False,
-        enable_google_geocoding=flags.enable_google_geocoding if flags else False,
+        enable_google_places=flags.enable_google_places if flags else True,
+        enable_google_maps=flags.enable_google_maps if flags else True,
+        enable_google_geocoding=flags.enable_google_geocoding if flags else True,
     )
 
 

@@ -75,7 +75,7 @@ def sync_user(
     db.commit()
     db.refresh(user)
 
-    # Ensure a user_flags row exists (creates with all flags False for new users).
+    # Ensure a user_flags row exists (creates with all flags enabled for new users).
     flags_row = db.query(UserFlags).filter(UserFlags.user_id == current_user.id).first()
     if flags_row is None:
         flags_row = UserFlags(user_id=current_user.id)
