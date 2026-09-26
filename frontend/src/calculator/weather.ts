@@ -145,6 +145,13 @@ interface GHourSlot {
 /** Internal cache type: location key → array of hourly slots. */
 type WeatherCache = Map<string, GHourSlot[]>;
 
+interface CachedWeatherSlots {
+  fetchedAtMs: number;
+  slots: GHourSlot[];
+}
+
+const WEATHER_CACHE_TTL_MS = 60 * 60_000;
+
 const locKey = (lat: number, lon: number) =>
   `${lat.toFixed(2)},${lon.toFixed(2)}`;
 
@@ -160,7 +167,18 @@ function getCachedSlots(loc: string): GHourSlot[] | null {
   try {
     const raw = sessionStorage.getItem(ssKey(loc));
     if (!raw) return null;
-    return JSON.parse(raw) as GHourSlot[];
+    const cached = JSON.parse(raw) as CachedWeatherSlots;
+    const ageMs = Date.now() - cached.fetchedAtMs;
+    if (
+      !Array.isArray(cached.slots) ||
+      !Number.isFinite(cached.fetchedAtMs) ||
+      ageMs < 0 ||
+      ageMs > WEATHER_CACHE_TTL_MS
+    ) {
+      sessionStorage.removeItem(ssKey(loc));
+      return null;
+    }
+    return cached.slots;
   } catch {
     return null;
   }
@@ -168,7 +186,8 @@ function getCachedSlots(loc: string): GHourSlot[] | null {
 
 function setCachedSlots(loc: string, slots: GHourSlot[]): void {
   try {
-    sessionStorage.setItem(ssKey(loc), JSON.stringify(slots));
+    const cached: CachedWeatherSlots = { fetchedAtMs: Date.now(), slots };
+    sessionStorage.setItem(ssKey(loc), JSON.stringify(cached));
   } catch {
     // sessionStorage full or unavailable — skip silently
   }
