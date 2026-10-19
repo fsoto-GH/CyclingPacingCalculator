@@ -1,5 +1,5 @@
 const CARTO_API_KEY_PARAM = import.meta.env.VITE_CARTO_API_KEY
-  ? `?api_key=${encodeURIComponent(import.meta.env.VITE_CARTO_API_KEY)}`
+  ? `?key=${encodeURIComponent(import.meta.env.VITE_CARTO_API_KEY)}`
   : "";
 
 export const MAP_TILE_LAYERS = {
