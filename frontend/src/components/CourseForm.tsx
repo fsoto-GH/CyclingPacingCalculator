@@ -1146,9 +1146,15 @@ export default function CourseForm() {
     // Run once on mount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const { user, userSettings } = useAppSettings();
+  const { user, userSettings, enableRealtimeView } = useAppSettings();
   const { login, logout } = useAuth();
   const { setSelectedTypes, setRadiusM } = React.useContext(AmenityContext);
+
+  useEffect(() => {
+    if (!enableRealtimeView && activeTab === "realtime") {
+      setActiveTab("planning");
+    }
+  }, [enableRealtimeView, activeTab]);
 
   // Keep AmenityContext in sync when settings load/update from DB.
   useEffect(() => {
@@ -4229,15 +4235,19 @@ export default function CourseForm() {
             >
               <i className="fas fa-chart-line" /> Projections
             </button>
-            <button
-              role="tab"
-              type="button"
-              className={`app-tab-btn${activeTab === "realtime" ? " active" : ""}`}
-              onClick={() => startTabTransition(() => setActiveTab("realtime"))}
-            >
-              <i className="fas fa-stopwatch" /> Realtime
-              <span className="app-tab-beta">beta</span>
-            </button>
+            {enableRealtimeView && (
+              <button
+                role="tab"
+                type="button"
+                className={`app-tab-btn${activeTab === "realtime" ? " active" : ""}`}
+                onClick={() =>
+                  startTabTransition(() => setActiveTab("realtime"))
+                }
+              >
+                <i className="fas fa-stopwatch" /> Realtime
+                <span className="app-tab-beta">beta</span>
+              </button>
+            )}
           </div>
           <div className="course-form" onBlur={handleBlur}>
             <Suspense fallback={null}>
@@ -5482,7 +5492,7 @@ export default function CourseForm() {
                 </Suspense>
               </div>
             )}
-            {activeTab === "realtime" && (
+            {enableRealtimeView && activeTab === "realtime" && (
               <RealtimeView
                 result={result}
                 form={form}

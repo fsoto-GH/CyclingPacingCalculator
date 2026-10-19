@@ -27,6 +27,8 @@ export interface AppSettingsContextValue {
   enableGooglePlaces: boolean;
   /** True when the current user may use backend geocoding endpoints. */
   enableGoogleGeocoding: boolean;
+  /** True when the current user has the Realtime view tab enabled. */
+  enableRealtimeView: boolean;
   /** Persisted user preferences (localStorage + DB for auth users). */
   userSettings: UserSettings;
   /** Update one or more settings fields. Writes through to localStorage and DB. */
@@ -41,6 +43,7 @@ export const AppSettingsContext = createContext<AppSettingsContextValue>({
   enableGoogleMaps: false,
   enableGooglePlaces: false,
   enableGoogleGeocoding: false,
+  enableRealtimeView: false,
   userSettings: {
     ...USER_SETTINGS_DEFAULTS,
     settingsVersion: SETTINGS_VERSION,

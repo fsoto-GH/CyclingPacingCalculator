@@ -1,3 +1,5 @@
+const CARTO_API_KEY = "cb1_4ok2_1_aa2315c0beafffec0ac9e730";
+
 export const MAP_TILE_LAYERS = {
   osm: {
     label: "Standard",
@@ -22,14 +24,14 @@ export const MAP_TILE_LAYERS = {
   },
   cartoDark: {
     label: "Carto Dark Matter",
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    url: `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?api_key=${CARTO_API_KEY}`,
     attribution:
       "Map data: &copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors | Map style: &copy; <a href='https://carto.com/attributions'>CARTO</a>",
     maxZoom: 19,
   },
   cartoPositron: {
     label: "Carto Positron",
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?api_key=${CARTO_API_KEY}`,
     attribution:
       "Map data: &copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors | Map style: &copy; <a href='https://carto.com/attributions'>CARTO</a>",
     maxZoom: 19,

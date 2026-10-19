@@ -20,6 +20,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [enableGoogleMaps, setEnableGoogleMaps] = useState(false);
   const [enableGooglePlaces, setEnableGooglePlaces] = useState(false);
   const [enableGoogleGeocoding, setEnableGoogleGeocoding] = useState(false);
+  const [enableRealtimeView, setEnableRealtimeView] = useState(false);
   const [userSettings, setUserSettingsState] = useState<UserSettings>(
     loadSettingsFromStorage,
   );
@@ -93,6 +94,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
             setEnableGoogleMaps(res.flags.enable_google_maps);
             setEnableGooglePlaces(res.flags.enable_google_places);
             setEnableGoogleGeocoding(res.flags.enable_google_geocoding);
+            setEnableRealtimeView(Boolean(res.flags.enable_realtime_view));
           })
           .catch(() => {});
       }
@@ -122,6 +124,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
           setEnableGoogleMaps(false);
           setEnableGooglePlaces(false);
           setEnableGoogleGeocoding(false);
+          setEnableRealtimeView(false);
         }
 
         // Upsert the user in our local DB on every fresh sign-in.
@@ -131,6 +134,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
               setEnableGoogleMaps(res.flags.enable_google_maps);
               setEnableGooglePlaces(res.flags.enable_google_places);
               setEnableGoogleGeocoding(res.flags.enable_google_geocoding);
+              setEnableRealtimeView(Boolean(res.flags.enable_realtime_view));
             })
             .catch((err) => console.error("[auth] sync failed:", err));
         }
@@ -158,6 +162,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         enableGoogleMaps,
         enableGooglePlaces,
         enableGoogleGeocoding,
+        enableRealtimeView,
         userSettings,
         updateUserSettings,
       }}

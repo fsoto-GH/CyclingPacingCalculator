@@ -36,6 +36,7 @@ export interface UserFlagsResponse {
   enable_google_places: boolean;
   enable_google_maps: boolean;
   enable_google_geocoding: boolean;
+  enable_realtime_view: boolean;
 }
 
 export interface SyncUserResponse {

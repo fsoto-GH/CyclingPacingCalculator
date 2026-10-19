@@ -115,6 +115,7 @@ class CurrentUser(BaseModel):
     enable_google_places: bool = True
     enable_google_maps: bool = True
     enable_google_geocoding: bool = True
+    enable_realtime_view: bool = False
 
 
 def _build_user(payload: dict, flags: Optional[UserFlags]) -> CurrentUser:
@@ -127,6 +128,7 @@ def _build_user(payload: dict, flags: Optional[UserFlags]) -> CurrentUser:
         enable_google_places=flags.enable_google_places if flags else True,
         enable_google_maps=flags.enable_google_maps if flags else True,
         enable_google_geocoding=flags.enable_google_geocoding if flags else True,
+        enable_realtime_view=bool(flags.enable_realtime_view) if flags else False,
     )
 
 
@@ -203,5 +205,17 @@ def get_google_geocoding_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Google geocoding access is not enabled for your account.",
+        )
+    return current_user
+
+
+def get_realtime_view_user(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    """Require an authenticated user with enable_realtime_view = True; raise 403 otherwise."""
+    if not current_user.enable_realtime_view:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Realtime view access is not enabled for your account.",
         )
     return current_user

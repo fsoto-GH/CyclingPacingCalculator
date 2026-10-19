@@ -30,6 +30,7 @@ class FlagsResponse(BaseModel):
     enable_google_places: bool
     enable_google_maps: bool
     enable_google_geocoding: bool
+    enable_realtime_view: bool = False
 
 
 class SyncResponse(BaseModel):
@@ -90,5 +91,6 @@ def sync_user(
             enable_google_places=flags_row.enable_google_places,
             enable_google_maps=flags_row.enable_google_maps,
             enable_google_geocoding=flags_row.enable_google_geocoding,
+            enable_realtime_view=bool(flags_row.enable_realtime_view),
         ),
     )
