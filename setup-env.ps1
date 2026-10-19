@@ -121,6 +121,7 @@ Write-Host ""
 
 # Misc
 Write-Host "Misc" -ForegroundColor Yellow
+$cartoApiKey    = Ask "  VITE_CARTO_API_KEY (referrer-restricted CARTO tile key)" "" -Secret
 $weatherApiKey  = Ask "  WEATHER_API_KEY (optional)" "" -Secret
 $cookieSecure   = Ask "  COOKIE_SECURE (true for HTTPS/production, false for local)" "false"
 $viteServerFns  = Ask "  VITE_ENABLE_SERVER_FUNCTIONS (Docker build-arg)" "true"
@@ -153,6 +154,7 @@ $rootEnv = [ordered]@{
     "WEATHER_API_KEY"          = $weatherApiKey
     "COOKIE_SECURE"            = $cookieSecure
     "VITE_ENABLE_SERVER_FUNCTIONS" = $viteServerFns
+    "VITE_CARTO_API_KEY"       = $cartoApiKey
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -166,6 +168,7 @@ $fViteServerFns = Ask "  VITE_ENABLE_SERVER_FUNCTIONS" $viteServerFns
 $fSupabaseUrl   = Ask "  VITE_SUPABASE_URL" $supabaseUrl
 $fSupabaseAnon  = Ask "  VITE_SUPABASE_ANON_KEY" "" -Secret
 $fGoogleClient  = Ask "  VITE_GOOGLE_CLIENT_ID" $googleClientId
+$fCartoApiKey   = Ask "  VITE_CARTO_API_KEY" $cartoApiKey
 
 Write-Host ""
 
@@ -176,6 +179,7 @@ $frontendEnv = [ordered]@{
     "VITE_SUPABASE_URL"           = $fSupabaseUrl
     "VITE_SUPABASE_ANON_KEY"      = $fSupabaseAnon
     "VITE_GOOGLE_CLIENT_ID"       = $fGoogleClient
+    "VITE_CARTO_API_KEY"          = $fCartoApiKey
 }
 
 # ── Write files ───────────────────────────────────────────────────────────────

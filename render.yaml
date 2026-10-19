@@ -21,6 +21,8 @@ services:
         value: "lax"
       - key: VITE_ENABLE_SERVER_FUNCTIONS
         value: "true"
+      - key: VITE_CARTO_API_KEY
+        sync: false
       - key: LOG_LEVEL
         value: "INFO"
       - key: DATABASE_URL

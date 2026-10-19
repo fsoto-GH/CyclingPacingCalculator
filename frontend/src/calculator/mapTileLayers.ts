@@ -1,4 +1,6 @@
-const CARTO_API_KEY = "cb1_4ok2_1_aa2315c0beafffec0ac9e730";
+const CARTO_API_KEY_PARAM = import.meta.env.VITE_CARTO_API_KEY
+  ? `?api_key=${encodeURIComponent(import.meta.env.VITE_CARTO_API_KEY)}`
+  : "";
 
 export const MAP_TILE_LAYERS = {
   osm: {
@@ -24,14 +26,14 @@ export const MAP_TILE_LAYERS = {
   },
   cartoDark: {
     label: "Carto Dark Matter",
-    url: `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?api_key=${CARTO_API_KEY}`,
+    url: `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${CARTO_API_KEY_PARAM}`,
     attribution:
       "Map data: &copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors | Map style: &copy; <a href='https://carto.com/attributions'>CARTO</a>",
     maxZoom: 19,
   },
   cartoPositron: {
     label: "Carto Positron",
-    url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?api_key=${CARTO_API_KEY}`,
+    url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${CARTO_API_KEY_PARAM}`,
     attribution:
       "Map data: &copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors | Map style: &copy; <a href='https://carto.com/attributions'>CARTO</a>",
     maxZoom: 19,
