@@ -105,6 +105,7 @@ ask_secret RIDEWITHGPS_CLIENT_SECRET "  RIDEWITHGPS_CLIENT_SECRET" ""
 echo ""
 
 echo "Misc"
+ask_secret VITE_CARTO_API_KEY "  VITE_CARTO_API_KEY (referrer-restricted CARTO tile key)" ""
 ask_secret WEATHER_API_KEY           "  WEATHER_API_KEY (optional)" ""
 ask        COOKIE_SECURE             "  COOKIE_SECURE (true for HTTPS/production)" "false"
 ask        VITE_ENABLE_SERVER_FUNCTIONS "  VITE_ENABLE_SERVER_FUNCTIONS (Docker build-arg)" "true"
@@ -140,6 +141,7 @@ ROOT_ENV_LINES=(
   "WEATHER_API_KEY=${WEATHER_API_KEY}"
   "COOKIE_SECURE=${COOKIE_SECURE}"
   "VITE_ENABLE_SERVER_FUNCTIONS=${VITE_ENABLE_SERVER_FUNCTIONS}"
+  "VITE_CARTO_API_KEY=${VITE_CARTO_API_KEY}"
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -153,6 +155,7 @@ ask        F_VITE_SERVER_FNS "  VITE_ENABLE_SERVER_FUNCTIONS" "$VITE_ENABLE_SERV
 ask        F_SUPABASE_URL    "  VITE_SUPABASE_URL" "$SUPABASE_URL"
 ask_secret F_SUPABASE_ANON  "  VITE_SUPABASE_ANON_KEY" ""
 ask        F_GOOGLE_CLIENT   "  VITE_GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_ID"
+ask_secret F_CARTO_API_KEY  "  VITE_CARTO_API_KEY" "$VITE_CARTO_API_KEY"
 echo ""
 
 FRONTEND_ENV_LINES=(
@@ -162,6 +165,7 @@ FRONTEND_ENV_LINES=(
   "VITE_SUPABASE_URL=${F_SUPABASE_URL}"
   "VITE_SUPABASE_ANON_KEY=${F_SUPABASE_ANON}"
   "VITE_GOOGLE_CLIENT_ID=${F_GOOGLE_CLIENT}"
+  "VITE_CARTO_API_KEY=${F_CARTO_API_KEY}"
 )
 
 # ── Write files ───────────────────────────────────────────────────────────────

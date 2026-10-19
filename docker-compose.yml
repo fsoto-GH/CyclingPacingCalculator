@@ -40,6 +40,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_ENABLE_SERVER_FUNCTIONS: ${VITE_ENABLE_SERVER_FUNCTIONS:-false}
+        VITE_CARTO_API_KEY: ${VITE_CARTO_API_KEY:-}
     container_name: pacing-api
     ports:
       - "8000:8000"
